@@ -1,0 +1,119 @@
+:root {
+  /* Light theme — warm lavender-white, deep plum-purple as the brand color */
+  --color-primary: #5b2a86;
+  --color-primary-hover: #6f3aa0;
+  --color-primary-soft: #f0e9fa;
+  --color-orange: #ff8c42;
+  --color-orange-dark: #e6752e;
+  --color-bg-start: #faf8fd;
+  --color-bg-mid: #f0e9fa;
+  --color-surface: #ffffff;
+  --color-text: #241a35;
+  --color-text-muted: #6f6480;
+  --color-border: #e4dbf2;
+  --shadow-sm: 0 4px 14px rgba(70, 30, 110, 0.08);
+  --shadow-md: 0 10px 26px rgba(70, 30, 110, 0.16);
+  --overlay: rgba(32, 16, 48, 0.4);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Sora', var(--font-sans);
+  color-scheme: light dark;
+}
+
+/* Dark theme values — applied automatically when the OS prefers dark (unless
+   the user has explicitly picked light in the app), and applied unconditionally
+   when the user has explicitly picked dark via the header's theme toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-primary: #b48ee8;
+    --color-primary-hover: #c7a6f0;
+    --color-primary-soft: #2c2140;
+    --color-orange: #ffa35c;
+    --color-orange-dark: #ff8c42;
+    --color-bg-start: #180f24;
+    --color-bg-mid: #20152e;
+    --color-surface: #241a35;
+    --color-text: #f2eefa;
+    --color-text-muted: #ab9dc4;
+    --color-border: #3a2c50;
+    --shadow-sm: 0 4px 14px rgba(6, 2, 12, 0.4);
+    --shadow-md: 0 10px 28px rgba(6, 2, 12, 0.55);
+    --overlay: rgba(10, 5, 18, 0.6);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-primary: #b48ee8;
+  --color-primary-hover: #c7a6f0;
+  --color-primary-soft: #2c2140;
+  --color-orange: #ffa35c;
+  --color-orange-dark: #ff8c42;
+  --color-bg-start: #180f24;
+  --color-bg-mid: #20152e;
+  --color-surface: #241a35;
+  --color-text: #f2eefa;
+  --color-text-muted: #ab9dc4;
+  --color-border: #3a2c50;
+  --shadow-sm: 0 4px 14px rgba(6, 2, 12, 0.4);
+  --shadow-md: 0 10px 28px rgba(6, 2, 12, 0.55);
+  --overlay: rgba(10, 5, 18, 0.6);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-start);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

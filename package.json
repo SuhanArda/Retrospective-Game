@@ -4,13 +4,17 @@
   "version": "0.1.0",
   "workspaces": ["apps/*", "games/*", "packages/*"],
   "scripts": {
-    "dev": "npm run dev:retro-rush",
-    "dev:retro-rush": "npm --workspace games/retro-rush run dev",
-    "build": "npm run build:retro-rush",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm --workspace apps/retro-platform-web run dev -- --port 5173 --strictPort",
+    "dev:retro-rush": "npm --workspace games/retro-rush run dev -- --port 5174 --strictPort",
+    "build": "npm run build:web && npm run build:retro-rush",
+    "build:web": "npm --workspace apps/retro-platform-web run build",
     "build:retro-rush": "npm --workspace games/retro-rush run build",
-    "test": "npm run test:retro-rush",
+    "test": "npm run test:web && npm run test:retro-rush",
+    "test:web": "npm --workspace apps/retro-platform-web run test",
     "test:retro-rush": "npm --workspace games/retro-rush run test",
-    "lint": "npm run lint:retro-rush",
+    "lint": "npm run lint:web && npm run lint:retro-rush",
+    "lint:web": "npm --workspace apps/retro-platform-web run lint",
     "lint:retro-rush": "npm --workspace games/retro-rush run lint"
   }
 }

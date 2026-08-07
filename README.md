@@ -1,37 +1,61 @@
 # Sabancı DX Retrospective Game Platform
 
-This monorepo hosts browser games and the future applications, shared frontend packages, and backend services for a cooperative retrospective platform. The currently playable module is [Retro Rush](games/retro-rush/README.md), a React, TypeScript, Vite, and Phaser 3 platform game.
+This monorepo contains the entry platform and independently runnable retrospective games.
 
 ## Repository layout
 
-- `games/` contains independently playable game clients.
-- `apps/` is reserved for the main room, game-selection, and retrospective-session frontend.
-- `packages/` is reserved for intentionally shared frontend code and contracts.
-- `services/` is reserved for backend services, including the future ASP.NET Core API.
-- `docs/` contains repository-wide documentation.
+- `apps/retro-platform-web/` — the existing React/Vite Website, now the main create/join/lobby/game-selection application.
+- `games/retro-rush/` — the existing React/TypeScript/Vite/Phaser game. It remains an independent application.
+- `packages/platform-contracts/` — the small typed launch contract shared by the platform and games.
+- `services/` — reserved for the future ASP.NET Core room API and SignalR hubs.
+- `packages/` — shared frontend/domain boundaries that have multiple real consumers.
+- `docs/` — repository-wide architecture and integration documentation.
 
-See [Repository structure](docs/repository-structure.md) for conventions and ownership boundaries.
+## Local development
 
-## Work with Retro Rush
-
-Use a current Node.js LTS release and run commands from the repository root:
+Use a current Node.js LTS release and run from the repository root:
 
 ```bash
 npm install
 npm run dev
+```
+
+The combined command starts:
+
+- Platform Website: <http://localhost:5173>
+- Retro Rush: <http://localhost:5174>
+
+The applications can also be started separately:
+
+```bash
+npm run dev:web
+npm run dev:retro-rush
+```
+
+Repository checks run both applications:
+
+```bash
 npm run lint
 npm run test
 npm run build
 ```
 
-The explicit workspace command is:
+## Current user flow
 
-```bash
-npm --workspace games/retro-rush run dev
+Open the platform, create or join a room, enter the lobby, choose Retro Rush, and launch it in the same browser tab. Retro Rush receives the room/player launch context and shows **Return to Lobby** when it was opened by the platform. Opening Retro Rush directly still uses its standalone mock room and player.
+
+Game endpoints are configuration-driven:
+
+```dotenv
+# apps/retro-platform-web
+VITE_RETRO_RUSH_URL=http://localhost:5174
+
+# games/retro-rush
+VITE_PLATFORM_URL=http://localhost:5173
 ```
 
-Equivalent `build`, `test`, and `lint` commands are available through both the root scripts and the game workspace.
+Production may instead use paths such as `/games/retro-rush/`.
 
-## Add a game later
+## Mock room limitation
 
-Create it at `games/<game-name>/` with its own unique npm package name, README, source, public assets, tests, and build configuration. A game must build independently, must not import source directly from another game, and should consume deliberately extracted shared code through `packages/`. Add root convenience scripts only when they invoke real workspace scripts.
+`MockRoomService` is for frontend development. Room snapshots use localStorage and same-origin tab updates use BroadcastChannel, so they do not synchronize separate browsers, devices, or users on different computers. ASP.NET Core and SignalR must replace this authority for production. See [Platform/game integration](docs/platform-game-integration.md).
