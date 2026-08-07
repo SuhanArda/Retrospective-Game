@@ -1,4 +1,4 @@
-# Sabancı DX Retrospective Game Platform
+# Retrospective Game Platform
 
 This monorepo contains the entry platform and independently runnable retrospective games.
 
