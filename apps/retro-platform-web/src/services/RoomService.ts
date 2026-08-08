@@ -10,6 +10,9 @@ export interface RoomService {
   getRoom(roomCode: string): RetroRoom | null;
   getCurrentPlayer(): RoomPlayer | null;
   beginGameSelection(): Promise<RetroRoom>;
+  castVote(gameId: string): Promise<RetroRoom>;
+  /** Host-only. Closes the vote and records the winning game (and any tie-break). */
+  resolveVote(candidateIds: readonly string[]): Promise<RetroRoom>;
   selectGame(gameId: string): Promise<RetroRoom>;
   returnToLobby(): Promise<RetroRoom>;
   subscribe(roomCode: string, listener: RoomListener): () => void;

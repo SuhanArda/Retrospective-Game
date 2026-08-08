@@ -18,6 +18,17 @@ function RoomLobby() {
 
   useEffect(() => roomService.subscribe(roomCode, setRoom), [roomCode])
 
+  // Everyone follows the room's phase, not just the host who triggered it —
+  // otherwise guests sit in the lobby while the vote runs without them.
+  useEffect(() => {
+    if (!room) return
+    if (room.status === 'GAME_SELECTION') {
+      navigate(`/room/${room.code}/games`)
+    } else if (room.status === 'PLAYING' && room.selectedGameId) {
+      navigate(`/room/${room.code}/game/${room.selectedGameId}`)
+    }
+  }, [room, navigate])
+
   async function copy(value, kind) {
     try {
       await navigator.clipboard.writeText(value)

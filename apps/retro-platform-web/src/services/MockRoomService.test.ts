@@ -42,4 +42,92 @@ describe('MockRoomService', () => {
     const service = new MockRoomService(new MemoryStorage(), new MemoryStorage(), () => 'guest-id', () => 'ABC123', () => null);
     await expect(service.joinRoom({ roomCode: 'ABC123', displayName: 'Guest', color: '#fff' })).resolves.toEqual({ ok: false, error: 'ROOM_NOT_FOUND' });
   });
+
+  describe('game voting', () => {
+    const CANDIDATES = ['retro-rush', 'pixel-arena'];
+
+    async function roomWithHostAndGuest(random = () => 0) {
+      const rooms = new MemoryStorage();
+      const host = new MockRoomService(
+        rooms, new MemoryStorage(), () => 'host-id', () => 'ABC123', () => null, () => 1_000, random,
+      );
+      await host.createRoom(request('Host'));
+      const guest = new MockRoomService(
+        rooms, new MemoryStorage(), () => 'guest-id', () => 'ZZZ999', () => null, () => 1_000, random,
+      );
+      await guest.joinRoom({ roomCode: 'ABC123', displayName: 'Guest', color: '#ff8c42' });
+      return { host, guest };
+    }
+
+    it('opens the vote with a deadline and no leftover result', async () => {
+      const { host } = await roomWithHostAndGuest();
+      const room = await host.beginGameSelection();
+
+      expect(room.status).toBe('GAME_SELECTION');
+      expect(room.votes).toEqual({});
+      expect(room.votingEndsAt).toBe(1_000 + 30 * 1000);
+      expect(room.selectedGameId).toBeUndefined();
+    });
+
+    it('records one vote per player and lets a player change their mind', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection();
+
+      await host.castVote('retro-rush');
+      await guest.castVote('pixel-arena');
+      const room = await guest.castVote('retro-rush');
+
+      expect(room.votes).toEqual({ 'host-id': 'retro-rush', 'guest-id': 'retro-rush' });
+    });
+
+    it('resolves to the most-voted game without flagging a tie-break', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection();
+      await host.castVote('pixel-arena');
+      await guest.castVote('pixel-arena');
+
+      const room = await host.resolveVote(CANDIDATES);
+      expect(room.status).toBe('PLAYING');
+      expect(room.selectedGameId).toBe('pixel-arena');
+      expect(room.tieBreak).toBeUndefined();
+      expect(room.votingEndsAt).toBeUndefined();
+    });
+
+    it('records the candidates when a draw is settled at random', async () => {
+      const { host, guest } = await roomWithHostAndGuest(() => 0);
+      await host.beginGameSelection();
+      await host.castVote('retro-rush');
+      await guest.castVote('pixel-arena');
+
+      const room = await host.resolveVote(CANDIDATES);
+      expect(room.tieBreak).toEqual({ candidates: CANDIDATES, winner: 'retro-rush' });
+      expect(room.selectedGameId).toBe('retro-rush');
+    });
+
+    it('refuses to let a guest close the vote', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection();
+      await expect(guest.resolveVote(CANDIDATES)).rejects.toThrow('HOST_REQUIRED');
+    });
+
+    it('keeps the first result when the vote is resolved twice', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection();
+      await guest.castVote('pixel-arena');
+
+      const first = await host.resolveVote(CANDIDATES);
+      const second = await host.resolveVote(CANDIDATES);
+      expect(second.selectedGameId).toBe(first.selectedGameId);
+    });
+
+    it('ignores votes cast once the vote is already closed', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection();
+      await host.castVote('retro-rush');
+      await host.resolveVote(CANDIDATES);
+
+      const room = await guest.castVote('pixel-arena');
+      expect(room.votes).toEqual({ 'host-id': 'retro-rush' });
+    });
+  });
 });

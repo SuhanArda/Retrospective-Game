@@ -12,6 +12,7 @@ import {
   savePlatformSession,
   type PlatformSession,
 } from '../session/platformSession';
+import { resolveVoteOutcome } from '../domain/voting';
 import { generateRoomCode, isValidRoomCode, normalizeRoomCode } from '../utils/roomCode';
 import { RoomServiceError, type RoomListener, type RoomService } from './RoomService';
 
@@ -88,6 +89,8 @@ export class MockRoomService implements RoomService {
     private readonly createId: IdFactory = defaultIdFactory,
     private readonly createCode: RoomCodeFactory = generateRoomCode,
     channelFactory: () => MessageChannel | null = defaultChannelFactory,
+    private readonly now: () => number = Date.now,
+    private readonly random: () => number = Math.random,
   ) {
     this.channel = channelFactory();
   }
@@ -187,7 +190,42 @@ export class MockRoomService implements RoomService {
   async beginGameSelection(): Promise<RetroRoom> {
     return this.updateCurrentRoom((room, session) => {
       if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');
-      return { ...room, status: 'GAME_SELECTION' };
+      const next: RetroRoom = {
+        ...room,
+        status: 'GAME_SELECTION',
+        votes: {},
+        votingEndsAt: this.now() + room.votingTimeSeconds * 1000,
+      };
+      delete next.selectedGameId;
+      delete next.tieBreak;
+      return next;
+    });
+  }
+
+  async castVote(gameId: string): Promise<RetroRoom> {
+    return this.updateCurrentRoom((room, session) => {
+      if (room.status !== 'GAME_SELECTION') return room;
+      return { ...room, votes: { ...room.votes, [session.playerId]: gameId } };
+    });
+  }
+
+  async resolveVote(candidateIds: readonly string[]): Promise<RetroRoom> {
+    return this.updateCurrentRoom((room, session) => {
+      if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');
+      // Another tab may have resolved it already; keep the first result.
+      if (room.status !== 'GAME_SELECTION') return room;
+      const outcome = resolveVoteOutcome(room.votes, candidateIds, this.random);
+      if (!outcome) return room;
+
+      const next: RetroRoom = { ...room, selectedGameId: outcome.winner, status: 'PLAYING' };
+      delete next.votingEndsAt;
+      if (outcome.tiedCandidates.length > 1) {
+        next.tieBreak = { candidates: outcome.tiedCandidates, winner: outcome.winner };
+      } else {
+        delete next.tieBreak;
+      }
+      savePlatformSession(this.sessionStorage, { ...session, selectedGameId: outcome.winner });
+      return next;
     });
   }
 
