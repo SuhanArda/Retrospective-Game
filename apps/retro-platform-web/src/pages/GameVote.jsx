@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { gameRegistry, findGame } from '../games/gameRegistry'
-import { roomService } from '../services/roomServiceInstance'
+import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { tallyVotes } from '../domain/voting'
+import { useRoom } from '../hooks/useRoom'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import TieBreakRoll from '../components/TieBreakRoll.jsx'
 import '../App.css'
@@ -14,14 +15,12 @@ function GameVote() {
   const { roomCode = '' } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
-  const [room, setRoom] = useState(() => roomService.getRoom(roomCode))
+  const { room, loading, setRoom } = useRoom(roomCode)
   const [now, setNow] = useState(() => Date.now())
   const [rollDone, setRollDone] = useState(false)
   const me = roomService.getCurrentPlayer()
   const myId = me?.id ?? null
   const isHost = me?.isHost ?? false
-
-  useEffect(() => roomService.subscribe(roomCode, setRoom), [roomCode])
 
   const resolved = room?.status === 'PLAYING' && Boolean(room.selectedGameId)
   const tieBreak = resolved ? room.tieBreak : undefined
@@ -41,13 +40,15 @@ function GameVote() {
   // Stable identity so the animation's completion timer is never reset.
   const handleRollDone = useCallback(() => setRollDone(true), [])
 
-  // The host closes the vote for everyone — the same job the server will take
-  // over later. Guests just wait for the resulting snapshot.
+  // Against the real API the server closes the vote on its own schedule; this
+  // only matters in mock mode, where there is no server to run the countdown.
+  // Harmless either way: resolving an already-resolved vote is a no-op.
   useEffect(() => {
+    if (!isMockMode) return
     if (!isHost || room?.status !== 'GAME_SELECTION' || !room.votingEndsAt) return
     if (secondsLeft > 0) return
     void roomService.resolveVote(CANDIDATE_IDS).then(setRoom)
-  }, [isHost, room, secondsLeft])
+  }, [isHost, room, secondsLeft, setRoom])
 
   useEffect(() => {
     if (room?.status === 'LOBBY') navigate(`/room/${room.code}`, { replace: true })
@@ -65,6 +66,15 @@ function GameVote() {
   }, [resolved, tieBreak, rollDone, goToGame])
 
   const tally = useMemo(() => tallyVotes(room?.votes), [room?.votes])
+
+  if (loading) {
+    return (
+      <div className="page"><div className="page-content">
+        <div className="brand">{t('vote.brand')}</div>
+        <p className="subtitle">{t('lobby.connecting')}</p>
+      </div></div>
+    )
+  }
 
   if (!room) {
     return (

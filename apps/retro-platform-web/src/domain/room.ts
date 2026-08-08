@@ -25,6 +25,8 @@ export interface RetroRoom {
   votes?: Record<string, string>;
   /** Epoch ms when the vote closes; absent once the vote is resolved. */
   votingEndsAt?: number;
+  /** The games this round may choose between, so the server can close the vote itself. */
+  candidateGameIds?: string[];
   tieBreak?: TieBreak;
   status: RoomStatus;
   maxParticipants: number;

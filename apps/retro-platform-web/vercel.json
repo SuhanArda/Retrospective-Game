@@ -1,4 +1,5 @@
 {
+  "$comment": "connect-src must also list the deployed room API origin and its wss:// equivalent, or the browser blocks the SignalR connection. Local builds inject this automatically (see vite.config.js).",
   "headers": [
     {
       "source": "/(.*)",

@@ -241,6 +241,57 @@ public class RoomStoreTests
     }
 
     [Fact]
+    public void A_room_that_is_mid_game_survives_everyone_dropping_off()
+    {
+        // Launching a game navigates every tab to the game's own origin, which
+        // closes the hub connection. The room must not be torn down under them.
+        var (store, time) = NewStore();
+        var (room, host) = store.Create(Request());
+        store.BeginGameSelection(room.Code, host.Id, Candidates);
+        store.ResolveVote(room.Code, host.Id, Candidates);
+        store.MarkDisconnected(room.Code, host.Id);
+
+        time.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.Empty(store.SweepDisconnected(30_000));
+        Assert.Equal(RoomStatus.Playing, store.Get(room.Code)!.Status);
+    }
+
+    [Fact]
+    public void An_abandoned_room_is_purged_eventually()
+    {
+        var (store, time) = NewStore();
+        var (room, host) = store.Create(Request());
+        store.BeginGameSelection(room.Code, host.Id, Candidates);
+        store.ResolveVote(room.Code, host.Id, Candidates);
+        store.MarkDisconnected(room.Code, host.Id);
+
+        time.Advance(TimeSpan.FromHours(1));
+        Assert.Empty(store.PurgeAbandoned(4 * 60 * 60 * 1000));
+
+        time.Advance(TimeSpan.FromHours(4));
+        Assert.Equal([room.Code], store.PurgeAbandoned(4 * 60 * 60 * 1000));
+        Assert.Null(store.Get(room.Code));
+    }
+
+    [Fact]
+    public void A_room_with_someone_still_connected_is_never_purged()
+    {
+        var (store, time) = NewStore();
+        var (room, host) = store.Create(Request());
+        store.Join(room.Code, "Elif", "#ff8c42");
+        var guestId = store.Get(room.Code)!.Players[1].Id;
+        store.MarkDisconnected(room.Code, guestId);
+
+        time.Advance(TimeSpan.FromDays(1));
+
+        // The host never dropped, so the room is in use no matter how old it is.
+        Assert.Empty(store.PurgeAbandoned(4 * 60 * 60 * 1000));
+        Assert.NotNull(store.Get(room.Code));
+        _ = host;
+    }
+
+    [Fact]
     public void Returning_to_the_lobby_clears_the_previous_round()
     {
         var (store, _) = NewStore();

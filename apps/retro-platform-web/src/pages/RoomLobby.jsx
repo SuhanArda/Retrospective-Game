@@ -1,22 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext.jsx'
-import { roomService } from '../services/roomServiceInstance'
-import { findGame } from '../games/gameRegistry'
+import { isMockMode, roomService } from '../services/roomServiceInstance'
+import { findGame, gameRegistry } from '../games/gameRegistry'
+import { useRoom } from '../hooks/useRoom'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import '../App.css'
+
+const CANDIDATE_IDS = gameRegistry.map((game) => game.id)
 
 function RoomLobby() {
   const { roomCode = '' } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
-  const [room, setRoom] = useState(() => roomService.getRoom(roomCode))
+  const { room, loading, setRoom } = useRoom(roomCode)
   const [copied, setCopied] = useState(null)
   const me = roomService.getCurrentPlayer()
   const isHost = me?.isHost ?? false
-
-  useEffect(() => roomService.subscribe(roomCode, setRoom), [roomCode])
 
   // Everyone follows the room's phase, not just the host who triggered it —
   // otherwise guests sit in the lobby while the vote runs without them.
@@ -45,9 +46,18 @@ function RoomLobby() {
   }
 
   async function handleChooseGame() {
-    const next = await roomService.beginGameSelection()
+    const next = await roomService.beginGameSelection(CANDIDATE_IDS)
     setRoom(next)
     navigate(`/room/${next.code}/games`)
+  }
+
+  if (loading) {
+    return (
+      <div className="page"><div className="page-content">
+        <div className="brand">{t('lobby.brand')}</div>
+        <p className="subtitle">{t('lobby.connecting')}</p>
+      </div></div>
+    )
   }
 
   if (!room) {
@@ -73,7 +83,7 @@ function RoomLobby() {
         <p className="subtitle">{t('lobby.waiting')}</p>
         <div className="connection-status connected" role="status">
           <span className="status-dot" />
-          {t('lobby.mockStatus')}
+          {isMockMode ? t('lobby.mockStatus') : t('lobby.liveStatus')}
         </div>
 
         <div className="card" style={{ marginTop: 20 }}>

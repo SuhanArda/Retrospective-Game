@@ -61,7 +61,7 @@ describe('MockRoomService', () => {
 
     it('opens the vote with a deadline and no leftover result', async () => {
       const { host } = await roomWithHostAndGuest();
-      const room = await host.beginGameSelection();
+      const room = await host.beginGameSelection(CANDIDATES);
 
       expect(room.status).toBe('GAME_SELECTION');
       expect(room.votes).toEqual({});
@@ -71,7 +71,7 @@ describe('MockRoomService', () => {
 
     it('records one vote per player and lets a player change their mind', async () => {
       const { host, guest } = await roomWithHostAndGuest();
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
 
       await host.castVote('retro-rush');
       await guest.castVote('pixel-arena');
@@ -82,7 +82,7 @@ describe('MockRoomService', () => {
 
     it('resolves to the most-voted game without flagging a tie-break', async () => {
       const { host, guest } = await roomWithHostAndGuest();
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
       await host.castVote('pixel-arena');
       await guest.castVote('pixel-arena');
 
@@ -95,7 +95,7 @@ describe('MockRoomService', () => {
 
     it('records the candidates when a draw is settled at random', async () => {
       const { host, guest } = await roomWithHostAndGuest(() => 0);
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
       await host.castVote('retro-rush');
       await guest.castVote('pixel-arena');
 
@@ -106,13 +106,13 @@ describe('MockRoomService', () => {
 
     it('refuses to let a guest close the vote', async () => {
       const { host, guest } = await roomWithHostAndGuest();
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
       await expect(guest.resolveVote(CANDIDATES)).rejects.toThrow('HOST_REQUIRED');
     });
 
     it('keeps the first result when the vote is resolved twice', async () => {
       const { host, guest } = await roomWithHostAndGuest();
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
       await guest.castVote('pixel-arena');
 
       const first = await host.resolveVote(CANDIDATES);
@@ -122,7 +122,7 @@ describe('MockRoomService', () => {
 
     it('ignores votes cast once the vote is already closed', async () => {
       const { host, guest } = await roomWithHostAndGuest();
-      await host.beginGameSelection();
+      await host.beginGameSelection(CANDIDATES);
       await host.castVote('retro-rush');
       await host.resolveVote(CANDIDATES);
 

@@ -102,6 +102,7 @@ export const translations = {
     lobby: {
       brand: 'Oda Lobisi',
       mockStatus: 'Mock mod · yalnızca bu tarayıcı',
+      liveStatus: 'Sunucuya bağlı · herkes katılabilir',
       roomCodeLabel: 'Oda Kodu',
       selectedGamePrefix: 'Seçilen Oyun: ',
       ready: 'Hazır',
@@ -297,6 +298,7 @@ export const translations = {
     lobby: {
       brand: 'Room Lobby',
       mockStatus: 'Mock mode · this browser only',
+      liveStatus: 'Connected to the server · others can join',
       roomCodeLabel: 'Room Code',
       selectedGamePrefix: 'Selected Game: ',
       ready: 'Ready',

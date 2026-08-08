@@ -20,6 +20,13 @@ public sealed class RoomMaintenanceService(
     /// <summary>How long a dropped connection keeps its seat. A reload takes well under this.</summary>
     private const long DisconnectGraceMs = 30_000;
 
+    /// <summary>
+    /// How long a room with nobody connected survives. Generous, because a room
+    /// mid-game legitimately has no hub connections: launching a game navigates
+    /// every tab to the game's own origin.
+    /// </summary>
+    private const long AbandonedRoomMs = 4 * 60 * 60 * 1000;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(Interval);
@@ -29,6 +36,7 @@ public sealed class RoomMaintenanceService(
             {
                 await CloseExpiredVotesAsync(stoppingToken);
                 await RemoveLostPlayersAsync(stoppingToken);
+                PurgeAbandonedRooms();
             }
             catch (OperationCanceledException)
             {
@@ -56,6 +64,14 @@ public sealed class RoomMaintenanceService(
                 "Vote closed for room {Code}; winner {Game}", room.Code, result.Room.SelectedGameId);
             await hub.Clients.Group(room.Code)
                 .SendAsync("RoomSnapshot", result.Room, cancellationToken);
+        }
+    }
+
+    private void PurgeAbandonedRooms()
+    {
+        foreach (var code in store.PurgeAbandoned(AbandonedRoomMs))
+        {
+            logger.LogInformation("Room {Code} purged after being abandoned", code);
         }
     }
 

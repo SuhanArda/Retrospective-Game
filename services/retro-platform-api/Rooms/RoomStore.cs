@@ -297,6 +297,12 @@ public sealed class RoomStore(TimeProvider timeProvider)
     /// Removes players who never came back. Returns a snapshot per affected room:
     /// null <see cref="RoomResult.Room"/> means the room emptied and is gone, so
     /// the caller can tell the remaining clients apart from nobody at all.
+    ///
+    /// Rooms that are mid-game are skipped: launching a game navigates the tab to
+    /// the game's own origin, which drops the hub connection for everyone. Those
+    /// players are playing, not gone, and their room has to survive until they
+    /// come back to the lobby. <see cref="PurgeAbandoned"/> catches the rooms
+    /// nobody ever returns to.
     /// </summary>
     public IReadOnlyList<(string Code, RetroRoom? Room)> SweepDisconnected(long graceMs)
     {
@@ -307,6 +313,7 @@ public sealed class RoomStore(TimeProvider timeProvider)
 
             foreach (var room in _rooms.Values.ToList())
             {
+                if (room.Status == RoomStatus.Playing) continue;
                 var expired = room.Players
                     .Where(p => p.DisconnectedAt is not null && p.DisconnectedAt <= cutoff)
                     .Select(p => p.Id)
@@ -322,6 +329,30 @@ public sealed class RoomStore(TimeProvider timeProvider)
                 changed.Add((room.Code, latest));
             }
             return changed;
+        }
+    }
+
+    /// <summary>
+    /// Drops rooms where every player has been gone for a long time. This is the
+    /// backstop for rooms left mid-game: those are deliberately exempt from the
+    /// short disconnect sweep, so without this they would live forever.
+    /// </summary>
+    public IReadOnlyList<string> PurgeAbandoned(long maxIdleMs)
+    {
+        lock (_gate)
+        {
+            var cutoff = NowMs - maxIdleMs;
+            var removed = new List<string>();
+
+            foreach (var room in _rooms.Values.ToList())
+            {
+                var everyoneGone = room.Players.Count > 0
+                    && room.Players.All(p => p.DisconnectedAt is not null && p.DisconnectedAt <= cutoff);
+                if (!everyoneGone) continue;
+                _rooms.TryRemove(room.Code, out _);
+                removed.Add(room.Code);
+            }
+            return removed;
         }
     }
 

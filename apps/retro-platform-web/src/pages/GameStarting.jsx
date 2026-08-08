@@ -4,6 +4,7 @@ import { useLanguage } from '../context/LanguageContext.jsx'
 import { findGame } from '../games/gameRegistry'
 import { gameLauncher } from '../games/gameLauncherInstance'
 import { roomService } from '../services/roomServiceInstance'
+import { useRoom } from '../hooks/useRoom'
 import '../App.css'
 
 function GameStarting() {
@@ -12,7 +13,7 @@ function GameStarting() {
   const { t } = useLanguage()
   const launchedRef = useRef(false)
   const [error, setError] = useState('')
-  const room = roomService.getRoom(roomCode)
+  const { room, loading } = useRoom(roomCode)
   const player = roomService.getCurrentPlayer()
   const game = findGame(gameId)
 
@@ -35,6 +36,15 @@ function GameStarting() {
       setError(t('starting.launchError'))
     }
   }, [room, player, game, isPlayable, t])
+
+  if (loading) {
+    return (
+      <div className="page"><div className="page-content">
+        <div className="brand">{t('starting.brand')}</div>
+        <p className="subtitle">{t('lobby.connecting')}</p>
+      </div></div>
+    )
+  }
 
   if (!room || !player || !game) {
     return (
