@@ -12,3 +12,7 @@ node-portable.zip
 
 # Local editor/agent tooling
 .claude/
+
+# .NET build output
+bin/
+obj/
