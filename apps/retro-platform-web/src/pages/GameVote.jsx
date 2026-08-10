@@ -128,7 +128,7 @@ function GameVote() {
               >
                 <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>
                 <span className="game-card-name">{game.name}</span>
-                <span className="game-card-text">{game.description}</span>
+                <span className="game-card-text">{t(game.descriptionKey)}</span>
                 <span className="game-card-votes">
                   {count}
                   {t('vote.voteCountSuffix')}
