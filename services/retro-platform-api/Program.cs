@@ -7,10 +7,25 @@ var builder = WebApplication.CreateBuilder(args);
 
 const string WebCorsPolicy = "web-clients";
 
-// Origins that may talk to this API. Localhost covers development; deployed
-// URLs come from configuration so they never have to be hard-coded here.
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-    ?? ["http://localhost:5173", "http://localhost:5174"];
+// Hosting platforms hand the app a port through PORT and expect it to listen on
+// every interface. ASP.NET Core does not read that variable on its own, so
+// without this the service starts on the wrong port and the platform's health
+// check never passes.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
+// Origins that may talk to this API. A comma-separated ALLOWED_ORIGINS is the
+// shape hosting dashboards make easy; the config array still works locally.
+var originsFromEnv = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+var allowedOrigins = originsFromEnv is { Length: > 0 }
+    ? originsFromEnv
+    : builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
+        ?? ["http://localhost:5173", "http://localhost:5174"];
 
 builder.Services.AddCors(options =>
 {
