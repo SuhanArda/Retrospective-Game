@@ -169,6 +169,10 @@ export const translations = {
       label: 'Beklerken tepki ver',
       send: 'Tepki gönder:',
     },
+    mascot: {
+      greeting: 'Hazırsan başlayalım',
+      working: 'Bir saniye, kod yazıyorum...',
+    },
     starting: {
       brand: 'Oyun Seçildi',
       launching: 'Retro Rush bu sekmede başlatılıyor...',
@@ -379,6 +383,10 @@ export const translations = {
     reactions: {
       label: 'React while you wait',
       send: 'Send reaction:',
+    },
+    mascot: {
+      greeting: 'Ready when you are',
+      working: 'One second, writing some code...',
     },
     starting: {
       brand: 'Game Selected',
