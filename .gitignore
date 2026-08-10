@@ -9,3 +9,10 @@ coverage/
 .tools/
 node-portable.zip
 *.tsbuildinfo
+
+# Local editor/agent tooling
+.claude/
+
+# .NET build output
+bin/
+obj/

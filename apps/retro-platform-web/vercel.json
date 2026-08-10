@@ -1,12 +1,9 @@
 {
+  "$comment": "No Content-Security-Policy here on purpose. The page carries its own CSP, built from VITE_API_URL at build time (see vite.config.js). A browser given two policies enforces both, so a static connect-src 'self' here would win the intersection and block the room API no matter what the page allows. frame-ancestors cannot be set from a meta tag, which is why X-Frame-Options below still matters.",
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
-        },
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },

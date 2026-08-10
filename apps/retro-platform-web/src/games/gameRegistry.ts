@@ -10,6 +10,10 @@ export interface GameDefinition {
   getLaunchUrl(config: GameRuntimeConfig): string;
 }
 
+function unavailable(): never {
+  throw new Error('This game has no runtime yet');
+}
+
 export const gameRegistry: readonly GameDefinition[] = [
   {
     id: 'retro-rush',
@@ -20,6 +24,26 @@ export const gameRegistry: readonly GameDefinition[] = [
     playerCount: '1+ players',
     visualLabel: 'RR',
     getLaunchUrl: (config) => config.retroRushUrl,
+  },
+  // Placeholders so the vote has real choices while the games are being built.
+  // Flip `status` to 'available' and return a real URL once each one exists.
+  {
+    id: 'pixel-arena',
+    name: 'Pixel Arena',
+    description: 'Last one standing in a shrinking arena — every knockout opens a question.',
+    status: 'coming-soon',
+    playerCount: '2+ players',
+    visualLabel: 'PA',
+    getLaunchUrl: unavailable,
+  },
+  {
+    id: 'sprint-maze',
+    name: 'Sprint Maze',
+    description: 'Find the exit before the timer runs out; dead ends turn into team reflections.',
+    status: 'coming-soon',
+    playerCount: '1+ players',
+    visualLabel: 'SM',
+    getLaunchUrl: unavailable,
   },
 ];
 

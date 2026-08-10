@@ -1,7 +1,13 @@
 # Security headers for Netlify (and any host that reads a _headers file).
 # Vercel users: see vercel.json instead — Vercel does not read this file.
+#
+# No Content-Security-Policy here on purpose. The page carries its own CSP,
+# built from VITE_API_URL at build time (see vite.config.js). A browser given
+# two policies enforces both, so a static connect-src 'self' here would win the
+# intersection and block the room API no matter what the page allows.
+# frame-ancestors cannot be set from a meta tag, which is why X-Frame-Options
+# below still matters.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -8,6 +8,12 @@ export interface RoomPlayer {
   isReady: boolean;
 }
 
+/** Records that a draw was settled at random, so the UI can show it happening. */
+export interface TieBreak {
+  candidates: string[];
+  winner: string;
+}
+
 export interface RetroRoom {
   id: string;
   code: string;
@@ -15,6 +21,13 @@ export interface RetroRoom {
   hostPlayerId: string;
   players: RoomPlayer[];
   selectedGameId?: string;
+  /** playerId -> gameId, collected during GAME_SELECTION. */
+  votes?: Record<string, string>;
+  /** Epoch ms when the vote closes; absent once the vote is resolved. */
+  votingEndsAt?: number;
+  /** The games this round may choose between, so the server can close the vote itself. */
+  candidateGameIds?: string[];
+  tieBreak?: TieBreak;
   status: RoomStatus;
   maxParticipants: number;
   questionTimeSeconds: number;

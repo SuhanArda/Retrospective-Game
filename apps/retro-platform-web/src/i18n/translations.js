@@ -102,6 +102,7 @@ export const translations = {
     lobby: {
       brand: 'Oda Lobisi',
       mockStatus: 'Mock mod · yalnızca bu tarayıcı',
+      liveStatus: 'Sunucuya bağlı · herkes katılabilir',
       roomCodeLabel: 'Oda Kodu',
       selectedGamePrefix: 'Seçilen Oyun: ',
       ready: 'Hazır',
@@ -157,6 +158,12 @@ export const translations = {
       yourPick: 'Senin oyun',
       finishNow: 'Oylamayı Bitir',
       cancel: 'Lobiye Dön',
+      comingSoon: 'Yakında',
+      comingSoonNote: 'Bu oyunlar henüz hazır değil, ama oy verebilirsin.',
+      tieTitle: 'Berabere!',
+      tieRolling: 'Zar atılıyor...',
+      tieWinner: 'Kazanan:',
+      tieExplain: 'Oylar eşit çıktı, kazanan rastgele seçiliyor.',
     },
     starting: {
       brand: 'Oyun Seçildi',
@@ -291,6 +298,7 @@ export const translations = {
     lobby: {
       brand: 'Room Lobby',
       mockStatus: 'Mock mode · this browser only',
+      liveStatus: 'Connected to the server · others can join',
       roomCodeLabel: 'Room Code',
       selectedGamePrefix: 'Selected Game: ',
       ready: 'Ready',
@@ -346,6 +354,12 @@ export const translations = {
       yourPick: 'Your pick',
       finishNow: 'End Vote',
       cancel: 'Back to Lobby',
+      comingSoon: 'Coming soon',
+      comingSoonNote: "These games aren't ready yet, but you can still vote for them.",
+      tieTitle: "It's a draw!",
+      tieRolling: 'Rolling the dice...',
+      tieWinner: 'Winner:',
+      tieExplain: 'The vote was tied, so the winner is picked at random.',
     },
     starting: {
       brand: 'Game Selected',
