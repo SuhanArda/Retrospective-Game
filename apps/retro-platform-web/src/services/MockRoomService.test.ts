@@ -130,4 +130,67 @@ describe('MockRoomService', () => {
       expect(room.votes).toEqual({ 'host-id': 'retro-rush' });
     });
   });
+
+  describe('reactions', () => {
+    async function roomWithListener() {
+      const service = new MockRoomService(
+        new MemoryStorage(),
+        new MemoryStorage(),
+        () => 'player-1',
+        () => 'ABC123',
+        () => null,
+        () => 1_700_000_000_000,
+      );
+      const { room } = await service.createRoom(request('Arda'));
+      const seen: unknown[] = [];
+      const stop = service.subscribeToReactions(room.code, (reaction) => seen.push(reaction));
+      return { service, room, seen, stop };
+    }
+
+    it('stamps a reaction with the sender taken from the room, not the caller', async () => {
+      const { service, seen } = await roomWithListener();
+
+      await service.sendReaction('🔥');
+
+      expect(seen).toEqual([
+        {
+          playerId: 'player-1',
+          displayName: 'Arda',
+          color: '#5b2a86',
+          emoji: '🔥',
+          sentAt: 1_700_000_000_000,
+        },
+      ]);
+    });
+
+    it('delivers to the sender too, the way the server broadcast does', async () => {
+      const { service, seen } = await roomWithListener();
+
+      await service.sendReaction('👍');
+      await service.sendReaction('💀');
+
+      expect(seen).toHaveLength(2);
+    });
+
+    it('stops delivering once unsubscribed', async () => {
+      const { service, seen, stop } = await roomWithListener();
+
+      stop();
+      await service.sendReaction('🎉');
+
+      expect(seen).toEqual([]);
+    });
+
+    it('does nothing when there is no room to react in', async () => {
+      const service = new MockRoomService(
+        new MemoryStorage(),
+        new MemoryStorage(),
+        () => 'player-1',
+        () => 'ABC123',
+        () => null,
+      );
+
+      await expect(service.sendReaction('🔥')).resolves.toBeUndefined();
+    });
+  });
 });

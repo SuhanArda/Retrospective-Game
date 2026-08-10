@@ -1176,3 +1176,118 @@
   margin-bottom: 6px;
   color: var(--color-text);
 }
+
+/* ---------- Reactions (lobby and vote) ---------- */
+
+/* Fixed and non-interactive: emoji cross the whole window without the card
+   clipping them, and never swallow a click meant for what is underneath. */
+.reaction-sky {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.reaction-float {
+  position: absolute;
+  bottom: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  animation-name: reaction-rise;
+  animation-timing-function: cubic-bezier(0.22, 0.6, 0.36, 1);
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+
+.reaction-float-emoji {
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18));
+}
+
+/* The sender's colour is a stripe rather than the text colour: player colours
+   are picked to look good as avatars, not to stay legible on every background
+   in both themes. */
+.reaction-float-name {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--reaction-color, var(--color-primary));
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+@keyframes reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 18px) scale(0.6);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--reaction-drift, 0), -62vh) scale(1);
+  }
+}
+
+.reaction-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.reaction-bar-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* A grid rather than a wrapping flex row: with eighteen buttons, flex leaves a
+   ragged last line whose width depends on how wide each emoji happens to
+   render. Fixed columns give even rows in any font. */
+.reaction-buttons {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-width: 430px;
+}
+
+@media (max-width: 480px) {
+  .reaction-buttons {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.reaction-button {
+  font-size: 20px;
+  line-height: 1;
+  padding: 7px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.reaction-button:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+}
+
+.reaction-button:active {
+  transform: scale(0.9);
+}

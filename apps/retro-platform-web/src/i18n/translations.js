@@ -165,6 +165,10 @@ export const translations = {
       tieWinner: 'Kazanan:',
       tieExplain: 'Oylar eşit çıktı, kazanan rastgele seçiliyor.',
     },
+    reactions: {
+      label: 'Beklerken tepki ver',
+      send: 'Tepki gönder:',
+    },
     starting: {
       brand: 'Oyun Seçildi',
       launching: 'Retro Rush bu sekmede başlatılıyor...',
@@ -371,6 +375,10 @@ export const translations = {
       tieRolling: 'Rolling the dice...',
       tieWinner: 'Winner:',
       tieExplain: 'The vote was tied, so the winner is picked at random.',
+    },
+    reactions: {
+      label: 'React while you wait',
+      send: 'Send reaction:',
     },
     starting: {
       brand: 'Game Selected',

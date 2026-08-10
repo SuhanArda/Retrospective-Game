@@ -6,6 +6,7 @@ import { findGame, gameRegistry } from '../games/gameRegistry'
 import { useRoom } from '../hooks/useRoom'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
+import RoomReactions from '../components/RoomReactions.jsx'
 import '../App.css'
 
 const CANDIDATE_IDS = gameRegistry.map((game) => game.id)
@@ -148,6 +149,8 @@ function RoomLobby() {
 
           <button className="btn btn-secondary btn-block" type="button" onClick={handleLeave}>{t('lobby.leave')}</button>
         </div>
+
+        <RoomReactions roomCode={canonicalCode} />
       </div>
     </div>
   )
