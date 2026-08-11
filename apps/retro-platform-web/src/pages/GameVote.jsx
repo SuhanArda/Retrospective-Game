@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { gameRegistry, findGame } from '../games/gameRegistry'
 import { isMockMode, roomService } from '../services/roomServiceInstance'
@@ -14,6 +14,7 @@ const CANDIDATE_IDS = gameRegistry.map((game) => game.id)
 function GameVote() {
   const { roomCode = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useLanguage()
   const { room, loading, setRoom } = useRoom(roomCode)
   const [now, setNow] = useState(() => Date.now())
@@ -21,8 +22,10 @@ function GameVote() {
   const me = roomService.getCurrentPlayer()
   const myId = me?.id ?? null
   const isHost = me?.isHost ?? false
+  const returningFromGame = searchParams.get('returnFromGame') === '1'
+  const returnResetStarted = useRef(false)
 
-  const resolved = room?.status === 'PLAYING' && Boolean(room.selectedGameId)
+  const resolved = !returningFromGame && room?.status === 'PLAYING' && Boolean(room.selectedGameId)
   const tieBreak = resolved ? room.tieBreak : undefined
 
   // Stop ticking once the vote is over: the re-renders are pointless then, and
@@ -53,6 +56,23 @@ function GameVote() {
   useEffect(() => {
     if (room?.status === 'LOBBY') navigate(`/room/${room.code}`, { replace: true })
   }, [room, navigate])
+
+  // A game return keeps the platform session intact. The host reopens the
+  // existing room's selection using the normal room-service boundary; guests
+  // wait on this page for that authoritative room update instead of relaunching.
+  useEffect(() => {
+    if (!returningFromGame || !room) return
+    if (room.status === 'GAME_SELECTION') {
+      navigate(`/room/${room.code}/games`, { replace: true })
+      return
+    }
+    if (!isHost || room.status !== 'PLAYING' || returnResetStarted.current) return
+    returnResetStarted.current = true
+    void roomService.beginGameSelection(CANDIDATE_IDS).then((next) => {
+      setRoom(next)
+      navigate(`/room/${next.code}/games`, { replace: true })
+    })
+  }, [isHost, navigate, returningFromGame, room, setRoom])
 
   const goToGame = useCallback(() => {
     if (room?.selectedGameId) navigate(`/room/${room.code}/game/${room.selectedGameId}`)

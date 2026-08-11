@@ -9,7 +9,6 @@ function formatTime(milliseconds: number) {
 }
 
 export function Hud({ snapshot, muted, onMute, onAbility }: Props) {
-  const local = snapshot.players.find((player) => player.isLocal);
   return (
     <>
       <header className="top-hud">
@@ -22,7 +21,6 @@ export function Hud({ snapshot, muted, onMute, onAbility }: Props) {
       </aside>
       {snapshot.danger && snapshot.state === 'RUNNING' && <div className="danger-banner" role="status">KEEP MOVING — CAMERA EDGE NEARBY</div>}
       <div className="bottom-hud">
-        <div className="checkpoint"><small>CHECKPOINT</small><strong>{snapshot.checkpointLabel}</strong><span>{local?.eliminations ?? 0} reflections prompted</span></div>
         <div className="abilities" aria-label="Abilities">
           {Object.values(abilityDefinitions).map((ability, index) => {
             const cooldown = snapshot.cooldowns[ability.id];

@@ -24,4 +24,14 @@ export function buildPlatformRoomUrl(platformUrl: string, roomCode: string, orig
   return url.toString();
 }
 
+export function buildPlatformGameSelectionUrl(platformUrl: string, roomCode: string, origin: string): string {
+  const url = new URL(platformUrl, origin);
+  const basePath = url.pathname.replace(/\/$/, '');
+  url.pathname = `${basePath}/room/${encodeURIComponent(roomCode)}/games`.replace(/\/{2,}/g, '/');
+  url.search = '';
+  url.searchParams.set('returnFromGame', '1');
+  url.hash = '';
+  return url.toString();
+}
+
 export const runtimeConfig = parseRuntimeConfig(import.meta.env);
