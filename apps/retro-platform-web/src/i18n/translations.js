@@ -200,6 +200,17 @@ export const translations = {
     },
     games: {
       // Oyun adları çevrilmez — özel isimler. Sadece açıklamalar çevrilir.
+      'spin-the-bottle': {
+        description:
+          'Şişeyi döndür, seçilen takım arkadaşınla İş veya Eğlence kategorisinden bir retro sorusu yanıtla.',
+        detail:
+          'Altı kedi şişenin etrafında toplanır. Şişeyi döndürdüğünüzde bir takım arkadaşı seçilir; ardından İş veya Eğlence kategorisinden rastgele bir retrospektif soru gelir. Soruyu birlikte konuşup turu tamamladıktan sonra şişeyi yeniden döndürürsünüz.',
+        steps: [
+          'Şişeyi döndür ve takım arkadaşlarından birinin seçilmesini bekle.',
+          'Seçilen kişi için İş veya Eğlence kategorisini seç.',
+          'Gelen retro sorusunu birlikte yanıtla, turu tamamla ve yeniden döndür.',
+        ],
+      },
       'retro-rush': {
         description:
           'Hareketli platformlarda yarış, yeteneklerini kullan, retro sorularını birlikte cevapla.',
@@ -449,6 +460,17 @@ export const translations = {
       backToLobby: 'Back to Lobby',
     },
     games: {
+      'spin-the-bottle': {
+        description:
+          'Spin the bottle, pick a teammate, and answer a retrospective question from the Work or Fun category.',
+        detail:
+          'Six cats gather around the bottle. Each spin selects a teammate, then deals them a random retrospective question from either the Work or Fun category. Discuss the answer together, complete the turn, and spin again.',
+        steps: [
+          'Spin the bottle and wait for it to select a teammate.',
+          'Choose the Work or Fun category for the selected player.',
+          'Answer the retrospective question together, finish the turn, and spin again.',
+        ],
+      },
       'retro-rush': {
         description:
           'Race through a moving platform course, use abilities, and answer retrospective questions together.',

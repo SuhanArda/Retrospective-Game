@@ -1,0 +1,12 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Spin the Bottle",
+  description: "Online toplantılar için altı kedili retro şişe çevirmece oyunu.",
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="tr"><body>{children}</body></html>;
+}

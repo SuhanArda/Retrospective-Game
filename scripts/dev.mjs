@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const commands = ['dev:web', 'dev:retro-rush'];
+const commands = ['dev:web', 'dev:retro-rush', 'dev:spin-the-bottle'];
 const children = commands.map((script) =>
   spawn(npmCommand, ['run', script], {
     stdio: 'inherit',

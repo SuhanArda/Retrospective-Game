@@ -38,6 +38,17 @@ export const gameRegistry: readonly GameDefinition[] = [
     visualLabel: 'RR',
     getLaunchUrl: (config) => config.retroRushUrl,
   },
+  {
+    id: 'spin-the-bottle',
+    name: 'Spin the Bottle',
+    descriptionKey: 'games.spin-the-bottle.description',
+    detailKey: 'games.spin-the-bottle.detail',
+    stepsKey: 'games.spin-the-bottle.steps',
+    status: 'available',
+    minPlayers: 2,
+    visualLabel: 'SB',
+    getLaunchUrl: (config) => config.spinTheBottleUrl,
+  },
   // Placeholders so the vote has real choices while the games are being built.
   // Flip `status` to 'available' and return a real URL once each one exists.
   {
