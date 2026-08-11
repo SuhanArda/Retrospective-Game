@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import Avatar from './Avatar.jsx'
+import DrawerMascot from './DrawerMascot.jsx'
 import TypeText from './TypeText.jsx'
 import LangSwitch from './LangSwitch.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -16,6 +17,7 @@ function Header() {
 
   const links = [
     { to: '/', label: t('nav.home') },
+    { to: '/games', label: t('nav.games') },
     { to: '/room/create', label: t('nav.createRoom') },
     { to: '/room/join', label: t('nav.joinRoom') },
   ]
@@ -104,6 +106,8 @@ function Header() {
                 </NavLink>
               ))}
             </nav>
+
+            <DrawerMascot />
 
             <div className="drawer-bottom">
               <div className="drawer-lang">

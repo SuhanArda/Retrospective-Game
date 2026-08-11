@@ -118,6 +118,14 @@ function GameVote() {
     setRoom(await roomService.resolveVote(CANDIDATE_IDS))
   }
 
+  // Cancelling is a change to the room, not a navigation. Putting the room back
+  // in LOBBY is what returns everyone, through the same status effect that sent
+  // them here; navigating alone would bounce straight back, because the lobby
+  // redirects anyone who opens it while a vote is still running.
+  async function handleReturnToLobby() {
+    setRoom(await roomService.returnToLobby())
+  }
+
   return (
     <div className="page">
       <div className="page-content page-content-wide">
@@ -168,20 +176,18 @@ function GameVote() {
         </p>
         <p className="helper-text">{t('vote.comingSoonNote')}</p>
 
-        <div className="button-row vote-actions">
-          {isHost && (
+        {/* Both actions change the room for everyone, and the server only lets
+            the host do that, so guests are not shown buttons that would fail. */}
+        {isHost && (
+          <div className="button-row vote-actions">
             <button className="btn btn-primary" type="button" onClick={handleFinishNow}>
               {t('vote.finishNow')}
             </button>
-          )}
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => navigate(`/room/${room.code}`)}
-          >
-            {t('vote.cancel')}
-          </button>
-        </div>
+            <button className="btn btn-secondary" type="button" onClick={handleReturnToLobby}>
+              {t('vote.cancel')}
+            </button>
+          </div>
+        )}
 
         <RoomReactions roomCode={room.code} />
       </div>

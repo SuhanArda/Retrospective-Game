@@ -6,6 +6,7 @@ import { ThemeProvider } from './context/ThemeContext.jsx'
 import IdentityGate from './components/IdentityGate.jsx'
 import Header from './components/Header.jsx'
 import Home from './pages/Home.jsx'
+import Games from './pages/Games.jsx'
 import CreateRoom from './pages/CreateRoom.jsx'
 import JoinRoom from './pages/JoinRoom.jsx'
 import RoomLobby from './pages/RoomLobby.jsx'
@@ -22,6 +23,7 @@ function App() {
             <Header />
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/games" element={<Games />} />
               <Route path="/room/create" element={<CreateRoom />} />
               <Route path="/room/join" element={<JoinRoom />} />
               <Route path="/room/:roomCode" element={<RoomLobby />} />
