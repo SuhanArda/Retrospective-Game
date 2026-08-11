@@ -47,7 +47,7 @@ export class CameraController {
 
   start() { this.running = true; }
   stop() { this.running = false; }
-  reset(camera: Phaser.Cameras.Scene2D.Camera) { this.running = false; camera.scrollX = 0; }
+  reset(camera: Phaser.Cameras.Scene2D.Camera) { this.running = false; camera.scrollX = 0; camera.scrollY = 0; }
 
   update(camera: Phaser.Cameras.Scene2D.Camera, deltaMs: number, worldWidth: number, players: readonly CameraPlayerSnapshot[]) {
     if (!this.running) return camera.scrollX;

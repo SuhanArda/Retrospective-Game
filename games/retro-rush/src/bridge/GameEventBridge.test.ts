@@ -3,14 +3,14 @@ import { GameEventBridge } from './GameEventBridge';
 import { retroQuestions } from '../data/retroQuestions';
 
 describe('game flow event bridge', () => {
-  it('opens the elimination question and carries the answer to respawn logic', () => {
+  it('opens the elimination question and carries verbal confirmation to round reset logic', () => {
     const bridge = new GameEventBridge();
     const questionListener = vi.fn(); const answerListener = vi.fn();
-    bridge.on('questionOpened', questionListener); bridge.on('answerSubmitted', answerListener);
+    bridge.on('questionOpened', questionListener); bridge.on('questionAnswered', answerListener);
     const question = retroQuestions[0]!;
     bridge.emit('questionOpened', question);
-    bridge.emit('answerSubmitted', { question, value: 'Reviews were smooth', skipped: false });
+    bridge.emit('questionAnswered', { questionId: question.id });
     expect(questionListener).toHaveBeenCalledWith(question);
-    expect(answerListener).toHaveBeenCalledWith(expect.objectContaining({ value: 'Reviews were smooth' }));
+    expect(answerListener).toHaveBeenCalledWith({ questionId: question.id });
   });
 });

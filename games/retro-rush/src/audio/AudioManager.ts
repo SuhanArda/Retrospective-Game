@@ -1,4 +1,4 @@
-type SoundName = 'jump' | 'checkpoint' | 'ability' | 'rocket' | 'respawn' | 'finish';
+type SoundName = 'jump' | 'ability' | 'rocket' | 'respawn' | 'finish';
 
 export class AudioManager {
   private muted = false;
@@ -11,7 +11,7 @@ export class AudioManager {
     const context = new AudioContext();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    const frequencies: Record<SoundName, number> = { jump: 330, checkpoint: 520, ability: 610, rocket: 180, respawn: 440, finish: 720 };
+    const frequencies: Record<SoundName, number> = { jump: 330, ability: 610, rocket: 180, respawn: 440, finish: 720 };
     oscillator.frequency.value = frequencies[name];
     oscillator.type = name === 'rocket' ? 'sawtooth' : 'square';
     gain.gain.setValueAtTime(this.volume, context.currentTime);

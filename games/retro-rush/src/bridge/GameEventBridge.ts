@@ -1,17 +1,17 @@
-import type { AbilityId, MatchSnapshot, RetroAnswer, RetroQuestion } from '../domain/types';
+import type { AbilityId, MatchSnapshot, RetroQuestion } from '../domain/types';
 
 export interface GameToUiEvents {
   snapshot: MatchSnapshot;
   questionOpened: RetroQuestion;
+  roundReset: undefined;
   targetSelectionOpened: { protectedTargets: Readonly<Record<string, number>> };
-  answerCollected: RetroAnswer;
   announcement: string;
 }
 
 export interface UiToGameEvents {
   startMatch: undefined;
   restartMatch: undefined;
-  answerSubmitted: { question: RetroQuestion; value: string; skipped: boolean };
+  questionAnswered: { questionId: string };
   targetSelected: { playerId: string };
   targetSelectionCancelled: undefined;
   abilityRequested: { abilityId: AbilityId };

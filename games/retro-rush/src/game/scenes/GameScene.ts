@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { gameplayConfig } from '../../data/gameplayConfig';
 import { retroQuestions } from '../../data/retroQuestions';
-import type { AbilityId, MatchSnapshot, PlayerSnapshot, PlayerState, RetroQuestion } from '../../domain/types';
+import type { AbilityId, MatchSnapshot, PlayerSnapshot, PlayerState, Point } from '../../domain/types';
 import { transitionPlayer } from '../../domain/types';
 import { isBehindCamera, isEligibleTarget } from '../../domain/rules';
 import type { GameEventBridge } from '../../bridge/GameEventBridge';
@@ -9,7 +9,6 @@ import type { GameTransport } from '../../networking/GameTransport';
 import { sampleMap } from '../map/sampleMap';
 import { CameraController } from '../controllers/CameraController';
 import { AbilityController } from '../controllers/AbilityController';
-import { RespawnSystem } from '../systems/RespawnSystem';
 import { SeededRandom } from '../../testing/bot/SeededRandom';
 import { AudioManager } from '../../audio/AudioManager';
 import { calculateHomingVelocity, findNearestRocketTarget, resolveRocketHit, velocityTowards, type PositionedPlayer, type RocketState } from '../controllers/RocketLifecycle';
@@ -19,14 +18,19 @@ import { segmentIntersectsExpandedAabb } from '../controllers/RocketCollision';
 import { ParallaxBackgroundSystem } from '../visuals/ParallaxBackgroundSystem';
 import { TerrainRenderer } from '../visuals/TerrainRenderer';
 import { PropPlacementSystem } from '../visuals/PropPlacementSystem';
+import { ChunkDebugRenderer } from '../visuals/ChunkDebugRenderer';
 import { CharacterVisualController } from '../visuals/CharacterVisualController';
 import { forestPalette } from '../visuals/visualConfig';
 import { beginHitStun, createPlayerHitState, fixedLeftKnockbackVelocity, isInHitStun, resetHitStun, updateHitStun, type PlayerHitState } from '../controllers/PlayerHitState';
+import { canAttemptPlayerShove, findShoveTarget, PlayerShoveController, shoveVelocityAwayFrom, type PositionedShovePlayer } from '../controllers/PlayerShoveController';
+import { resetPlayerSnapshotForRound, roundSpawnPosition } from '../controllers/RoundReset';
+import { ProceduralMapGenerator, RoundSeedSequence, type GeneratedChunk } from '../systems/ProceduralMapGenerator';
 
 interface PlayerRuntime {
   snapshot: PlayerSnapshot;
   sprite: Phaser.Physics.Arcade.Sprite;
   label: Phaser.GameObjects.Text;
+  spawn: Point;
   facing: -1 | 1;
   jumpState: JumpState;
   hitState: PlayerHitState;
@@ -36,15 +40,23 @@ interface PlayerRuntime {
 }
 
 interface PickupRuntime extends PickupState {
-  ability: Extract<AbilityId, 'speed' | 'rocket'>;
+  ability: AbilityId;
   zone: Phaser.GameObjects.Zone;
+  visuals: Array<Phaser.GameObjects.Arc | Phaser.GameObjects.Text>;
+  overlaps: Phaser.Physics.Arcade.Collider[];
+}
+
+interface ChunkRuntime {
+  bodies: Phaser.Physics.Arcade.Sprite[];
   visuals: Phaser.GameObjects.GameObject[];
+  pickups: PickupRuntime[];
 }
 
 export class GameScene extends Phaser.Scene {
   private players: PlayerRuntime[] = [];
   private local!: PlayerRuntime;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
+  private playerBodies!: Phaser.Physics.Arcade.Group;
   private rockets!: Phaser.Physics.Arcade.Group;
   private readonly rocketsToDispose = new Set<Phaser.Physics.Arcade.Sprite>();
   private pickups: PickupRuntime[] = [];
@@ -52,21 +64,30 @@ export class GameScene extends Phaser.Scene {
   private keys!: Record<'a' | 'd' | 'w' | 'one' | 'two' | 'three', Phaser.Input.Keyboard.Key>;
   private readonly cameraController = new CameraController();
   private readonly abilityController = new AbilityController();
-  private readonly respawnSystem = new RespawnSystem(sampleMap.checkpoints);
+  private readonly shoveController = new PlayerShoveController(gameplayConfig.shove);
   private readonly random = new SeededRandom(20260806);
   private readonly audio = new AudioManager();
   private readonly background = new ParallaxBackgroundSystem();
   private readonly terrainRenderer = new TerrainRenderer();
   private readonly propPlacement = new PropPlacementSystem();
+  private readonly chunkDebugRenderer = new ChunkDebugRenderer();
   private readonly characterVisuals = new CharacterVisualController();
   private matchState: MatchSnapshot['state'] = 'WAITING';
   private countdown = 3;
   private elapsedMs = 0;
   private lastSnapshotAt = 0;
   private questionIndex = 0;
-  private finishCount = 0;
+  private activeQuestionId: string | null = null;
   private targetProtectedUntil: Record<string, number> = {};
   private inputSequence = 0;
+  private readonly temporaryEffects = new Set<Phaser.GameObjects.GameObject>();
+  // Mock authority owns this seed sequence. Production SignalR should distribute
+  // one authoritative round seed (or chunk sequence) to every room client.
+  private readonly roundSeeds = new RoundSeedSequence(Date.now());
+  private mapGenerator!: ProceduralMapGenerator;
+  private readonly chunkRuntimes = new Map<string, ChunkRuntime>();
+  private worldWidth = gameplayConfig.proceduralMap.startPlatformWidth;
+  private countdownText?: Phaser.GameObjects.Text;
   private unsubscribers: Array<() => void> = [];
 
   constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport) {
@@ -77,18 +98,17 @@ export class GameScene extends Phaser.Scene {
     this.matchState = 'WAITING';
     this.countdown = 3;
     this.elapsedMs = 0;
-    this.finishCount = 0;
     this.targetProtectedUntil = {};
     this.inputSequence = 0;
     this.abilityController.reset();
+    this.shoveController.reset();
     this.cameraController.reset(this.cameras.main);
-    this.physics.world.setBounds(0, 0, sampleMap.width, sampleMap.height);
-    this.cameras.main.setBounds(0, 0, sampleMap.width, sampleMap.height);
+    this.physics.world.setBounds(0, 0, this.worldWidth, sampleMap.height);
+    this.cameras.main.setBounds(0, 0, this.worldWidth, sampleMap.height);
     this.cameras.main.setBackgroundColor('#b8a6bd');
     this.createTextures();
     this.createBackdrop();
     this.createLevel();
-    this.propPlacement.render(this);
     this.createPlayers();
     this.createInputs();
     this.bindBridge();
@@ -101,30 +121,36 @@ export class GameScene extends Phaser.Scene {
     if (this.matchState === 'COUNTDOWN') return;
     if (this.matchState !== 'RUNNING') { this.updateLabels(); return; }
     this.elapsedMs += delta;
-    this.cameraController.update(this.cameras.main, delta, sampleMap.width, this.players.map((player) => ({ x: player.sprite.x, state: player.snapshot.state })));
+    this.maintainProceduralMap();
+    this.cameraController.update(this.cameras.main, delta, this.worldWidth, this.players.map((player) => ({ x: player.sprite.x, state: player.snapshot.state })));
     this.updateLocal(time, delta);
     this.updateBots(time);
     this.updateRockets(delta);
     this.updatePlayers(time);
     this.checkFinitePhysicsValues();
     this.updateLabels();
-    if (this.elapsedMs >= gameplayConfig.world.matchDurationMs) this.finishMatch();
     this.publishSnapshot(time - this.lastSnapshotAt > 150);
   }
 
   private bindBridge() {
     this.unsubscribers.push(
       this.bridge.on('startMatch', () => this.startCountdown()),
-      this.bridge.on('restartMatch', () => this.scene.restart()),
-      this.bridge.on('answerSubmitted', ({ question, value, skipped }) => this.handleAnswer(question, value, skipped)),
+      this.bridge.on('restartMatch', () => this.resetRound()),
+      this.bridge.on('questionAnswered', ({ questionId }) => this.handleQuestionAnswered(questionId)),
       this.bridge.on('abilityRequested', ({ abilityId }) => this.useAbility(abilityId)),
       this.bridge.on('targetSelected', ({ playerId }) => this.chooseTarget(playerId)),
       this.bridge.on('audioMuted', ({ muted }) => this.audio.setMuted(muted)),
     );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    const cleanup = () => {
       this.players.forEach((player) => resetHitStun(player.hitState));
+      this.input.off('pointerdown', this.handlePointerDown, this);
       this.unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
-    });
+      this.players = [];
+      this.pickups = [];
+      this.chunkRuntimes.clear();
+    };
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+    this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
   }
 
   private createTextures() {
@@ -142,32 +168,87 @@ export class GameScene extends Phaser.Scene {
 
   private createLevel() {
     this.platforms = this.physics.add.staticGroup();
-    sampleMap.platforms.forEach((platform) => {
-      const body = this.platforms.create(platform.x + platform.width / 2, platform.y, 'platform') as Phaser.Physics.Arcade.Sprite;
-      body.setDisplaySize(platform.width, platform.height).refreshBody().setVisible(false);
-      this.terrainRenderer.render(this, platform);
-    });
-    sampleMap.checkpoints.slice(1).forEach((checkpoint) => {
-      this.add.rectangle(checkpoint.x, checkpoint.y + 25, 7, 110, 0x4b342e).setOrigin(0.5, 1).setDepth(2);
-      this.add.rectangle(checkpoint.x, checkpoint.y - 82, 20, 22, forestPalette.lantern, 0.9).setDepth(2);
-      this.add.circle(checkpoint.x, checkpoint.y - 71, 34, forestPalette.lantern, 0.09).setDepth(1.9);
-      this.add.text(checkpoint.x + 15, checkpoint.y - 91, checkpoint.label.toUpperCase(), { fontFamily: 'monospace', fontSize: '12px', color: '#f1d7a4', stroke: '#33262a', strokeThickness: 4 }).setDepth(3);
-    });
-    this.pickups = sampleMap.pickups.map((pickup) => {
-      const color = pickup.ability === 'speed' ? 0xc98b55 : forestPalette.lantern;
-      const circle = this.add.circle(pickup.x, pickup.y, 18, color, 0.3).setStrokeStyle(3, color).setDepth(5);
-      const glow = this.add.circle(pickup.x, pickup.y, 30, color, 0.08).setDepth(4.9);
-      const icon = this.add.text(pickup.x, pickup.y, pickup.ability === 'speed' ? '»' : '➜', { fontFamily: 'monospace', fontSize: '20px', color: '#fff0c9' }).setOrigin(0.5).setDepth(5.1);
-      const zone = this.add.zone(pickup.x, pickup.y, 50, 50);
-      this.physics.add.existing(zone, true);
-      return { active: true, ability: pickup.ability, zone, visuals: [circle, glow, icon] };
-    });
-    const finish = sampleMap.finish;
-    this.add.rectangle(finish.x, finish.y + finish.height / 2, finish.width, finish.height, 0x4d332e, 0.92).setDepth(2);
-    this.add.rectangle(finish.x, finish.y, 58, 12, forestPalette.lantern).setDepth(2.1);
-    this.add.text(finish.x - 74, finish.y - 38, 'FOREST LODGE', { fontFamily: 'monospace', fontSize: '17px', color: '#f2cf8b', fontStyle: 'bold', stroke: '#33262a', strokeThickness: 4 }).setDepth(3);
     this.rockets = this.physics.add.group({ allowGravity: false });
     this.physics.add.collider(this.rockets, this.platforms, (rocket) => this.resolveRocket(rocket as Phaser.Physics.Arcade.Sprite, 'EXPIRED'));
+    this.createProceduralMap();
+  }
+
+  private createProceduralMap() {
+    this.mapGenerator = new ProceduralMapGenerator(
+      this.roundSeeds.nextSeed(),
+      gameplayConfig.proceduralMap,
+      gameplayConfig.player,
+      gameplayConfig.world.floorY,
+    );
+    this.pickups = [];
+    this.mapGenerator.createInitialChunks().forEach((chunk) => this.appendChunk(chunk));
+    this.updateWorldBounds();
+  }
+
+  private appendChunk(chunk: GeneratedChunk) {
+    const bodies = chunk.platforms.map((platform) => {
+      const body = this.platforms.create(platform.x + platform.width / 2, platform.y, 'platform') as Phaser.Physics.Arcade.Sprite;
+      body.setDisplaySize(platform.width, platform.height).refreshBody().setVisible(false);
+      return body;
+    });
+    const visuals: Phaser.GameObjects.GameObject[] = [
+      ...chunk.platforms.flatMap((platform) => this.terrainRenderer.render(this, platform)),
+      ...chunk.decorations.map((decoration) => this.propPlacement.render(this, decoration)),
+      ...(import.meta.env.DEV && gameplayConfig.proceduralMap.debugChunks ? this.chunkDebugRenderer.render(this, chunk) : []),
+    ];
+    const pickups = chunk.pickups.map((pickup): PickupRuntime => {
+      const color = pickup.ability === 'speed' ? 0xc98b55 : pickup.ability === 'rocket' ? forestPalette.lantern : 0xb69ac8;
+      const circle = this.add.circle(pickup.x, pickup.y, 18, color, 0.3).setStrokeStyle(3, color).setDepth(5);
+      const glow = this.add.circle(pickup.x, pickup.y, 30, color, 0.08).setDepth(4.9);
+      const icon = this.add.text(pickup.x, pickup.y, pickup.ability === 'speed' ? '»' : pickup.ability === 'rocket' ? '➜' : '?', { fontFamily: 'monospace', fontSize: '20px', color: '#fff0c9' }).setOrigin(0.5).setDepth(5.1);
+      const zone = this.add.zone(pickup.x, pickup.y, 50, 50);
+      this.physics.add.existing(zone, true);
+      return { active: true, ability: pickup.ability, zone, visuals: [circle, glow, icon], overlaps: [] };
+    });
+    this.pickups.push(...pickups);
+    this.chunkRuntimes.set(chunk.id, { bodies, visuals, pickups });
+    if (this.players.length > 0) {
+      for (const pickup of pickups) for (const player of this.players) this.registerPickupOverlap(player, pickup);
+    }
+  }
+
+  private registerPickupOverlap(player: PlayerRuntime, pickup: PickupRuntime) {
+    pickup.overlaps.push(this.physics.add.overlap(player.sprite, pickup.zone, () => this.tryCollectPickup(player, pickup)));
+  }
+
+  private maintainProceduralMap() {
+    const config = gameplayConfig.proceduralMap;
+    const generationTarget = this.cameras.main.worldView.right + config.chunksAhead * config.targetChunkLength;
+    this.mapGenerator.generateThrough(generationTarget).forEach((chunk) => this.appendChunk(chunk));
+    const cleanupThreshold = this.cameras.main.scrollX - config.chunksBehind * config.targetChunkLength;
+    this.mapGenerator.removeChunksBefore(cleanupThreshold).forEach((chunk) => this.destroyChunk(chunk.id));
+    this.updateWorldBounds();
+  }
+
+  private updateWorldBounds() {
+    this.worldWidth = Math.max(this.cameras.main.width, this.mapGenerator.generatedEndX);
+    this.physics.world.setBounds(0, 0, this.worldWidth, sampleMap.height);
+    this.cameras.main.setBounds(0, 0, this.worldWidth, sampleMap.height);
+  }
+
+  private destroyChunk(chunkId: string) {
+    const runtime = this.chunkRuntimes.get(chunkId);
+    if (!runtime) return;
+    for (const pickup of runtime.pickups) {
+      pickup.overlaps.forEach((overlap) => overlap.destroy());
+      pickup.zone.destroy();
+      pickup.visuals.forEach((visual) => visual.destroy());
+    }
+    for (const body of runtime.bodies) this.platforms.remove(body, true, true);
+    runtime.visuals.forEach((visual) => visual.destroy());
+    const removed = new Set(runtime.pickups);
+    this.pickups = this.pickups.filter((pickup) => !removed.has(pickup));
+    this.chunkRuntimes.delete(chunkId);
+  }
+
+  private destroyProceduralMap() {
+    for (const chunkId of [...this.chunkRuntimes.keys()]) this.destroyChunk(chunkId);
+    this.pickups = [];
   }
 
   private createPlayers() {
@@ -177,21 +258,25 @@ export class GameScene extends Phaser.Scene {
       { id: 'mert', name: 'Mert', color: 0xff7da8, icon: '●' },
       { id: 'ece', name: 'Ece', color: 0x8db6ff, icon: '■' },
     ];
+    this.playerBodies = this.physics.add.group();
     this.players = definitions.map((definition, index) => {
-      const sprite = this.physics.add.sprite(sampleMap.spawn.x - index * 46, sampleMap.spawn.y, `runner-${index}-idle`);
+      const spawn = roundSpawnPosition(sampleMap.spawn, index);
+      const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${index}-idle`);
       sprite.setCollideWorldBounds(false).setDepth(4);
       sprite.body?.setSize(27, 39).setOffset(8, 10);
+      this.playerBodies.add(sprite);
       this.physics.add.collider(sprite, this.platforms);
       const label = this.add.text(sprite.x, sprite.y - 45, `${definition.icon} ${definition.name}`, { fontFamily: 'monospace', fontSize: '12px', color: '#fff0ce', stroke: '#2c2227', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
       return {
         snapshot: { ...definition, state: 'ACTIVE' as PlayerState, isLocal: index === 0, checkpointId: 'start', eliminations: 0, answers: 0 },
-        sprite, label, facing: 1 as const, jumpState: createJumpState(), hitState: createPlayerHitState(), invulnerableUntil: 0, speedUntil: 0, botJumpAt: 0,
+        sprite, label, spawn, facing: 1 as const, jumpState: createJumpState(), hitState: createPlayerHitState(), invulnerableUntil: 0, speedUntil: 0, botJumpAt: 0,
       };
     });
+    this.physics.add.collider(this.playerBodies, this.playerBodies);
     this.local = this.players[0]!;
     for (const player of this.players) {
       this.physics.add.overlap(this.rockets, player.sprite, (rocket) => this.hitByRocket(rocket as Phaser.Physics.Arcade.Sprite, player));
-      for (const pickup of this.pickups) this.physics.add.overlap(player.sprite, pickup.zone, () => this.tryCollectPickup(player, pickup));
+      for (const pickup of this.pickups) this.registerPickupOverlap(player, pickup);
     }
   }
 
@@ -199,6 +284,34 @@ export class GameScene extends Phaser.Scene {
     if (!this.input.keyboard) throw new Error('Keyboard input is unavailable');
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys({ a: 'A', d: 'D', w: 'W', one: 'ONE', two: 'TWO', three: 'THREE' }) as typeof this.keys;
+    this.input.on('pointerdown', this.handlePointerDown, this);
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer) {
+    const eventTarget = pointer.event?.target;
+    if (!pointer.leftButtonDown() || !canAttemptPlayerShove(this.matchState, this.local.snapshot.state, eventTarget instanceof HTMLCanvasElement)) return;
+    this.attemptPlayerShove();
+  }
+
+  private positionedShovePlayer(player: PlayerRuntime): PositionedShovePlayer {
+    return { id: player.snapshot.id, state: player.snapshot.state, x: player.sprite.x, y: player.sprite.y };
+  }
+
+  private attemptPlayerShove() {
+    if (!this.shoveController.isReady(this.time.now)) return;
+    const source = this.positionedShovePlayer(this.local);
+    const targetPosition = findShoveTarget(source, this.players.map((player) => this.positionedShovePlayer(player)), this.local.facing, gameplayConfig.shove);
+    if (!targetPosition) return;
+    const target = this.players.find((player) => player.snapshot.id === targetPosition.id);
+    if (!target || !this.shoveController.markApplied(this.time.now)) return;
+
+    const velocityX = shoveVelocityAwayFrom(source, targetPosition, gameplayConfig.shove.horizontalVelocity);
+    target.sprite
+      .setAccelerationX(0)
+      .setMaxVelocity(Math.max(gameplayConfig.shove.horizontalVelocity, gameplayConfig.player.maxRunSpeed), gameplayConfig.player.maximumFallSpeed)
+      .setVelocityX(velocityX);
+    beginHitStun(target.hitState, this.time.now, gameplayConfig.shove.hitStunMs);
+    this.transport.sendShove({ sequence: ++this.inputSequence, clientTime: Date.now() });
   }
 
   private startCountdown() {
@@ -206,13 +319,13 @@ export class GameScene extends Phaser.Scene {
     this.matchState = 'COUNTDOWN';
     this.countdown = 3;
     this.publishSnapshot(true);
-    const text = this.add.text(this.cameras.main.centerX, 250, '3', { fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    this.countdownText = this.add.text(this.cameras.main.centerX, 250, '3', { fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
     this.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
       this.countdown -= 1;
-      text.setText(this.countdown > 0 ? String(this.countdown) : 'GO!');
+      this.countdownText?.setText(this.countdown > 0 ? String(this.countdown) : 'GO!');
       this.publishSnapshot(true);
       if (this.countdown === 0) {
-        this.time.delayedCall(450, () => text.destroy());
+        this.time.delayedCall(450, () => { this.countdownText?.destroy(); this.countdownText = undefined; });
         this.matchState = 'RUNNING'; this.cameraController.start(); this.publishSnapshot(true);
       }
     }});
@@ -222,7 +335,8 @@ export class GameScene extends Phaser.Scene {
     const player = this.local;
     if (player.snapshot.state !== 'ACTIVE' && player.snapshot.state !== 'INVULNERABLE') { player.sprite.setVelocityX(0); return; }
     const body = player.sprite.body as Phaser.Physics.Arcade.Body;
-    const grounded = updateGroundedState(player.jumpState, time, body.blocked.down, body.touching.down);
+    // Dynamic player contacts set touching.down; only terrain may grant grounded/jump state.
+    const grounded = updateGroundedState(player.jumpState, time, body.blocked.down, false);
     const left = this.cursors.left.isDown || this.keys.a.isDown;
     const right = this.cursors.right.isDown || this.keys.d.isDown;
     const jumpDown = Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.space) || Phaser.Input.Keyboard.JustDown(this.keys.w);
@@ -274,7 +388,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private gapAhead(x: number) {
-    return !sampleMap.platforms.some((platform) => x + 55 >= platform.x && x + 55 <= platform.x + platform.width && platform.y >= 600);
+    return !this.mapGenerator.activeChunks.some((chunk) => chunk.platforms.some((platform) => platform.mandatory && x + 55 >= platform.x && x + 55 <= platform.x + platform.width));
   }
 
   private updatePlayers(time: number) {
@@ -285,14 +399,8 @@ export class GameScene extends Phaser.Scene {
         this.setPlayerState(player, 'ACTIVE'); player.sprite.clearTint().setAlpha(1);
       } else if (player.snapshot.state === 'INVULNERABLE') player.sprite.setAlpha(Math.floor(time / 100) % 2 ? 0.4 : 1);
       if (player.snapshot.state !== 'ACTIVE') continue;
-      const passed = [...sampleMap.checkpoints].reverse().find((checkpoint) => player.sprite.x >= checkpoint.x);
-      if (passed && passed.id !== player.snapshot.checkpointId) {
-        player.snapshot = { ...player.snapshot, checkpointId: passed.id };
-        if (player.snapshot.isLocal) { this.audio.play('checkpoint'); this.bridge.emit('announcement', `Checkpoint reached: ${passed.label}`); }
-      }
       const body = player.sprite.body as Phaser.Physics.Arcade.Body;
       if (player.sprite.y > sampleMap.height + 40 || isBehindCamera(body.right, this.cameraController.dangerX(this.cameras.main))) this.eliminate(player);
-      if (player.sprite.x >= sampleMap.finish.x && player.snapshot.state === 'ACTIVE') this.finishPlayer(player);
     }
   }
 
@@ -302,32 +410,70 @@ export class GameScene extends Phaser.Scene {
     player.sprite.disableBody(true, true); player.label.setVisible(false);
     if (player.snapshot.isLocal) {
       this.setPlayerState(player, 'ANSWERING_QUESTION');
-      this.bridge.emit('questionOpened', retroQuestions[this.questionIndex++ % retroQuestions.length]!);
-      this.bridge.emit('announcement', 'Share a reflection to rejoin');
-    } else {
-      this.setPlayerState(player, 'ANSWERING_QUESTION');
-      this.time.delayedCall(gameplayConfig.bot.answerDelayMs + this.random.next() * 900, () => { this.setPlayerState(player, 'RESPAWNING'); this.respawn(player); });
+      const question = retroQuestions[this.questionIndex++ % retroQuestions.length]!;
+      this.activeQuestionId = question.id;
+      this.bridge.emit('questionOpened', question);
+      this.bridge.emit('announcement', 'Answer the retro question verbally');
     }
     this.publishSnapshot(true);
   }
 
-  private handleAnswer(question: RetroQuestion, value: string, skipped: boolean) {
-    if (this.local.snapshot.state !== 'ANSWERING_QUESTION') return;
-    this.transport.submitRetroAnswer({ questionId: question.id, value, skipped, clientTime: Date.now() });
-    this.local.snapshot = { ...this.local.snapshot, answers: this.local.snapshot.answers + (skipped ? 0 : 1), state: transitionPlayer(this.local.snapshot.state, 'RESPAWNING') };
-    if (!skipped) this.bridge.emit('answerCollected', { questionId: question.id, value, answeredAt: Date.now() });
-    this.time.delayedCall(gameplayConfig.player.respawnDelayMs, () => this.respawn(this.local));
+  private handleQuestionAnswered(questionId: string) {
+    if (this.local.snapshot.state !== 'ANSWERING_QUESTION' || questionId !== this.activeQuestionId) return;
+    this.resetRound();
   }
 
-  private respawn(player: PlayerRuntime) {
-    const point = this.respawnSystem.select(player.snapshot.checkpointId, this.cameraController.dangerX(this.cameras.main));
-    player.snapshot = { ...player.snapshot, state: transitionPlayer(player.snapshot.state, 'INVULNERABLE'), checkpointId: point.id };
-    player.sprite.enableBody(true, point.x, point.y, true, true).setVelocity(0, 0).setTint(0xffffff).setAlpha(0.7);
-    resetJumpState(player.jumpState);
-    resetHitStun(player.hitState);
-    player.label.setVisible(true); player.invulnerableUntil = this.time.now + gameplayConfig.player.invulnerabilityMs;
-    if (player.snapshot.isLocal) { this.audio.play('respawn'); this.bridge.emit('announcement', 'Ready to continue'); }
+  private resetRound() {
+    this.matchState = 'WAITING';
+    this.time.removeAllEvents();
+    this.countdownText?.destroy();
+    this.countdownText = undefined;
+    this.elapsedMs = 0;
+    this.countdown = 3;
+    this.activeQuestionId = null;
+    this.targetProtectedUntil = {};
+    this.abilityController.reset();
+    this.shoveController.reset();
+    this.random.reset(20260806);
+    this.cameraController.reset(this.cameras.main);
+
+    for (const child of this.rockets.getChildren()) child.destroy();
+    this.rocketsToDispose.clear();
+    for (const effect of this.temporaryEffects) {
+      this.tweens.killTweensOf(effect);
+      effect.destroy();
+    }
+    this.temporaryEffects.clear();
+
+    this.destroyProceduralMap();
+    this.createProceduralMap();
+
+    this.players.forEach((player) => {
+      player.snapshot = resetPlayerSnapshotForRound(player.snapshot);
+      player.facing = 1;
+      player.invulnerableUntil = 0;
+      player.speedUntil = 0;
+      player.botJumpAt = 0;
+      resetJumpState(player.jumpState);
+      resetHitStun(player.hitState);
+      player.sprite
+        .enableBody(true, player.spawn.x, player.spawn.y, true, true)
+        .setAcceleration(0, 0)
+        .setVelocity(0, 0)
+        .setMaxVelocity(gameplayConfig.player.maxRunSpeed, gameplayConfig.player.maximumFallSpeed)
+        .setTint(0xffffff)
+        .setAlpha(1)
+        .setAngle(0)
+        .setScale(1)
+        .setFlipX(false);
+      player.label.setVisible(true).setPosition(player.spawn.x, player.spawn.y - 44);
+    });
+
+    const warning = this.children.getByName('danger-warning') as Phaser.GameObjects.Rectangle | null;
+    warning?.setX(this.cameraController.dangerX(this.cameras.main));
+    this.bridge.emit('roundReset', undefined);
     this.publishSnapshot(true);
+    this.startCountdown();
   }
 
   private useAbility(id: AbilityId) {
@@ -401,17 +547,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showRocketWarning(target: PlayerRuntime) {
-    const marker = this.add.text(target.sprite.x, target.sprite.y - 76, '!', { fontFamily: 'monospace', fontSize: '28px', color: '#ff4d6d', stroke: '#100d25', strokeThickness: 5 }).setOrigin(0.5).setDepth(10);
-    this.tweens.add({ targets: marker, alpha: 0, y: marker.y - 12, duration: 650, onComplete: () => marker.destroy() });
+    const marker = this.trackTemporaryEffect(this.add.text(target.sprite.x, target.sprite.y - 76, '!', { fontFamily: 'monospace', fontSize: '28px', color: '#ff4d6d', stroke: '#100d25', strokeThickness: 5 }).setOrigin(0.5).setDepth(10));
+    this.tweens.add({ targets: marker, alpha: 0, y: marker.y - 12, duration: 650, onComplete: () => this.destroyTemporaryEffect(marker) });
   }
 
   private tryCollectPickup(player: PlayerRuntime, pickup: PickupRuntime) {
     if (!player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !collectPickup(pickup)) return;
     const body = pickup.zone.body as Phaser.Physics.Arcade.StaticBody;
     body.enable = false;
-    pickup.visuals.forEach((visual) => visual.destroy());
+    pickup.visuals.forEach((visual) => visual.setVisible(false).setActive(false));
     this.abilityController.grant(pickup.ability);
-    if (player.snapshot.isLocal) this.bridge.emit('announcement', `${pickup.ability === 'speed' ? 'Momentum' : 'Nudge rocket'} ready`);
+    if (player.snapshot.isLocal) {
+      const pickupName = pickup.ability === 'speed' ? 'Momentum' : pickup.ability === 'rocket' ? 'Nudge rocket' : 'Question';
+      this.bridge.emit('announcement', `${pickupName} ready`);
+    }
     this.publishSnapshot(true);
   }
 
@@ -448,8 +597,8 @@ export class GameScene extends Phaser.Scene {
   private flushRocketDisposals() {
     for (const rocket of this.rocketsToDispose) {
       if (!rocket.active || rocket.getData('state') === 'DESTROYED') continue;
-      const burst = this.add.circle(rocket.x, rocket.y, 7, forestPalette.lantern, 0.8).setDepth(8);
-      this.tweens.add({ targets: burst, scale: 4, alpha: 0, duration: 180, onComplete: () => burst.destroy() });
+      const burst = this.trackTemporaryEffect(this.add.circle(rocket.x, rocket.y, 7, forestPalette.lantern, 0.8).setDepth(8));
+      this.tweens.add({ targets: burst, scale: 4, alpha: 0, duration: 180, onComplete: () => this.destroyTemporaryEffect(burst) });
       rocket.setData('state', 'DESTROYED' satisfies RocketState);
       rocket.destroy();
     }
@@ -475,23 +624,9 @@ export class GameScene extends Phaser.Scene {
     }
     this.targetProtectedUntil[playerId] = Date.now() + 20_000;
     this.transport.selectAbilityTarget({ abilityId: 'ask', targetPlayerId: playerId, clientTime: Date.now() });
-    const marker = this.add.text(target.sprite.x, target.sprite.y - 82, '?', { fontFamily: 'monospace', fontSize: '36px', color: '#ffd166', stroke: '#100d25', strokeThickness: 6 }).setOrigin(0.5).setDepth(9);
-    this.tweens.add({ targets: marker, y: marker.y - 28, alpha: 0, duration: 1_600, onComplete: () => marker.destroy() });
+    const marker = this.trackTemporaryEffect(this.add.text(target.sprite.x, target.sprite.y - 82, '?', { fontFamily: 'monospace', fontSize: '36px', color: '#ffd166', stroke: '#100d25', strokeThickness: 6 }).setOrigin(0.5).setDepth(9));
+    this.tweens.add({ targets: marker, y: marker.y - 28, alpha: 0, duration: 1_600, onComplete: () => this.destroyTemporaryEffect(marker) });
     this.bridge.emit('announcement', `${target.snapshot.name} received a reflection prompt`);
-  }
-
-  private finishPlayer(player: PlayerRuntime) {
-    resetHitStun(player.hitState);
-    this.finishCount += 1;
-    player.snapshot = { ...player.snapshot, state: transitionPlayer(player.snapshot.state, 'FINISHED'), finishPosition: this.finishCount };
-    player.sprite.setVelocity(0, 0).setAcceleration(0, 0);
-    if (player.snapshot.isLocal) this.time.delayedCall(500, () => this.finishMatch());
-  }
-
-  private finishMatch() {
-    if (this.matchState === 'FINISHED') return;
-    this.players.forEach((player) => resetHitStun(player.hitState));
-    this.matchState = 'FINISHED'; this.cameraController.stop(); this.audio.play('finish'); this.publishSnapshot(true);
   }
 
   private updateLabels() {
@@ -499,7 +634,7 @@ export class GameScene extends Phaser.Scene {
       player.label.setPosition(player.sprite.x, player.sprite.y - 44);
       if (!player.sprite.visible) continue;
       const body = player.sprite.body as Phaser.Physics.Arcade.Body;
-      this.characterVisuals.update(player.sprite, this.players.indexOf(player), body.velocity.x, body.velocity.y, body.blocked.down || body.touching.down);
+      this.characterVisuals.update(player.sprite, this.players.indexOf(player), body.velocity.x, body.velocity.y, body.blocked.down);
       if (body.velocity.y < -60) player.sprite.setAngle(-5 * player.facing).setScale(0.96, 1.06);
       else if (body.velocity.y > 80) player.sprite.setAngle(7 * player.facing).setScale(1.03, 0.97);
       else if (Math.abs(body.velocity.x) > 30) player.sprite.setAngle(0).setScale(1.06, 0.96);
@@ -515,13 +650,12 @@ export class GameScene extends Phaser.Scene {
   private publishSnapshot(force = false) {
     if (!force) return;
     this.lastSnapshotAt = this.time.now;
-    const checkpoint = sampleMap.checkpoints.find((point) => point.id === this.local?.snapshot.checkpointId);
     this.bridge.emit('snapshot', {
       state: this.matchState,
       timeRemainingMs: Math.max(0, gameplayConfig.world.matchDurationMs - this.elapsedMs),
       countdown: this.countdown,
       players: this.players.map((player) => ({ ...player.snapshot })),
-      checkpointLabel: checkpoint?.label ?? 'Launch Pad',
+      checkpointLabel: 'Launch Pad',
       danger: this.local ? this.local.sprite.x < this.cameraController.dangerX(this.cameras.main) + 220 : false,
       cooldowns: this.abilityController.cooldowns(this.time.now),
     });
@@ -529,5 +663,15 @@ export class GameScene extends Phaser.Scene {
 
   private setPlayerState(player: PlayerRuntime, next: PlayerState) {
     player.snapshot = { ...player.snapshot, state: transitionPlayer(player.snapshot.state, next) };
+  }
+
+  private trackTemporaryEffect<T extends Phaser.GameObjects.GameObject>(effect: T) {
+    this.temporaryEffects.add(effect);
+    return effect;
+  }
+
+  private destroyTemporaryEffect(effect: Phaser.GameObjects.GameObject) {
+    this.temporaryEffects.delete(effect);
+    if (effect.active) effect.destroy();
   }
 }

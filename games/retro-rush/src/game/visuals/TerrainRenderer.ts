@@ -17,8 +17,8 @@ export class TerrainRenderer {
 
   render(scene: Phaser.Scene, platform: Platform) {
     const visual = scene.add.tileSprite(platform.x, platform.y - platform.height / 2, platform.width, Math.max(24, platform.height), 'terrain-forest').setOrigin(0).setDepth(1);
-    scene.add.rectangle(platform.x, platform.y - platform.height / 2, 4, Math.max(24, platform.height), 0x322529).setOrigin(0).setDepth(1.1);
-    scene.add.rectangle(platform.x + platform.width - 4, platform.y - platform.height / 2, 4, Math.max(24, platform.height), 0x322529).setOrigin(0).setDepth(1.1);
-    return visual;
+    const leftEdge = scene.add.rectangle(platform.x, platform.y - platform.height / 2, 4, Math.max(24, platform.height), 0x322529).setOrigin(0).setDepth(1.1);
+    const rightEdge = scene.add.rectangle(platform.x + platform.width - 4, platform.y - platform.height / 2, 4, Math.max(24, platform.height), 0x322529).setOrigin(0).setDepth(1.1);
+    return [visual, leftEdge, rightEdge];
   }
 }
