@@ -6,6 +6,7 @@ import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { tallyVotes } from '../domain/voting'
 import { useRoom } from '../hooks/useRoom'
 import HighlightTitle from '../components/HighlightTitle.jsx'
+import RoomReactions from '../components/RoomReactions.jsx'
 import TieBreakRoll from '../components/TieBreakRoll.jsx'
 import '../App.css'
 
@@ -128,7 +129,7 @@ function GameVote() {
               >
                 <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>
                 <span className="game-card-name">{game.name}</span>
-                <span className="game-card-text">{game.description}</span>
+                <span className="game-card-text">{t(game.descriptionKey)}</span>
                 <span className="game-card-votes">
                   {count}
                   {t('vote.voteCountSuffix')}
@@ -161,6 +162,8 @@ function GameVote() {
             {t('vote.cancel')}
           </button>
         </div>
+
+        <RoomReactions roomCode={room.code} />
       </div>
 
       {tieBreak && !rollDone && (

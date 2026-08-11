@@ -50,6 +50,7 @@ builder.Services.AddSignalR().AddJsonProtocol(options => UseCamelCase(options.Pa
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<RoomStore>();
+builder.Services.AddSingleton<ReactionPolicy>();
 builder.Services.AddHostedService<RoomMaintenanceService>();
 
 var app = builder.Build();

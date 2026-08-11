@@ -2,10 +2,12 @@ import type { GameRuntimeConfig } from './runtimeConfig';
 
 export interface GameDefinition {
   id: string;
+  /** A proper noun — shown as-is in every language. */
   name: string;
-  description: string;
+  /** Path into `i18n/translations.js`, not the text itself, so a new game
+   * cannot ship with an English-only description. */
+  descriptionKey: string;
   status: 'available' | 'coming-soon';
-  playerCount: string;
   visualLabel: string;
   getLaunchUrl(config: GameRuntimeConfig): string;
 }
@@ -18,10 +20,8 @@ export const gameRegistry: readonly GameDefinition[] = [
   {
     id: 'retro-rush',
     name: 'Retro Rush',
-    description:
-      'Race through a moving platform course, use abilities, and answer retrospective questions together.',
+    descriptionKey: 'games.retro-rush.description',
     status: 'available',
-    playerCount: '1+ players',
     visualLabel: 'RR',
     getLaunchUrl: (config) => config.retroRushUrl,
   },
@@ -30,18 +30,16 @@ export const gameRegistry: readonly GameDefinition[] = [
   {
     id: 'pixel-arena',
     name: 'Pixel Arena',
-    description: 'Last one standing in a shrinking arena — every knockout opens a question.',
+    descriptionKey: 'games.pixel-arena.description',
     status: 'coming-soon',
-    playerCount: '2+ players',
     visualLabel: 'PA',
     getLaunchUrl: unavailable,
   },
   {
     id: 'sprint-maze',
     name: 'Sprint Maze',
-    description: 'Find the exit before the timer runs out; dead ends turn into team reflections.',
+    descriptionKey: 'games.sprint-maze.description',
     status: 'coming-soon',
-    playerCount: '1+ players',
     visualLabel: 'SM',
     getLaunchUrl: unavailable,
   },

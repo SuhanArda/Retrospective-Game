@@ -14,7 +14,8 @@ import {
   savePlatformSession,
 } from '../session/platformSession';
 import { normalizeRoomCode } from '../utils/roomCode';
-import type { RoomListener, RoomService } from './RoomService';
+import type { RoomReaction } from '../domain/reactions';
+import type { ReactionListener, RoomListener, RoomService } from './RoomService';
 
 interface JoinRoomResponse {
   ok: boolean;
@@ -47,6 +48,7 @@ export class SignalRRoomService implements RoomService {
   private connecting: Promise<HubConnection> | null = null;
   private room: RetroRoom | null = null;
   private readonly listeners = new Map<string, Set<RoomListener>>();
+  private readonly reactionListeners = new Map<string, Set<ReactionListener>>();
 
   constructor(
     private readonly hubUrl: string,
@@ -71,6 +73,7 @@ export class SignalRRoomService implements RoomService {
 
     connection.on('RoomSnapshot', (room: RetroRoom) => this.publish(room));
     connection.on('RoomClosed', () => this.publish(null));
+    connection.on('ReactionReceived', (reaction: RoomReaction) => this.publishReaction(reaction));
 
     // A reconnect gives us a new connection on the server, so the room has to
     // be told who came back — otherwise the grace period expires and the
@@ -103,6 +106,17 @@ export class SignalRRoomService implements RoomService {
     const code = room?.code ?? loadPlatformSession(this.sessionStorage)?.roomCode;
     if (!code) return;
     this.listeners.get(code)?.forEach((listener) => listener(room));
+  }
+
+  /**
+   * Reactions carry no room code — the server sends them only to the group the
+   * connection is already in — so they go to whichever room this browser is
+   * sitting in.
+   */
+  private publishReaction(reaction: RoomReaction): void {
+    const code = this.room?.code ?? loadPlatformSession(this.sessionStorage)?.roomCode;
+    if (!code) return;
+    this.reactionListeners.get(code)?.forEach((listener) => listener(reaction));
   }
 
   async ensureRoom(roomCode: string): Promise<RetroRoom | null> {
@@ -206,6 +220,28 @@ export class SignalRRoomService implements RoomService {
     return () => {
       existing.delete(listener);
       if (existing.size === 0) this.listeners.delete(code);
+    };
+  }
+
+  async sendReaction(emoji: string): Promise<void> {
+    try {
+      const connection = await this.getConnection();
+      await connection.invoke('SendReaction', emoji);
+    } catch {
+      // Deliberately swallowed. A dropped emoji is not worth an error in
+      // anyone's face, and the alternative is an unhandled rejection every
+      // time the socket blinks mid-spam.
+    }
+  }
+
+  subscribeToReactions(roomCode: string, listener: ReactionListener): () => void {
+    const code = normalizeRoomCode(roomCode);
+    const existing = this.reactionListeners.get(code) ?? new Set<ReactionListener>();
+    existing.add(listener);
+    this.reactionListeners.set(code, existing);
+    return () => {
+      existing.delete(listener);
+      if (existing.size === 0) this.reactionListeners.delete(code);
     };
   }
 

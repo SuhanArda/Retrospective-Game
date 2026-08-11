@@ -13,21 +13,27 @@ import {
   type PlatformSession,
 } from '../session/platformSession';
 import { resolveVoteOutcome } from '../domain/voting';
+import type { RoomReaction } from '../domain/reactions';
 import { generateRoomCode, isValidRoomCode, normalizeRoomCode } from '../utils/roomCode';
-import { RoomServiceError, type RoomListener, type RoomService } from './RoomService';
+import { RoomServiceError, type ReactionListener, type RoomListener, type RoomService } from './RoomService';
 
 const ROOM_STORAGE_PREFIX = 'retro-platform.mock-room.';
 const CHANNEL_NAME = 'retro-platform.mock-room-updates';
 
-interface RoomMessage {
-  roomCode: string;
-  room: RetroRoom | null;
-}
+/**
+ * Room snapshots and reactions share one channel, told apart by `kind`. A
+ * second BroadcastChannel would have been simpler to write and wrong to run:
+ * two instances of the same channel name in one tab hear each other, so the
+ * two kinds of message would cross.
+ */
+type ChannelMessage =
+  | { kind: 'room'; roomCode: string; room: RetroRoom | null }
+  | { kind: 'reaction'; roomCode: string; reaction: RoomReaction };
 
 interface MessageChannel {
-  postMessage(message: RoomMessage): void;
-  addEventListener(type: 'message', listener: (event: MessageEvent<RoomMessage>) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent<RoomMessage>) => void): void;
+  postMessage(message: ChannelMessage): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<ChannelMessage>) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent<ChannelMessage>) => void): void;
 }
 
 type IdFactory = () => string;
@@ -82,6 +88,7 @@ function isRetroRoom(value: unknown): value is RetroRoom {
  */
 export class MockRoomService implements RoomService {
   private readonly channel: MessageChannel | null;
+  private readonly reactionListeners = new Map<string, Set<ReactionListener>>();
 
   constructor(
     private readonly roomStorage: Storage,
@@ -242,11 +249,52 @@ export class MockRoomService implements RoomService {
   subscribe(roomCode: string, listener: RoomListener): () => void {
     if (!this.channel) return () => undefined;
     const normalized = normalizeRoomCode(roomCode);
-    const handleMessage = (event: MessageEvent<RoomMessage>) => {
+    const handleMessage = (event: MessageEvent<ChannelMessage>) => {
+      if (event.data.kind !== 'room') return;
       if (event.data.roomCode === normalized) listener(event.data.room);
     };
     this.channel.addEventListener('message', handleMessage);
     return () => this.channel?.removeEventListener('message', handleMessage);
+  }
+
+  async sendReaction(emoji: string): Promise<void> {
+    const session = loadPlatformSession(this.sessionStorage);
+    const room = session ? this.getRoom(session.roomCode) : null;
+    const player = room?.players.find((candidate) => candidate.id === session?.playerId);
+    if (!room || !player) return;
+
+    const reaction: RoomReaction = {
+      playerId: player.id,
+      displayName: player.displayName,
+      color: player.color,
+      emoji,
+      sentAt: this.now(),
+    };
+
+    // BroadcastChannel does not echo to the tab that posted, but the sender has
+    // to see their own emoji fly — against the real API the server includes
+    // them in the broadcast, and the two modes must not look different.
+    this.reactionListeners.get(room.code)?.forEach((listener) => listener(reaction));
+    this.channel?.postMessage({ kind: 'reaction', roomCode: room.code, reaction });
+  }
+
+  subscribeToReactions(roomCode: string, listener: ReactionListener): () => void {
+    const normalized = normalizeRoomCode(roomCode);
+    const local = this.reactionListeners.get(normalized) ?? new Set<ReactionListener>();
+    local.add(listener);
+    this.reactionListeners.set(normalized, local);
+
+    const handleMessage = (event: MessageEvent<ChannelMessage>) => {
+      if (event.data.kind !== 'reaction') return;
+      if (event.data.roomCode === normalized) listener(event.data.reaction);
+    };
+    this.channel?.addEventListener('message', handleMessage);
+
+    return () => {
+      local.delete(listener);
+      if (local.size === 0) this.reactionListeners.delete(normalized);
+      this.channel?.removeEventListener('message', handleMessage);
+    };
   }
 
   private updateCurrentRoom(update: (room: RetroRoom, session: PlatformSession) => RetroRoom): RetroRoom {
@@ -270,12 +318,12 @@ export class MockRoomService implements RoomService {
 
   private writeRoom(room: RetroRoom): void {
     this.roomStorage.setItem(this.storageKey(room.code), JSON.stringify(room));
-    this.channel?.postMessage({ roomCode: room.code, room });
+    this.channel?.postMessage({ kind: 'room', roomCode: room.code, room });
   }
 
   private deleteRoom(roomCode: string): void {
     this.roomStorage.removeItem(this.storageKey(roomCode));
-    this.channel?.postMessage({ roomCode, room: null });
+    this.channel?.postMessage({ kind: 'room', roomCode, room: null });
   }
 
   private storageKey(roomCode: string): string {

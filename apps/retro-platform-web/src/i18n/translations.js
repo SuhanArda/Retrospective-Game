@@ -165,6 +165,10 @@ export const translations = {
       tieWinner: 'Kazanan:',
       tieExplain: 'Oylar eşit çıktı, kazanan rastgele seçiliyor.',
     },
+    reactions: {
+      label: 'Beklerken tepki ver',
+      send: 'Tepki gönder:',
+    },
     starting: {
       brand: 'Oyun Seçildi',
       launching: 'Retro Rush bu sekmede başlatılıyor...',
@@ -177,6 +181,17 @@ export const translations = {
       backToLobby: 'Lobiye Dön',
     },
     games: {
+      // Oyun adları çevrilmez — özel isimler. Sadece açıklamalar çevrilir.
+      'retro-rush': {
+        description:
+          'Hareketli platformlarda yarış, yeteneklerini kullan, retro sorularını birlikte cevapla.',
+      },
+      'pixel-arena': {
+        description: 'Daralan arenada ayakta kalan kazanır — her eleme bir soruyu açar.',
+      },
+      'sprint-maze': {
+        description: 'Süre bitmeden çıkışı bul; her çıkmaz sokak bir takım muhasebesine dönüşür.',
+      },
       platform: {
         name: 'Platform Oyunu',
         text: 'Engelleri aş. Düştüğünde oyun durur, karşına bir soru gelir.',
@@ -361,6 +376,10 @@ export const translations = {
       tieWinner: 'Winner:',
       tieExplain: 'The vote was tied, so the winner is picked at random.',
     },
+    reactions: {
+      label: 'React while you wait',
+      send: 'Send reaction:',
+    },
     starting: {
       brand: 'Game Selected',
       launching: 'Launching Retro Rush in this tab...',
@@ -373,6 +392,17 @@ export const translations = {
       backToLobby: 'Back to Lobby',
     },
     games: {
+      'retro-rush': {
+        description:
+          'Race through a moving platform course, use abilities, and answer retrospective questions together.',
+      },
+      'pixel-arena': {
+        description: 'Last one standing in a shrinking arena — every knockout opens a question.',
+      },
+      'sprint-maze': {
+        description:
+          'Find the exit before the timer runs out; dead ends turn into team reflections.',
+      },
       platform: {
         name: 'Platformer',
         text: 'Clear the obstacles. Fall, and the game pauses for a question.',

@@ -9,6 +9,18 @@ public sealed record JoinRoomResponse(bool Ok, RetroRoom? Room, RoomPlayer? Play
 public sealed record CreateRoomResponse(RetroRoom Room, RoomPlayer Player);
 
 /// <summary>
+/// One reaction on its way to the rest of the room. The name and colour are
+/// filled in from the room, never from the caller, so a reaction always carries
+/// the sender's real identity.
+/// </summary>
+public sealed record ReactionMessage(
+    string PlayerId,
+    string DisplayName,
+    string Color,
+    string Emoji,
+    long SentAt);
+
+/// <summary>
 /// The live connection between a browser and its room. Every method that
 /// changes a room re-broadcasts the whole snapshot to the room's group, so
 /// clients never have to merge partial updates — they just replace their copy.
@@ -16,10 +28,11 @@ public sealed record CreateRoomResponse(RetroRoom Room, RoomPlayer Player);
 /// Nothing here trusts the caller for identity: the room code and player id
 /// come from connection state established at join time, never from arguments.
 /// </summary>
-public sealed class RoomHub(RoomStore store, ILogger<RoomHub> logger) : Hub
+public sealed class RoomHub(RoomStore store, ReactionPolicy reactions, TimeProvider time, ILogger<RoomHub> logger) : Hub
 {
     private const string RoomSnapshot = "RoomSnapshot";
     private const string RoomClosed = "RoomClosed";
+    private const string ReactionReceived = "ReactionReceived";
 
     private string? RoomCode
     {
@@ -76,6 +89,7 @@ public sealed class RoomHub(RoomStore store, ILogger<RoomHub> logger) : Hub
         if (RoomCode is null || PlayerId is null) return;
         var code = RoomCode;
         var result = store.Leave(code, PlayerId);
+        reactions.Forget(PlayerId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, code);
         RoomCode = null;
         PlayerId = null;
@@ -93,6 +107,32 @@ public sealed class RoomHub(RoomStore store, ILogger<RoomHub> logger) : Hub
 
     public Task<RetroRoom?> ReturnToLobby() => MutateAsync(store.ReturnToLobby);
 
+    /// <summary>
+    /// Forwards one emoji to everyone in the room. Unlike every other method
+    /// here this broadcasts an event rather than a room snapshot: a reaction is
+    /// a moment, not a fact about the room, and storing it would mean replaying
+    /// it to whoever joins next.
+    /// </summary>
+    public async Task SendReaction(string emoji)
+    {
+        if (RoomCode is null || PlayerId is null) throw new HubException(nameof(RoomError.NotInRoom));
+        if (!ReactionPolicy.IsAllowed(emoji)) throw new HubException("REACTION_NOT_ALLOWED");
+
+        // Over the limit is not an error — spamming is the point of the feature,
+        // and the sender gets silence rather than a stream of failures.
+        if (!reactions.TryRecord(PlayerId)) return;
+
+        var player = store.Get(RoomCode)?.Players.FirstOrDefault(p => p.Id == PlayerId);
+        if (player is null) return;
+
+        await Clients.Group(RoomCode).SendAsync(ReactionReceived, new ReactionMessage(
+            player.Id,
+            player.DisplayName,
+            player.Color,
+            emoji,
+            time.GetUtcNow().ToUnixTimeMilliseconds()));
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (RoomCode is not null && PlayerId is not null)
@@ -100,6 +140,7 @@ public sealed class RoomHub(RoomStore store, ILogger<RoomHub> logger) : Hub
             // Keep them in the room for now; the sweeper removes them if they
             // do not come back. A refresh looks identical to a disconnect here.
             var result = store.MarkDisconnected(RoomCode, PlayerId);
+            reactions.Forget(PlayerId);
             if (result.Room is not null) await BroadcastAsync(result.Room);
         }
         await base.OnDisconnectedAsync(exception);
