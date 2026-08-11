@@ -120,6 +120,26 @@ describe('MockRoomService', () => {
       expect(second.selectedGameId).toBe(first.selectedGameId);
     });
 
+    it('clears the round when the host cancels back to the lobby', async () => {
+      const { host } = await roomWithHostAndGuest()
+      await host.beginGameSelection(CANDIDATES);
+      await host.castVote('retro-rush');
+
+      const room = await host.returnToLobby();
+
+      expect(room.status).toBe('LOBBY');
+      expect(room.votes).toEqual({});
+      expect(room.votingEndsAt).toBeUndefined();
+      expect(room.selectedGameId).toBeUndefined();
+    });
+
+    it('refuses to let a guest cancel back to the lobby', async () => {
+      const { host, guest } = await roomWithHostAndGuest();
+      await host.beginGameSelection(CANDIDATES);
+
+      await expect(guest.returnToLobby()).rejects.toThrow('HOST_REQUIRED');
+    });
+
     it('ignores votes cast once the vote is already closed', async () => {
       const { host, guest } = await roomWithHostAndGuest();
       await host.beginGameSelection(CANDIDATES);

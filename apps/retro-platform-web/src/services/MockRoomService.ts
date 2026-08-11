@@ -242,8 +242,21 @@ export class MockRoomService implements RoomService {
     });
   }
 
+  /**
+   * Mirrors `RoomStore.ReturnToLobby` on the server: host-only, and it clears
+   * the round rather than only flipping the status. Leaving a finished vote's
+   * result behind would show the lobby a selected game nobody chose, and would
+   * leave a stale countdown for the next round to trip over.
+   */
   async returnToLobby(): Promise<RetroRoom> {
-    return this.updateCurrentRoom((room) => ({ ...room, status: 'LOBBY' }));
+    return this.updateCurrentRoom((room, session) => {
+      if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');
+      const next: RetroRoom = { ...room, status: 'LOBBY', votes: {} };
+      delete next.votingEndsAt;
+      delete next.selectedGameId;
+      delete next.tieBreak;
+      return next;
+    });
   }
 
   subscribe(roomCode: string, listener: RoomListener): () => void {
