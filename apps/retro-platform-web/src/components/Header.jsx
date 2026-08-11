@@ -17,6 +17,7 @@ function Header() {
 
   const links = [
     { to: '/', label: t('nav.home') },
+    { to: '/games', label: t('nav.games') },
     { to: '/room/create', label: t('nav.createRoom') },
     { to: '/room/join', label: t('nav.joinRoom') },
   ]

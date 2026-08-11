@@ -1743,3 +1743,149 @@
 .reaction-button:active {
   transform: scale(0.9);
 }
+
+/* ---------- Games showcase page ---------- */
+
+/* Bottom margin matters as much as the top one: the button that follows has no
+   margin of its own, so without this it sits flush against the last card and
+   reads as part of it. */
+.showcase-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  margin-top: 32px;
+  margin-bottom: 32px;
+}
+
+.showcase-card {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  text-align: left;
+}
+
+@media (max-width: 640px) {
+  .showcase-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Placeholder artwork. Each game gets its own palette so the cards already
+   read as different places rather than three identical grey boxes; the real
+   illustrations drop into this same box. */
+.showcase-art {
+  position: relative;
+  min-height: 172px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.showcase-art-label {
+  font-family: var(--font-heading);
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  opacity: 0.9;
+}
+
+/* Retro Rush uses the game's own forest palette, so the card and the game
+   already look like the same world. */
+.art-retro-rush {
+  background: linear-gradient(165deg, #b8a6bd 0%, #756779 42%, #302f35 100%);
+}
+
+.art-retro-rush .showcase-art-label {
+  color: #f2bc66;
+}
+
+.art-pixel-arena {
+  background: linear-gradient(165deg, #6c3f7a 0%, #3d2249 55%, #1d1224 100%);
+}
+
+.art-pixel-arena .showcase-art-label {
+  color: #ff9ecb;
+}
+
+.art-sprint-maze {
+  background: linear-gradient(165deg, #3d7a6b 0%, #23503f 55%, #12241f 100%);
+}
+
+.art-sprint-maze .showcase-art-label {
+  color: #7de3c4;
+}
+
+.showcase-body {
+  padding: 20px 22px 22px;
+}
+
+.showcase-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.showcase-heading h2 {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  color: var(--color-text);
+}
+
+.showcase-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-bg-mid);
+  color: var(--color-text-muted);
+}
+
+.showcase-badge.is-ready {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.showcase-players {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.showcase-detail {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--color-text);
+}
+
+.showcase-steps-title {
+  margin-top: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-orange);
+}
+
+.showcase-steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--color-text-muted);
+}
+
+.home-games-link {
+  margin-top: 4px;
+}

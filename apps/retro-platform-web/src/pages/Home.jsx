@@ -62,6 +62,10 @@ function Home() {
           </button>
         </div>
 
+        <button className="link-button home-games-link" onClick={() => navigate('/games')}>
+          {t('home.seeGames')}
+        </button>
+
         <div className="feature-grid">
           {features.map((f, i) => (
             <div className="feature-card" key={i}>

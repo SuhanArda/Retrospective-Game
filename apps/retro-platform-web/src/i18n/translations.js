@@ -7,6 +7,7 @@ export const translations = {
     },
     nav: {
       home: 'Ana Sayfa',
+      games: 'Oyunlar',
       createRoom: 'Oda Kur',
       joinRoom: 'Odaya Katıl',
       editName: 'İsmini değiştir',
@@ -32,6 +33,7 @@ export const translations = {
         'Raporun sorulara dönüşsün, oyunun tam ortasında karşınıza çıksın. Cevaplayın, tartışın, oynamaya devam edin.',
       createRoom: 'Oda Kur',
       joinRoom: 'Odaya Katıl',
+      seeGames: 'Hangi oyunlar var?',
       features: [
         {
           title: '1. Yükle ya da Anlat',
@@ -173,6 +175,18 @@ export const translations = {
       greeting: 'Hazırsan başlayalım',
       working: 'Bir saniye, kod yazıyorum...',
     },
+    gamesPage: {
+      brand: 'Oyunlar',
+      titlePrefix: 'Birlikte ne ',
+      titleHighlight: 'oynayacaksınız?',
+      subtitle:
+        'Hepsi aynı fikirle çalışır: oynarsınız, oyun bir yerde durur, karşınıza takımınıza dair bir soru gelir. Cevaplar, konuşur, devam edersiniz.',
+      available: 'Oynanabilir',
+      comingSoon: 'Yakında',
+      playersSuffix: 'kişi',
+      howItWorks: 'Nasıl oynanır',
+      createRoom: 'Oda Kur ve Oyna',
+    },
     starting: {
       brand: 'Oyun Seçildi',
       launching: 'Retro Rush bu sekmede başlatılıyor...',
@@ -189,12 +203,33 @@ export const translations = {
       'retro-rush': {
         description:
           'Hareketli platformlarda yarış, yeteneklerini kullan, retro sorularını birlikte cevapla.',
+        detail:
+          'Ormanın içinden geçen bir parkurda birlikte koşarsınız. Yol boyunca hız ve roket gibi yetenekler toplanır; roketi yiyen bir an duraklar, hızı kapan öne geçer. Elendiğinizde ya da bir kontrol noktasına vardığınızda oyun durur ve herkesin ekranına aynı retro sorusu gelir. Cevaplar, konuşur, kaldığınız yerden devam edersiniz.',
+        steps: [
+          'Sağa doğru koş, boşlukları zıplayarak geç, sisin önünde kal.',
+          'Yol üstündeki yetenekleri topla: hız seni öne taşır, roket rakibini yavaşlatır.',
+          'Oyun durduğunda gelen soruyu cevapla, sonra parkura geri dön.',
+        ],
       },
       'pixel-arena': {
         description: 'Daralan arenada ayakta kalan kazanır — her eleme bir soruyu açar.',
+        detail:
+          'Herkes aynı arenada başlar ve arena yavaşça daralır. Alan küçüldükçe kaçacak yer azalır, karşılaşmalar kaçınılmaz olur. Her eleme bir soru açar; yani oyun ilerledikçe konuşma da derinleşir. Kısa turlar hâlinde oynanır, bir tur bitince yenisi başlar.',
+        steps: [
+          'Arenanın içinde kal, daralan sınırın dışında kalma.',
+          'Alan küçüldükçe rakiplerinle aynı köşeye sıkışırsın.',
+          'Her elemede oyun durur ve bir retro sorusu açılır.',
+        ],
       },
       'sprint-maze': {
         description: 'Süre bitmeden çıkışı bul; her çıkmaz sokak bir takım muhasebesine dönüşür.',
+        detail:
+          'Süre dolmadan labirentin çıkışını bulmaya çalışırsınız. Herkes aynı labirentte ama farklı yerlerdedir, o yüzden yol tarifi vermek oyunun parçasıdır. Yanlış dönüş burada ceza değil fırsat: her çıkmaz sokak, takımın o dönem nerede tıkandığını konuşmak için bir soru açar.',
+        steps: [
+          'Labirente dağıl ve çıkışı aramaya başla.',
+          'Çıkmaz sokağa girersen oyun durur.',
+          'Gelen soruyu cevapla, sonra aramaya devam et.',
+        ],
       },
       platform: {
         name: 'Platform Oyunu',
@@ -222,6 +257,7 @@ export const translations = {
     },
     nav: {
       home: 'Home',
+      games: 'Games',
       createRoom: 'Create Room',
       joinRoom: 'Join Room',
       editName: 'Edit your name',
@@ -247,6 +283,7 @@ export const translations = {
         'Your report turns into questions that appear mid-game. Answer them, talk them over, and keep playing.',
       createRoom: 'Create Room',
       joinRoom: 'Join Room',
+      seeGames: 'What can we play?',
       features: [
         {
           title: '1. Upload or Describe',
@@ -388,6 +425,18 @@ export const translations = {
       greeting: 'Ready when you are',
       working: 'One second, writing some code...',
     },
+    gamesPage: {
+      brand: 'Games',
+      titlePrefix: 'What will you ',
+      titleHighlight: 'play together?',
+      subtitle:
+        'They all work the same way: you play, the game pauses somewhere, and a question about your team comes up. You answer, you talk, you carry on.',
+      available: 'Playable',
+      comingSoon: 'Coming soon',
+      playersSuffix: 'players',
+      howItWorks: 'How it plays',
+      createRoom: 'Create a Room and Play',
+    },
     starting: {
       brand: 'Game Selected',
       launching: 'Launching Retro Rush in this tab...',
@@ -403,13 +452,34 @@ export const translations = {
       'retro-rush': {
         description:
           'Race through a moving platform course, use abilities, and answer retrospective questions together.',
+        detail:
+          'You run a course through the forest together. Abilities are scattered along the way — a rocket stalls whoever it hits, a speed boost puts you in front. When you are knocked out, or when you reach a checkpoint, the game pauses and the same retrospective question lands on everyone’s screen. You answer, you talk, you pick up where you left off.',
+        steps: [
+          'Run right, jump the gaps, stay ahead of the mist.',
+          'Grab the abilities on the route: speed pushes you forward, a rocket slows a rival.',
+          'When the game pauses, answer the question, then head back to the course.',
+        ],
       },
       'pixel-arena': {
         description: 'Last one standing in a shrinking arena — every knockout opens a question.',
+        detail:
+          'Everyone starts in the same arena and the arena slowly closes in. The less room there is, the harder anyone is to avoid, so meetings become inevitable. Every knockout opens a question, which means the conversation deepens as the round goes on. It plays in short rounds — when one ends, the next begins.',
+        steps: [
+          'Stay inside the arena as its edge closes in.',
+          'The smaller it gets, the more you are pushed into the same corner as everyone else.',
+          'Every knockout pauses the game and opens a retrospective question.',
+        ],
       },
       'sprint-maze': {
         description:
           'Find the exit before the timer runs out; dead ends turn into team reflections.',
+        detail:
+          'You try to find the way out before the timer runs down. Everyone is in the same maze but in different parts of it, so giving directions is part of the game. A wrong turn is not a penalty here but an opening: every dead end starts a question about where the team got stuck this time round.',
+        steps: [
+          'Spread out into the maze and start looking for the exit.',
+          'Hit a dead end and the game pauses.',
+          'Answer the question that comes up, then get back to searching.',
+        ],
       },
       platform: {
         name: 'Platformer',
