@@ -65,7 +65,7 @@ const questions = {
 } as const;
 
 type Category = keyof typeof questions;
-type FlowPhase = "idle" | "choice" | "confirm" | "loading" | "question";
+type FlowPhase = "idle" | "choice" | "question";
 
 const reactionOptions = [
   { kind: "happy", label: "ᴗ", name: "Mutlu kedi" },
@@ -225,18 +225,10 @@ export default function Home() {
   }
 
   function chooseCategory(nextCategory: Category) {
+    const pool = questions[nextCategory];
     setCategory(nextCategory);
-    setPhase("confirm");
-  }
-
-  function prepareQuestion() {
-    if (!category) return;
-    setPhase("loading");
-    timerRef.current = setTimeout(() => {
-      const pool = questions[category];
-      setQuestion(pool[Math.floor(Math.random() * pool.length)]);
-      setPhase("question");
-    }, 1800);
+    setQuestion(pool[Math.floor(Math.random() * pool.length)]);
+    setPhase("question");
   }
 
   function finishTurn() {
@@ -453,21 +445,17 @@ export default function Home() {
       {phase !== "idle" && selected !== null && (
         <div className="modal-backdrop" role="presentation">
           <section className="challenge-card" role="dialog" aria-modal="true" aria-labelledby="challenge-title">
-            {phase !== "loading" && (
-              <button
-                className="close-card"
-                type="button"
-                onClick={() => setPhase("idle")}
-                aria-label="Kartı kapat"
-              >
-                ×
-              </button>
-            )}
-            {phase !== "loading" && (
-              <div className="chosen-avatar">
-                <PixelCat player={players[selected]} selected index={selected} />
-              </div>
-            )}
+            <button
+              className="close-card"
+              type="button"
+              onClick={() => setPhase("idle")}
+              aria-label="Kartı kapat"
+            >
+              ×
+            </button>
+            <div className="chosen-avatar">
+              <PixelCat player={players[selected]} selected index={selected} />
+            </div>
 
             {phase === "choice" && (
               <>
@@ -489,36 +477,6 @@ export default function Home() {
                   </button>
                 </div>
               </>
-            )}
-
-            {phase === "confirm" && (
-              <>
-                <p className="challenge-type">
-                  ✦ {selected + 1}. KİŞİ · {category?.toUpperCase()} ✦
-                </p>
-                <h2 id="challenge-title">Seçim hazır!</h2>
-                <p className="challenge-text">Moderatör hazır olduğunda devam edebilir.</p>
-                <div className="card-actions">
-                  <button type="button" className="pass-button" onClick={() => setPhase("choice")}>
-                    GERİ
-                  </button>
-                  <button type="button" className="done-button" onClick={prepareQuestion}>
-                    DEVAM <span>▶</span>
-                  </button>
-                </div>
-              </>
-            )}
-
-            {phase === "loading" && (
-              <div className="loading-state" role="status">
-                <span className="pixel-loader">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <h2 id="challenge-title">Soru hazırlanıyor</h2>
-                <p>lütfen bekleyin...</p>
-              </div>
             )}
 
             {phase === "question" && (
