@@ -3,20 +3,28 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": ["apps/*", "games/*", "packages/*"],
+  "devDependencies": {
+    "@vitejs/plugin-rsc": "0.5.27",
+    "vite": "7.3.6",
+    "vitefu": "1.1.2"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "npm --workspace apps/retro-platform-web run dev -- --port 5173 --strictPort",
     "dev:retro-rush": "npm --workspace games/retro-rush run dev -- --port 5174 --strictPort",
+    "dev:spin-the-bottle": "npm --workspace games/spin-the-bottle run dev -- --port 5175 --strictPort",
     "dev:api": "dotnet run --project services/retro-platform-api --urls http://localhost:5280",
-    "build": "npm run build:web && npm run build:retro-rush",
+    "build": "npm run build:web && npm run build:retro-rush && npm run build:spin-the-bottle",
     "build:web": "npm --workspace apps/retro-platform-web run build",
     "build:retro-rush": "npm --workspace games/retro-rush run build",
+    "build:spin-the-bottle": "npm --workspace games/spin-the-bottle run build",
     "test": "npm run test:web && npm run test:retro-rush && npm run test:api",
     "test:web": "npm --workspace apps/retro-platform-web run test",
     "test:retro-rush": "npm --workspace games/retro-rush run test",
     "test:api": "dotnet test services/retro-platform-api.Tests",
-    "lint": "npm run lint:web && npm run lint:retro-rush",
+    "lint": "npm run lint:web && npm run lint:retro-rush && npm run lint:spin-the-bottle",
     "lint:web": "npm --workspace apps/retro-platform-web run lint",
-    "lint:retro-rush": "npm --workspace games/retro-rush run lint"
+    "lint:retro-rush": "npm --workspace games/retro-rush run lint",
+    "lint:spin-the-bottle": "npm --workspace games/spin-the-bottle run lint"
   }
 }
