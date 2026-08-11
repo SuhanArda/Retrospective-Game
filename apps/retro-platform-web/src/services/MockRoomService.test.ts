@@ -93,6 +93,20 @@ describe('MockRoomService', () => {
       expect(room.votingEndsAt).toBeUndefined();
     });
 
+    it('reopens game selection from a playing room without replacing the host session', async () => {
+      const { host } = await roomWithHostAndGuest();
+      await host.beginGameSelection(CANDIDATES);
+      await host.castVote('retro-rush');
+      await host.resolveVote(CANDIDATES);
+      const playerBeforeReturn = host.getCurrentPlayer();
+
+      const room = await host.beginGameSelection(CANDIDATES);
+
+      expect(room.status).toBe('GAME_SELECTION');
+      expect(room.selectedGameId).toBeUndefined();
+      expect(host.getCurrentPlayer()).toEqual(playerBeforeReturn);
+    });
+
     it('records the candidates when a draw is settled at random', async () => {
       const { host, guest } = await roomWithHostAndGuest(() => 0);
       await host.beginGameSelection(CANDIDATES);

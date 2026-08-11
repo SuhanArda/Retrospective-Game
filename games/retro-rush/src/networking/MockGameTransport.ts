@@ -1,5 +1,5 @@
 import type { GameTransport } from './GameTransport';
-import type { GameTransportListener, JoinRoomRequest, PlayerInputMessage, SelectTargetCommand, SubmitRetroAnswerCommand, UseAbilityCommand } from './transportMessages';
+import type { GameTransportListener, JoinRoomRequest, PlayerInputMessage, SelectTargetCommand, ShoveCommand, UseAbilityCommand } from './transportMessages';
 
 export class MockGameTransport implements GameTransport {
   private readonly listeners = new Set<GameTransportListener>();
@@ -19,9 +19,9 @@ export class MockGameTransport implements GameTransport {
   }
 
   sendPlayerInput(input: PlayerInputMessage) { void input; /* mock authority is simulated by GameScene */ }
+  sendShove(command: ShoveCommand) { void command; /* mock authority is simulated by GameScene */ }
   useAbility(command: UseAbilityCommand) { if (this.connected) this.emit({ type: 'abilityAccepted', abilityId: command.abilityId }); }
   selectAbilityTarget(command: SelectTargetCommand) { if (this.connected) this.emit({ type: 'targetQuestioned', playerId: command.targetPlayerId }); }
-  submitRetroAnswer(command: SubmitRetroAnswerCommand) { if (this.connected) this.emit({ type: 'answerAccepted', questionId: command.questionId }); }
 
   subscribe(listener: GameTransportListener) {
     this.listeners.add(listener);
