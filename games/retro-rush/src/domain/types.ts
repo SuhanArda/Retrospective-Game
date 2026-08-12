@@ -32,6 +32,12 @@ export interface RetroQuestion {
   required: boolean;
 }
 
+export interface PresentedRetroQuestion extends RetroQuestion {
+  ownerPlayerId?: string;
+  ownerName?: string;
+  canConfirm: boolean;
+}
+
 export interface RetroAnswer {
   questionId: string;
   value: string;

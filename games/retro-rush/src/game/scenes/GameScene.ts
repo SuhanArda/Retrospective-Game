@@ -25,6 +25,17 @@ import { beginHitStun, createPlayerHitState, fixedLeftKnockbackVelocity, isInHit
 import { canAttemptPlayerShove, findShoveTarget, PlayerShoveController, shoveVelocityAwayFrom, type PositionedShovePlayer } from '../controllers/PlayerShoveController';
 import { resetPlayerSnapshotForRound, roundSpawnPosition } from '../controllers/RoundReset';
 import { ProceduralMapGenerator, RoundSeedSequence, type GeneratedChunk } from '../systems/ProceduralMapGenerator';
+import type {
+  RetroRushGameSnapshot,
+  RetroRushPickupCollected,
+  RetroRushPlayerEliminated,
+  RetroRushPlayerSnapshot,
+  RetroRushRocketHitApplied,
+  RetroRushRocketSnapshot,
+  RetroRushShoveApplied,
+} from '@retro-platform/contracts';
+import { RemotePlayerInterpolator } from '../../networking/RemotePlayerInterpolator';
+import type { ServerEvent } from '../../networking/transportMessages';
 
 interface PlayerRuntime {
   snapshot: PlayerSnapshot;
@@ -37,13 +48,18 @@ interface PlayerRuntime {
   invulnerableUntil: number;
   speedUntil: number;
   botJumpAt: number;
+  skinIndex: number;
+  slot: number;
+  interpolation?: RemotePlayerInterpolator;
 }
 
 interface PickupRuntime extends PickupState {
+  id: string;
   ability: AbilityId;
   zone: Phaser.GameObjects.Zone;
   visuals: Array<Phaser.GameObjects.Arc | Phaser.GameObjects.Text>;
   overlaps: Phaser.Physics.Arcade.Collider[];
+  pending: boolean;
 }
 
 interface ChunkRuntime {
@@ -54,6 +70,7 @@ interface ChunkRuntime {
 
 export class GameScene extends Phaser.Scene {
   private players: PlayerRuntime[] = [];
+  private readonly playersById = new Map<string, PlayerRuntime>();
   private local!: PlayerRuntime;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private playerBodies!: Phaser.Physics.Arcade.Group;
@@ -84,11 +101,24 @@ export class GameScene extends Phaser.Scene {
   // Mock authority owns this seed sequence. Production SignalR should distribute
   // one authoritative round seed (or chunk sequence) to every room client.
   private readonly roundSeeds = new RoundSeedSequence(Date.now());
-  private mapGenerator!: ProceduralMapGenerator;
+  private mapGenerator?: ProceduralMapGenerator;
   private readonly chunkRuntimes = new Map<string, ChunkRuntime>();
   private worldWidth = gameplayConfig.proceduralMap.startPlatformWidth;
   private countdownText?: Phaser.GameObjects.Text;
   private unsubscribers: Array<() => void> = [];
+  private networkRoundId = 0;
+  private networkMapSeed: number | null = null;
+  private networkSequence = 0;
+  private networkSendAccumulatorMs = 0;
+  private roundStartsAtUtc = 0;
+  private eliminationPending = false;
+  private readonly collectedPickupIds = new Set<string>();
+  private readonly appliedShoveIds = new Set<string>();
+  private readonly resolvedRocketIds = new Set<string>();
+  private developmentDebugApi?: NonNullable<Window['__RETRO_RUSH_DEBUG__']>;
+  private developmentMoveDirection: -1 | 0 | 1 = 0;
+  private networkSnapshotsSent = 0;
+  private networkSnapshotsReceived = 0;
 
   constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport) {
     super({ key: 'GameScene' });
@@ -109,45 +139,55 @@ export class GameScene extends Phaser.Scene {
     this.createTextures();
     this.createBackdrop();
     this.createLevel();
-    this.createPlayers();
+    if (this.transport.mode === 'standalone') this.createPlayers();
     this.createInputs();
     this.bindBridge();
+    this.installDevelopmentDebugApi();
     this.publishSnapshot(true);
   }
 
   update(time: number, delta: number) {
     this.flushRocketDisposals();
     this.background.update(this.cameras.main.scrollX);
-    if (this.matchState === 'COUNTDOWN') return;
+    if (this.transport.mode === 'online') {
+      this.syncOnlinePhase();
+      this.updateRemotePlayers();
+    }
+    if (this.matchState === 'COUNTDOWN') { this.updateLabels(); return; }
     if (this.matchState !== 'RUNNING') { this.updateLabels(); return; }
     this.elapsedMs += delta;
     this.maintainProceduralMap();
     this.cameraController.update(this.cameras.main, delta, this.worldWidth, this.players.map((player) => ({ x: player.sprite.x, state: player.snapshot.state })));
     this.updateLocal(time, delta);
-    this.updateBots(time);
+    if (this.transport.mode === 'standalone') this.updateBots(time);
     this.updateRockets(delta);
     this.updatePlayers(time);
     this.checkFinitePhysicsValues();
     this.updateLabels();
+    if (this.transport.mode === 'online') this.sendNetworkSnapshot(delta);
     this.publishSnapshot(time - this.lastSnapshotAt > 150);
   }
 
   private bindBridge() {
     this.unsubscribers.push(
-      this.bridge.on('startMatch', () => this.startCountdown()),
-      this.bridge.on('restartMatch', () => this.resetRound()),
+      this.bridge.on('startMatch', () => { if (this.transport.mode === 'standalone') this.startCountdown(); }),
+      this.bridge.on('restartMatch', () => { if (this.transport.mode === 'standalone') this.resetRound(); }),
       this.bridge.on('questionAnswered', ({ questionId }) => this.handleQuestionAnswered(questionId)),
       this.bridge.on('abilityRequested', ({ abilityId }) => this.useAbility(abilityId)),
       this.bridge.on('targetSelected', ({ playerId }) => this.chooseTarget(playerId)),
       this.bridge.on('audioMuted', ({ muted }) => this.audio.setMuted(muted)),
+      this.transport.subscribe((event) => this.handleTransportEvent(event)),
     );
     const cleanup = () => {
       this.players.forEach((player) => resetHitStun(player.hitState));
       this.input.off('pointerdown', this.handlePointerDown, this);
       this.unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
       this.players = [];
+      this.playersById.clear();
       this.pickups = [];
       this.chunkRuntimes.clear();
+      if (import.meta.env.DEV && window.__RETRO_RUSH_DEBUG__ === this.developmentDebugApi)
+        delete window.__RETRO_RUSH_DEBUG__;
     };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
     this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
@@ -168,14 +208,68 @@ export class GameScene extends Phaser.Scene {
 
   private createLevel() {
     this.platforms = this.physics.add.staticGroup();
+    this.playerBodies = this.physics.add.group();
     this.rockets = this.physics.add.group({ allowGravity: false });
     this.physics.add.collider(this.rockets, this.platforms, (rocket) => this.resolveRocket(rocket as Phaser.Physics.Arcade.Sprite, 'EXPIRED'));
-    this.createProceduralMap();
+    if (this.transport.mode === 'standalone') this.createProceduralMap();
   }
 
-  private createProceduralMap() {
+  private installDevelopmentDebugApi() {
+    if (!import.meta.env.DEV) return;
+    this.developmentDebugApi = {
+      state: () => ({
+        mode: this.transport.mode,
+        localPlayerId: this.transport.localPlayerId,
+        gameSessionId: this.transport.gameSessionId,
+        roundId: this.networkRoundId,
+        mapSeed: this.networkMapSeed,
+        matchState: this.matchState,
+        cameraScrollX: this.cameras.main.scrollX,
+        players: this.players.map((player) => {
+          const body = player.sprite.body as Phaser.Physics.Arcade.Body;
+          return {
+            id: player.snapshot.id, isLocal: player.snapshot.isLocal, state: player.snapshot.state,
+            x: player.sprite.x, y: player.sprite.y, velocityX: body.velocity.x, velocityY: body.velocity.y,
+            visible: player.sprite.visible, active: player.sprite.active, bodyEnabled: body.enable,
+          };
+        }),
+        networkSnapshotsSent: this.networkSnapshotsSent,
+        networkSnapshotsReceived: this.networkSnapshotsReceived,
+        chunks: (this.mapGenerator?.activeChunks ?? []).map((chunk) => ({
+          id: chunk.id, templateId: chunk.templateId,
+          platforms: chunk.platforms.map(({ x, y, width, height }) => ({ x, y, width, height })),
+        })),
+        pickups: this.pickups.map((pickup) => ({
+          id: pickup.id, active: pickup.active, x: pickup.zone.x, y: pickup.zone.y,
+        })),
+        rockets: this.rockets.getChildren().map((child) => {
+          const rocket = child as Phaser.Physics.Arcade.Sprite;
+          return { id: String(rocket.getData('rocketId')), ownerId: String(rocket.getData('ownerId')), targetId: String(rocket.getData('targetId')) };
+        }),
+      }),
+      setLocalPosition: (x, y) => {
+        if (this.local && Number.isFinite(x) && Number.isFinite(y)) this.local.sprite.setPosition(x, y).setVelocity(0, 0);
+      },
+      shove: () => this.attemptPlayerShove(),
+      useAbility: (abilityId) => this.useAbility(abilityId),
+      setMoveDirection: (direction) => { this.developmentMoveDirection = direction; },
+      jump: () => {
+        if (this.local?.sprite.body) this.local.sprite.setVelocityY(-gameplayConfig.player.jumpVelocity);
+      },
+      generateThrough: (x) => {
+        if (!Number.isFinite(x) || !this.mapGenerator) return;
+        this.mapGenerator.generateThrough(x).forEach((chunk) => this.appendChunk(chunk));
+        this.updateWorldBounds();
+      },
+      disconnect: () => { void this.transport.disconnect(); },
+      reconnect: () => { void this.transport.connect({ roomCode: '', playerName: this.local?.snapshot.name ?? 'Player' }); },
+    };
+    window.__RETRO_RUSH_DEBUG__ = this.developmentDebugApi;
+  }
+
+  private createProceduralMap(seed = this.roundSeeds.nextSeed()) {
     this.mapGenerator = new ProceduralMapGenerator(
-      this.roundSeeds.nextSeed(),
+      seed,
       gameplayConfig.proceduralMap,
       gameplayConfig.player,
       gameplayConfig.world.floorY,
@@ -203,7 +297,12 @@ export class GameScene extends Phaser.Scene {
       const icon = this.add.text(pickup.x, pickup.y, pickup.ability === 'speed' ? '»' : pickup.ability === 'rocket' ? '➜' : '?', { fontFamily: 'monospace', fontSize: '20px', color: '#fff0c9' }).setOrigin(0.5).setDepth(5.1);
       const zone = this.add.zone(pickup.x, pickup.y, 50, 50);
       this.physics.add.existing(zone, true);
-      return { active: true, ability: pickup.ability, zone, visuals: [circle, glow, icon], overlaps: [] };
+      const collected = this.collectedPickupIds.has(pickup.id);
+      if (collected) {
+        (zone.body as Phaser.Physics.Arcade.StaticBody).enable = false;
+        circle.setVisible(false); glow.setVisible(false); icon.setVisible(false);
+      }
+      return { id: pickup.id, active: !collected, pending: false, ability: pickup.ability, zone, visuals: [circle, glow, icon], overlaps: [] };
     });
     this.pickups.push(...pickups);
     this.chunkRuntimes.set(chunk.id, { bodies, visuals, pickups });
@@ -217,6 +316,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private maintainProceduralMap() {
+    if (!this.mapGenerator) return;
     const config = gameplayConfig.proceduralMap;
     const generationTarget = this.cameras.main.worldView.right + config.chunksAhead * config.targetChunkLength;
     this.mapGenerator.generateThrough(generationTarget).forEach((chunk) => this.appendChunk(chunk));
@@ -226,6 +326,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateWorldBounds() {
+    if (!this.mapGenerator) return;
     this.worldWidth = Math.max(this.cameras.main.width, this.mapGenerator.generatedEndX);
     this.physics.world.setBounds(0, 0, this.worldWidth, sampleMap.height);
     this.cameras.main.setBounds(0, 0, this.worldWidth, sampleMap.height);
@@ -249,16 +350,16 @@ export class GameScene extends Phaser.Scene {
   private destroyProceduralMap() {
     for (const chunkId of [...this.chunkRuntimes.keys()]) this.destroyChunk(chunkId);
     this.pickups = [];
+    this.mapGenerator = undefined;
   }
 
   private createPlayers() {
     const definitions = [
-      { id: 'local', name: 'Local Player', color: 0xffd166, icon: '◆' },
-      { id: 'ada', name: 'Ada', color: 0x66e3c4, icon: '▲' },
-      { id: 'mert', name: 'Mert', color: 0xff7da8, icon: '●' },
-      { id: 'ece', name: 'Ece', color: 0x8db6ff, icon: '■' },
+      { id: 'local', name: 'Yerel Oyuncu', color: 0xffd166, icon: '' },
+      { id: 'ada', name: 'Ada', color: 0x66e3c4, icon: '' },
+      { id: 'mert', name: 'Mert', color: 0xff7da8, icon: '' },
+      { id: 'ece', name: 'Ece', color: 0x8db6ff, icon: '' },
     ];
-    this.playerBodies = this.physics.add.group();
     this.players = definitions.map((definition, index) => {
       const spawn = roundSpawnPosition(sampleMap.spawn, index);
       const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${index}-idle`);
@@ -266,12 +367,13 @@ export class GameScene extends Phaser.Scene {
       sprite.body?.setSize(27, 39).setOffset(8, 10);
       this.playerBodies.add(sprite);
       this.physics.add.collider(sprite, this.platforms);
-      const label = this.add.text(sprite.x, sprite.y - 45, `${definition.icon} ${definition.name}`, { fontFamily: 'monospace', fontSize: '12px', color: '#fff0ce', stroke: '#2c2227', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
+      const label = this.add.text(sprite.x, sprite.y - 45, definition.name, { fontFamily: 'monospace', fontSize: '12px', color: '#fff0ce', stroke: '#2c2227', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
       return {
         snapshot: { ...definition, state: 'ACTIVE' as PlayerState, isLocal: index === 0, checkpointId: 'start', eliminations: 0, answers: 0 },
-        sprite, label, spawn, facing: 1 as const, jumpState: createJumpState(), hitState: createPlayerHitState(), invulnerableUntil: 0, speedUntil: 0, botJumpAt: 0,
+        sprite, label, spawn, skinIndex: index, slot: index, facing: 1 as const, jumpState: createJumpState(), hitState: createPlayerHitState(), invulnerableUntil: 0, speedUntil: 0, botJumpAt: 0,
       };
     });
+    this.players.forEach((player) => this.playersById.set(player.snapshot.id, player));
     this.physics.add.collider(this.playerBodies, this.playerBodies);
     this.local = this.players[0]!;
     for (const player of this.players) {
@@ -280,6 +382,50 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private ensureNetworkPlayer(networkPlayer: RetroRushPlayerSnapshot) {
+    const existing = this.playersById.get(networkPlayer.playerId);
+    if (existing) return existing;
+    const skinIndex = networkPlayer.skinIndex % 4;
+    const spawn = { x: networkPlayer.x, y: networkPlayer.y };
+    const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${skinIndex}-idle`);
+    sprite.setCollideWorldBounds(false).setDepth(4);
+    sprite.body?.setSize(27, 39).setOffset(8, 10);
+    const isLocal = networkPlayer.playerId === this.transport.localPlayerId;
+    if (isLocal) {
+      this.playerBodies.add(sprite);
+      this.physics.add.collider(sprite, this.platforms);
+    } else {
+      const body = sprite.body as Phaser.Physics.Arcade.Body;
+      body.setAllowGravity(false);
+      body.moves = false;
+      body.immovable = true;
+    }
+    const color = Number.parseInt(networkPlayer.color.replace('#', ''), 16);
+    const icon = '';
+    const label = this.add.text(sprite.x, sprite.y - 45, networkPlayer.displayName, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#fff0ce', stroke: '#2c2227', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(6);
+    const runtime: PlayerRuntime = {
+      snapshot: {
+        id: networkPlayer.playerId, name: networkPlayer.displayName,
+        state: networkPlayer.movementState as PlayerState, isLocal,
+        color: Number.isFinite(color) ? color : 0xffd166, icon, checkpointId: 'start', eliminations: 0, answers: 0,
+      },
+      sprite, label, spawn, skinIndex, slot: networkPlayer.slot, facing: networkPlayer.facing === 'left' ? -1 : 1,
+      jumpState: createJumpState(), hitState: createPlayerHitState(), invulnerableUntil: 0,
+      speedUntil: 0, botJumpAt: 0,
+      ...(isLocal ? {} : { interpolation: new RemotePlayerInterpolator(gameplayConfig.network.interpolationDelayMs) }),
+    };
+    this.players.push(runtime);
+    this.players.sort((left, right) => left.slot - right.slot);
+    this.playersById.set(runtime.snapshot.id, runtime);
+    if (isLocal) this.local = runtime;
+    this.physics.add.overlap(this.rockets, sprite, (rocket) => this.hitByRocket(rocket as Phaser.Physics.Arcade.Sprite, runtime));
+    for (const pickup of this.pickups) this.registerPickupOverlap(runtime, pickup);
+    return runtime;
+  }
+
+
   private createInputs() {
     if (!this.input.keyboard) throw new Error('Keyboard input is unavailable');
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -287,9 +433,246 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', this.handlePointerDown, this);
   }
 
+  private handleTransportEvent(event: ServerEvent) {
+    switch (event.type) {
+      case 'retroSnapshot': this.applyRetroSnapshot(event.snapshot); break;
+      case 'retroRoundStarted': this.applyRetroSnapshot(event.snapshot); break;
+      case 'retroPlayerUpdated': this.applyRemotePlayerSnapshot(event.player); break;
+      case 'retroShoveApplied': this.applyOnlineShove(event.shove); break;
+      case 'retroRocketSpawned': this.spawnOnlineRocket(event.rocket); break;
+      case 'retroRocketHit': this.applyOnlineRocketHit(event.hit); break;
+      case 'retroPickupCollected': this.applyOnlinePickup(event.pickup); break;
+      case 'retroPlayerEliminated': this.applyOnlineElimination(event.elimination); break;
+      case 'retroTargetQuestioned': this.applyOnlineTargetQuestion(event.question.roundId, event.question.sourcePlayerId, event.question.targetPlayerId); break;
+      default: break;
+    }
+  }
+
+  private applyRetroSnapshot(snapshot: RetroRushGameSnapshot) {
+    if (snapshot.gameSessionId !== this.transport.gameSessionId || snapshot.roundId < this.networkRoundId) return;
+    const newRound = snapshot.roundId !== this.networkRoundId || snapshot.mapSeed !== this.networkMapSeed;
+    this.networkRoundId = snapshot.roundId;
+    this.networkMapSeed = snapshot.mapSeed;
+    this.roundStartsAtUtc = snapshot.roundStartsAtUtc;
+    if (newRound) this.prepareOnlineRound(snapshot.mapSeed);
+
+    const incomingIds = new Set(snapshot.players.map((player) => player.playerId));
+    for (const networkPlayer of snapshot.players) {
+      const player = this.ensureNetworkPlayer(networkPlayer);
+      player.slot = networkPlayer.slot;
+      player.snapshot = {
+        ...player.snapshot,
+        name: networkPlayer.displayName,
+        state: networkPlayer.movementState as PlayerState,
+        isLocal: networkPlayer.playerId === this.transport.localPlayerId,
+      };
+      player.facing = networkPlayer.facing === 'left' ? -1 : 1;
+      player.sprite.setFlipX(player.facing < 0).setAlpha(networkPlayer.connected ? 1 : 0.45);
+      if (newRound) this.resetNetworkPlayerEntity(player, networkPlayer);
+      if (player.snapshot.isLocal) {
+        this.networkSequence = Math.max(this.networkSequence, networkPlayer.sequence);
+        player.sprite.enableBody(true, networkPlayer.x, networkPlayer.y, true, true).setVelocity(networkPlayer.velocityX, networkPlayer.velocityY);
+      } else if (!player.snapshot.isLocal) {
+        player.interpolation?.push(networkPlayer, performance.now());
+      }
+      if (!networkPlayer.connected || networkPlayer.movementState === 'DISCONNECTED') {
+        player.snapshot = { ...player.snapshot, state: 'DISCONNECTED' };
+      }
+    }
+    for (const player of [...this.players]) {
+      if (!incomingIds.has(player.snapshot.id)) this.removeNetworkPlayer(player);
+    }
+    this.players.sort((left, right) => left.slot - right.slot);
+
+    this.collectedPickupIds.clear();
+    snapshot.collectedPickupIds.forEach((pickupId) => this.collectedPickupIds.add(pickupId));
+    this.pickups.forEach((pickup) => {
+      if (this.collectedPickupIds.has(pickup.id)) this.disablePickup(pickup);
+    });
+    for (const rocket of snapshot.activeRockets) this.spawnOnlineRocket(rocket);
+
+    if (snapshot.phase === 'RUNNING') this.beginOnlineRunning();
+    else if (snapshot.phase === 'COUNTDOWN') {
+      this.matchState = 'COUNTDOWN';
+      this.updateOnlineCountdown();
+    } else this.matchState = 'LOADING';
+
+    if (snapshot.activeQuestion) this.openOnlineQuestion(snapshot.activeQuestion);
+    this.publishSnapshot(true);
+  }
+
+  private prepareOnlineRound(mapSeed: number) {
+    this.matchState = 'COUNTDOWN';
+    this.networkSequence = 0;
+    this.networkSendAccumulatorMs = 0;
+    this.eliminationPending = false;
+    this.activeQuestionId = null;
+    this.appliedShoveIds.clear();
+    this.resolvedRocketIds.clear();
+    this.collectedPickupIds.clear();
+    this.abilityController.reset();
+    this.shoveController.reset();
+    this.cameraController.reset(this.cameras.main);
+    this.countdownText?.destroy();
+    this.countdownText = undefined;
+    for (const child of this.rockets.getChildren()) child.destroy();
+    this.rocketsToDispose.clear();
+    this.destroyProceduralMap();
+    this.createProceduralMap(mapSeed);
+    for (const player of this.players) {
+      player.snapshot = resetPlayerSnapshotForRound(player.snapshot);
+      player.facing = 1;
+      resetJumpState(player.jumpState);
+      resetHitStun(player.hitState);
+      player.sprite.setAcceleration(0, 0).setVelocity(0, 0).setAlpha(1).setFlipX(false);
+    }
+    this.bridge.emit('roundReset', undefined);
+  }
+
+  private resetNetworkPlayerEntity(player: PlayerRuntime, networkPlayer: RetroRushPlayerSnapshot) {
+    player.spawn = { x: networkPlayer.x, y: networkPlayer.y };
+    player.interpolation?.reset(networkPlayer.roundId);
+    player.invulnerableUntil = 0;
+    player.speedUntil = 0;
+    player.sprite
+      .enableBody(true, networkPlayer.x, networkPlayer.y, true, true)
+      .setAcceleration(0, 0)
+      .setVelocity(networkPlayer.velocityX, networkPlayer.velocityY)
+      .setMaxVelocity(gameplayConfig.player.maxRunSpeed, gameplayConfig.player.maximumFallSpeed)
+      .setTint(0xffffff)
+      .setAlpha(networkPlayer.connected ? 1 : 0.45)
+      .setAngle(0)
+      .setScale(1)
+      .setFlipX(networkPlayer.facing === 'left');
+    const body = player.sprite.body as Phaser.Physics.Arcade.Body;
+    if (!player.snapshot.isLocal) {
+      body.setAllowGravity(false);
+      body.moves = false;
+      body.immovable = true;
+    }
+    player.label.setVisible(true).setPosition(networkPlayer.x, networkPlayer.y - 44);
+  }
+
+  private removeNetworkPlayer(player: PlayerRuntime) {
+    resetHitStun(player.hitState);
+    player.sprite.destroy();
+    player.label.destroy();
+    this.playersById.delete(player.snapshot.id);
+    this.players = this.players.filter((candidate) => candidate !== player);
+  }
+
+  private applyRemotePlayerSnapshot(snapshot: RetroRushPlayerSnapshot) {
+    if (snapshot.roundId !== this.networkRoundId || snapshot.playerId === this.transport.localPlayerId) return;
+    const player = this.ensureNetworkPlayer(snapshot);
+    if (!player.interpolation?.push(snapshot, performance.now())) return;
+    this.networkSnapshotsReceived++;
+    player.snapshot = { ...player.snapshot, state: snapshot.movementState as PlayerState };
+    player.facing = snapshot.facing === 'left' ? -1 : 1;
+    player.sprite.setFlipX(player.facing < 0).setAlpha(snapshot.connected ? 1 : 0.45);
+  }
+
+  private updateRemotePlayers() {
+    const now = performance.now();
+    for (const player of this.players) {
+      if (player.snapshot.isLocal) continue;
+      const state = player.interpolation?.sample(now);
+      if (!state) continue;
+      player.sprite.setPosition(state.x, state.y).setFlipX(state.facing === 'left');
+      const body = player.sprite.body as Phaser.Physics.Arcade.Body;
+      body.velocity.set(state.velocityX, state.velocityY);
+    }
+  }
+
+  private applyOnlineShove(shove: RetroRushShoveApplied) {
+    if (shove.roundId !== this.networkRoundId || this.appliedShoveIds.has(shove.actionId)) return;
+    this.appliedShoveIds.add(shove.actionId);
+    const target = this.playersById.get(shove.targetPlayerId);
+    if (!target || !target.snapshot.isLocal) return;
+    target.sprite.setAccelerationX(0)
+      .setMaxVelocity(Math.max(Math.abs(shove.velocityX), gameplayConfig.player.maxRunSpeed), gameplayConfig.player.maximumFallSpeed)
+      .setVelocityX(shove.velocityX);
+    beginHitStun(target.hitState, this.time.now, shove.hitStunMs);
+  }
+
+  private applyOnlinePickup(pickup: RetroRushPickupCollected) {
+    if (pickup.roundId !== this.networkRoundId) return;
+    this.collectedPickupIds.add(pickup.pickupId);
+    const runtime = this.pickups.find((candidate) => candidate.id === pickup.pickupId);
+    if (runtime) this.disablePickup(runtime);
+    if (pickup.playerId === this.transport.localPlayerId) {
+      this.abilityController.grant(pickup.abilityId);
+      const pickupName = pickup.abilityId === 'speed' ? 'İvme' : pickup.abilityId === 'rocket' ? 'İtme roketi' : 'Soru';
+      this.bridge.emit('announcement', `${pickupName} hazır`);
+    }
+    this.publishSnapshot(true);
+  }
+
+  private disablePickup(pickup: PickupRuntime) {
+    collectPickup(pickup);
+    pickup.pending = false;
+    const body = pickup.zone.body as Phaser.Physics.Arcade.StaticBody;
+    body.enable = false;
+    pickup.visuals.forEach((visual) => visual.setVisible(false).setActive(false));
+  }
+
+  private applyOnlineElimination(elimination: RetroRushPlayerEliminated) {
+    if (elimination.roundId !== this.networkRoundId) return;
+    const player = this.playersById.get(elimination.playerId);
+    if (!player || player.snapshot.state === 'ANSWERING_QUESTION') return;
+    resetHitStun(player.hitState);
+    player.snapshot = { ...player.snapshot, state: 'ANSWERING_QUESTION', eliminations: player.snapshot.eliminations + 1 };
+    player.sprite.disableBody(true, true);
+    player.label.setVisible(false);
+    this.matchState = 'LOADING';
+    this.openOnlineQuestion(elimination.question);
+    this.publishSnapshot(true);
+  }
+
+  private openOnlineQuestion(question: RetroRushGameSnapshot['activeQuestion']) {
+    if (!question || this.activeQuestionId === question.questionId) return;
+    this.activeQuestionId = question.questionId;
+    this.bridge.emit('questionOpened', {
+      id: question.questionId,
+      category: question.category as import('../../domain/types').RetroQuestionCategory,
+      type: question.type,
+      prompt: question.prompt,
+      ...(question.options ? { options: question.options } : {}),
+      required: question.required,
+      ownerPlayerId: question.ownerPlayerId,
+      ownerName: this.playersById.get(question.ownerPlayerId)?.snapshot.name ?? 'Oyuncu',
+      canConfirm: question.ownerPlayerId === this.transport.localPlayerId,
+    });
+    this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');
+  }
+
+  private syncOnlinePhase() {
+    if (this.networkRoundId === 0 || this.matchState !== 'COUNTDOWN') return;
+    if (Date.now() >= this.roundStartsAtUtc) this.beginOnlineRunning();
+    else this.updateOnlineCountdown();
+  }
+
+  private updateOnlineCountdown() {
+    this.countdown = Math.max(1, Math.ceil((this.roundStartsAtUtc - Date.now()) / 1_000));
+    if (!this.countdownText) {
+      this.countdownText = this.add.text(this.cameras.main.centerX, 250, String(this.countdown), {
+        fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    } else this.countdownText.setText(String(this.countdown));
+  }
+
+  private beginOnlineRunning() {
+    if (this.matchState === 'RUNNING') return;
+    this.countdown = 0;
+    this.countdownText?.destroy();
+    this.countdownText = undefined;
+    this.matchState = 'RUNNING';
+    this.cameraController.start();
+    this.publishSnapshot(true);
+  }
+
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
     const eventTarget = pointer.event?.target;
-    if (!pointer.leftButtonDown() || !canAttemptPlayerShove(this.matchState, this.local.snapshot.state, eventTarget instanceof HTMLCanvasElement)) return;
+    if (!this.local || !pointer.leftButtonDown() || !canAttemptPlayerShove(this.matchState, this.local.snapshot.state, eventTarget instanceof HTMLCanvasElement)) return;
     this.attemptPlayerShove();
   }
 
@@ -304,6 +687,11 @@ export class GameScene extends Phaser.Scene {
     if (!targetPosition) return;
     const target = this.players.find((player) => player.snapshot.id === targetPosition.id);
     if (!target || !this.shoveController.markApplied(this.time.now)) return;
+
+    if (this.transport.mode === 'online') {
+      this.transport.requestShove(this.networkRoundId, target.snapshot.id, ++this.inputSequence);
+      return;
+    }
 
     const velocityX = shoveVelocityAwayFrom(source, targetPosition, gameplayConfig.shove.horizontalVelocity);
     target.sprite
@@ -322,7 +710,7 @@ export class GameScene extends Phaser.Scene {
     this.countdownText = this.add.text(this.cameras.main.centerX, 250, '3', { fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
     this.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
       this.countdown -= 1;
-      this.countdownText?.setText(this.countdown > 0 ? String(this.countdown) : 'GO!');
+      this.countdownText?.setText(this.countdown > 0 ? String(this.countdown) : 'BAŞLA!');
       this.publishSnapshot(true);
       if (this.countdown === 0) {
         this.time.delayedCall(450, () => { this.countdownText?.destroy(); this.countdownText = undefined; });
@@ -342,7 +730,7 @@ export class GameScene extends Phaser.Scene {
     const jumpDown = Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.cursors.space) || Phaser.Input.Keyboard.JustDown(this.keys.w);
     if (jumpDown) recordJumpPress(player.jumpState, time);
     const jumpReleased = Phaser.Input.Keyboard.JustUp(this.cursors.up) || Phaser.Input.Keyboard.JustUp(this.cursors.space) || Phaser.Input.Keyboard.JustUp(this.keys.w);
-    const direction = Number(right) - Number(left);
+    const direction = this.developmentMoveDirection || Number(right) - Number(left);
     const speedMultiplier = time < player.speedUntil ? 1.5 : 1;
     const hitStunned = isInHitStun(player.hitState, time);
     if (hitStunned) {
@@ -369,7 +757,8 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keys.one)) this.useAbility('speed');
     if (Phaser.Input.Keyboard.JustDown(this.keys.two)) this.useAbility('rocket');
     if (Phaser.Input.Keyboard.JustDown(this.keys.three)) this.useAbility('ask');
-    this.transport.sendPlayerInput({ sequence: ++this.inputSequence, left: hitStunned ? false : left, right: hitStunned ? false : right, jump: jumpDown, sentAt: Date.now() });
+    if (this.transport.mode === 'standalone')
+      this.transport.sendPlayerInput({ sequence: ++this.inputSequence, left: hitStunned ? false : left, right: hitStunned ? false : right, jump: jumpDown, sentAt: Date.now() });
   }
 
   private updateBots(time: number) {
@@ -388,7 +777,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private gapAhead(x: number) {
-    return !this.mapGenerator.activeChunks.some((chunk) => chunk.platforms.some((platform) => platform.mandatory && x + 55 >= platform.x && x + 55 <= platform.x + platform.width));
+    return !(this.mapGenerator?.activeChunks.some((chunk) => chunk.platforms.some((platform) => platform.mandatory && x + 55 >= platform.x && x + 55 <= platform.x + platform.width)) ?? false);
   }
 
   private updatePlayers(time: number) {
@@ -398,13 +787,19 @@ export class GameScene extends Phaser.Scene {
       if (player.snapshot.state === 'INVULNERABLE' && time >= player.invulnerableUntil) {
         this.setPlayerState(player, 'ACTIVE'); player.sprite.clearTint().setAlpha(1);
       } else if (player.snapshot.state === 'INVULNERABLE') player.sprite.setAlpha(Math.floor(time / 100) % 2 ? 0.4 : 1);
-      if (player.snapshot.state !== 'ACTIVE') continue;
+      if (player.snapshot.state !== 'ACTIVE' || (this.transport.mode === 'online' && !player.snapshot.isLocal)) continue;
       const body = player.sprite.body as Phaser.Physics.Arcade.Body;
       if (player.sprite.y > sampleMap.height + 40 || isBehindCamera(body.right, this.cameraController.dangerX(this.cameras.main))) this.eliminate(player);
     }
   }
 
   private eliminate(player: PlayerRuntime) {
+    if (this.transport.mode === 'online') {
+      if (!player.snapshot.isLocal || this.eliminationPending) return;
+      this.eliminationPending = true;
+      this.transport.requestPlayerElimination(this.networkRoundId);
+      return;
+    }
     resetHitStun(player.hitState);
     player.snapshot = { ...player.snapshot, state: transitionPlayer(player.snapshot.state, 'FALLEN'), eliminations: player.snapshot.eliminations + 1 };
     player.sprite.disableBody(true, true); player.label.setVisible(false);
@@ -412,14 +807,18 @@ export class GameScene extends Phaser.Scene {
       this.setPlayerState(player, 'ANSWERING_QUESTION');
       const question = retroQuestions[this.questionIndex++ % retroQuestions.length]!;
       this.activeQuestionId = question.id;
-      this.bridge.emit('questionOpened', question);
-      this.bridge.emit('announcement', 'Answer the retro question verbally');
+      this.bridge.emit('questionOpened', { ...question, canConfirm: true });
+      this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');
     }
     this.publishSnapshot(true);
   }
 
   private handleQuestionAnswered(questionId: string) {
     if (this.local.snapshot.state !== 'ANSWERING_QUESTION' || questionId !== this.activeQuestionId) return;
+    if (this.transport.mode === 'online') {
+      this.transport.completeQuestion(this.networkRoundId, questionId);
+      return;
+    }
     this.resetRound();
   }
 
@@ -479,27 +878,46 @@ export class GameScene extends Phaser.Scene {
   private useAbility(id: AbilityId) {
     if (this.matchState !== 'RUNNING' || !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
     const now = this.time.now;
-    if (!this.abilityController.isReady(id, now)) { this.bridge.emit('announcement', 'That ability is still recharging'); return; }
+    if (!this.abilityController.isReady(id, now)) { this.bridge.emit('announcement', 'Bu yetenek henüz yeniden doluyor'); return; }
     const rocketTarget = id === 'rocket' ? this.findRocketTarget(this.local) : undefined;
-    if (id === 'rocket' && !rocketTarget) { this.bridge.emit('announcement', 'No eligible target nearby'); return; }
+    if (id === 'rocket' && !rocketTarget) { this.bridge.emit('announcement', 'Yakında uygun hedef yok'); return; }
     if (!this.abilityController.tryUse(id, now)) return;
     this.transport.useAbility({ abilityId: id, direction: this.local.facing, clientTime: Date.now() });
     this.audio.play('ability');
     if (id === 'speed') { this.local.speedUntil = now + 3_000; this.local.sprite.setTint(0xfff1a8); }
-    if (id === 'rocket' && rocketTarget) this.fireRocket(this.local, rocketTarget);
+    if (id === 'rocket' && rocketTarget) {
+      if (this.transport.mode === 'online') this.transport.requestRocketFire(this.networkRoundId);
+      else this.fireRocket(this.local, rocketTarget);
+    }
     if (id === 'ask') this.bridge.emit('targetSelectionOpened', { protectedTargets: this.targetProtectedUntil });
     this.publishSnapshot(true);
   }
 
   private fireRocket(owner: PlayerRuntime, target: PlayerRuntime) {
-    const rocket = this.rockets.create(owner.sprite.x + owner.facing * 35, owner.sprite.y, 'rocket') as Phaser.Physics.Arcade.Sprite;
+    this.spawnRocket(`local-${++this.inputSequence}`, owner, target, owner.sprite.x + owner.facing * 35, owner.sprite.y, 0);
+  }
+
+  private spawnOnlineRocket(networkRocket: RetroRushRocketSnapshot) {
+    if (networkRocket.roundId !== this.networkRoundId || this.findRocket(networkRocket.rocketId)) return;
+    const owner = this.playersById.get(networkRocket.ownerPlayerId);
+    const target = this.playersById.get(networkRocket.targetPlayerId);
+    if (!owner || !target) return;
+    this.spawnRocket(networkRocket.rocketId, owner, target, networkRocket.x, networkRocket.y, networkRocket.roundId);
+  }
+
+  private spawnRocket(rocketId: string, owner: PlayerRuntime, target: PlayerRuntime, x: number, y: number, roundId: number) {
+    const rocket = this.rockets.create(x, y, 'rocket') as Phaser.Physics.Arcade.Sprite;
     const velocity = velocityTowards(rocket, target.sprite, gameplayConfig.rocket.speed, owner.facing);
-    rocket.setData('ownerId', owner.snapshot.id).setData('targetId', target.snapshot.id).setData('state', 'ACTIVE' satisfies RocketState).setData('previousX', rocket.x).setData('previousY', rocket.y).setVelocity(velocity.x, velocity.y).setFlipX(velocity.x < 0);
+    rocket.setData('rocketId', rocketId).setData('roundId', roundId).setData('ownerId', owner.snapshot.id).setData('targetId', target.snapshot.id).setData('state', 'ACTIVE' satisfies RocketState).setData('previousX', rocket.x).setData('previousY', rocket.y).setData('hitPending', false).setVelocity(velocity.x, velocity.y).setFlipX(velocity.x < 0);
     const body = rocket.body as Phaser.Physics.Arcade.Body;
     body.setSize(gameplayConfig.rocket.collisionWidth, gameplayConfig.rocket.collisionHeight, false).setOffset(gameplayConfig.rocket.collisionOffsetX, gameplayConfig.rocket.collisionOffsetY);
     this.audio.play('rocket');
     this.showRocketWarning(target);
     this.time.delayedCall(gameplayConfig.rocket.lifetimeMs, () => this.resolveRocket(rocket, 'EXPIRED'));
+  }
+
+  private findRocket(rocketId: string) {
+    return this.rockets.getChildren().find((child) => (child as Phaser.Physics.Arcade.Sprite).getData('rocketId') === rocketId) as Phaser.Physics.Arcade.Sprite | undefined;
   }
 
   private positionedPlayer(player: PlayerRuntime): PositionedPlayer { return { id: player.snapshot.id, state: player.snapshot.state, x: player.sprite.x, y: player.sprite.y }; }
@@ -520,6 +938,7 @@ export class GameScene extends Phaser.Scene {
       let target = this.players.find((player) => player.snapshot.id === rocket.getData('targetId'));
       const origin: PositionedPlayer = { id: ownerId, state: 'ACTIVE', x: rocket.x, y: rocket.y };
       if (!target || !findNearestRocketTarget(origin, [this.positionedPlayer(target)], gameplayConfig.rocket)) {
+        if (this.transport.mode === 'online') continue;
         target = gameplayConfig.rocket.targetReacquireEnabled ? this.findRocketTarget(this.players.find((player) => player.snapshot.id === ownerId) ?? this.local, origin) : undefined;
         rocket.setData('targetId', target?.snapshot.id ?? '');
         if (target) this.showRocketWarning(target);
@@ -552,20 +971,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryCollectPickup(player: PlayerRuntime, pickup: PickupRuntime) {
-    if (!player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !collectPickup(pickup)) return;
+    if (!player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !pickup.active) return;
+    if (this.transport.mode === 'online') {
+      if (pickup.pending || this.collectedPickupIds.has(pickup.id)) return;
+      pickup.pending = true;
+      this.transport.requestPickupCollection(this.networkRoundId, pickup.id, pickup.ability);
+      return;
+    }
+    if (!collectPickup(pickup)) return;
     const body = pickup.zone.body as Phaser.Physics.Arcade.StaticBody;
     body.enable = false;
     pickup.visuals.forEach((visual) => visual.setVisible(false).setActive(false));
     this.abilityController.grant(pickup.ability);
     if (player.snapshot.isLocal) {
-      const pickupName = pickup.ability === 'speed' ? 'Momentum' : pickup.ability === 'rocket' ? 'Nudge rocket' : 'Question';
-      this.bridge.emit('announcement', `${pickupName} ready`);
+      const pickupName = pickup.ability === 'speed' ? 'İvme' : pickup.ability === 'rocket' ? 'İtme roketi' : 'Soru';
+      this.bridge.emit('announcement', `${pickupName} hazır`);
     }
     this.publishSnapshot(true);
   }
 
   private hitByRocket(rocket: Phaser.Physics.Arcade.Sprite, target: PlayerRuntime) {
     const ownerId = String(rocket.getData('ownerId'));
+    if (this.transport.mode === 'online') {
+      if (ownerId !== this.transport.localPlayerId || rocket.getData('targetId') !== target.snapshot.id || rocket.getData('hitPending')) return;
+      const rocketId = String(rocket.getData('rocketId'));
+      rocket.setData('hitPending', true);
+      this.transport.requestRocketHit(this.networkRoundId, rocketId);
+      return;
+    }
     const lifecycle = { ownerId, state: (rocket.getData('state') ?? 'DESTROYED') as RocketState };
     if (!rocket.active || !resolveRocketHit(lifecycle, target.snapshot)) return;
 
@@ -579,6 +1012,28 @@ export class GameScene extends Phaser.Scene {
     target.sprite.setAccelerationX(0).setMaxVelocity(Math.max(gameplayConfig.rocket.rocketKnockbackX, gameplayConfig.player.maxRunSpeed), gameplayConfig.player.maximumFallSpeed).setVelocity(velocity.x, velocity.y).setTint(0xffffff);
     beginHitStun(target.hitState, this.time.now, gameplayConfig.rocket.hitStunMs);
     this.queueRocketDisposal(rocket);
+  }
+
+  private applyOnlineRocketHit(hit: RetroRushRocketHitApplied) {
+    if (hit.roundId !== this.networkRoundId || this.resolvedRocketIds.has(hit.rocketId)) return;
+    this.resolvedRocketIds.add(hit.rocketId);
+    const rocket = this.findRocket(hit.rocketId);
+    if (rocket) {
+      rocket.setData('state', 'HIT' satisfies RocketState);
+      const body = rocket.body as Phaser.Physics.Arcade.Body | null;
+      body?.stop();
+      body?.setEnable(false);
+      this.queueRocketDisposal(rocket);
+    }
+    const target = this.playersById.get(hit.targetPlayerId);
+    if (!target || !target.snapshot.isLocal) return;
+    const targetBody = target.sprite.body as Phaser.Physics.Arcade.Body;
+    // The server contract is authoritative and always supplies the fixed LEFT value.
+    const velocity = fixedLeftKnockbackVelocity(targetBody.velocity.y, hit.velocityX);
+    target.sprite.setAccelerationX(0)
+      .setMaxVelocity(Math.max(Math.abs(hit.velocityX), gameplayConfig.player.maxRunSpeed), gameplayConfig.player.maximumFallSpeed)
+      .setVelocity(velocity.x, velocity.y).setTint(0xffffff);
+    beginHitStun(target.hitState, this.time.now, hit.hitStunMs);
   }
 
   private resolveRocket(rocket: Phaser.Physics.Arcade.Sprite, state: Extract<RocketState, 'EXPIRED'>) {
@@ -620,13 +1075,25 @@ export class GameScene extends Phaser.Scene {
   private chooseTarget(playerId: string) {
     const target = this.players.find((player) => player.snapshot.id === playerId);
     if (!target || !isEligibleTarget(target.snapshot, this.local.snapshot.id, this.targetProtectedUntil[playerId], Date.now())) {
-      this.bridge.emit('announcement', 'That teammate is not available right now'); return;
+      this.bridge.emit('announcement', 'Bu ekip arkadaşı şu anda kullanılamıyor'); return;
     }
     this.targetProtectedUntil[playerId] = Date.now() + 20_000;
     this.transport.selectAbilityTarget({ abilityId: 'ask', targetPlayerId: playerId, clientTime: Date.now() });
+    if (this.transport.mode === 'online') return;
+    this.showTargetQuestion(playerId);
+  }
+
+  private applyOnlineTargetQuestion(roundId: number, sourcePlayerId: string, targetPlayerId: string) {
+    if (roundId !== this.networkRoundId || !this.playersById.has(sourcePlayerId)) return;
+    this.showTargetQuestion(targetPlayerId);
+  }
+
+  private showTargetQuestion(playerId: string) {
+    const target = this.playersById.get(playerId) ?? this.players.find((player) => player.snapshot.id === playerId);
+    if (!target) return;
     const marker = this.trackTemporaryEffect(this.add.text(target.sprite.x, target.sprite.y - 82, '?', { fontFamily: 'monospace', fontSize: '36px', color: '#ffd166', stroke: '#100d25', strokeThickness: 6 }).setOrigin(0.5).setDepth(9));
     this.tweens.add({ targets: marker, y: marker.y - 28, alpha: 0, duration: 1_600, onComplete: () => this.destroyTemporaryEffect(marker) });
-    this.bridge.emit('announcement', `${target.snapshot.name} received a reflection prompt`);
+    this.bridge.emit('announcement', `${target.snapshot.name} adlı oyuncuya değerlendirme sorusu geldi`);
   }
 
   private updateLabels() {
@@ -634,7 +1101,7 @@ export class GameScene extends Phaser.Scene {
       player.label.setPosition(player.sprite.x, player.sprite.y - 44);
       if (!player.sprite.visible) continue;
       const body = player.sprite.body as Phaser.Physics.Arcade.Body;
-      this.characterVisuals.update(player.sprite, this.players.indexOf(player), body.velocity.x, body.velocity.y, body.blocked.down);
+      this.characterVisuals.update(player.sprite, player.skinIndex, body.velocity.x, body.velocity.y, body.blocked.down);
       if (body.velocity.y < -60) player.sprite.setAngle(-5 * player.facing).setScale(0.96, 1.06);
       else if (body.velocity.y > 80) player.sprite.setAngle(7 * player.facing).setScale(1.03, 0.97);
       else if (Math.abs(body.velocity.x) > 30) player.sprite.setAngle(0).setScale(1.06, 0.96);
@@ -655,10 +1122,43 @@ export class GameScene extends Phaser.Scene {
       timeRemainingMs: Math.max(0, gameplayConfig.world.matchDurationMs - this.elapsedMs),
       countdown: this.countdown,
       players: this.players.map((player) => ({ ...player.snapshot })),
-      checkpointLabel: 'Launch Pad',
+      checkpointLabel: 'Başlangıç Noktası',
       danger: this.local ? this.local.sprite.x < this.cameraController.dangerX(this.cameras.main) + 220 : false,
       cooldowns: this.abilityController.cooldowns(this.time.now),
     });
+  }
+
+  private sendNetworkSnapshot(deltaMs: number) {
+    if (!this.local || this.networkRoundId === 0 || this.local.snapshot.state === 'DISCONNECTED') return;
+    this.networkSendAccumulatorMs += deltaMs;
+    const intervalMs = 1_000 / gameplayConfig.network.sendRateHz;
+    if (this.networkSendAccumulatorMs < intervalMs) return;
+    this.networkSendAccumulatorMs %= intervalMs;
+    const body = this.local.sprite.body as Phaser.Physics.Arcade.Body;
+    const animationState: RetroRushPlayerSnapshot['animationState'] = isInHitStun(this.local.hitState, this.time.now)
+      ? 'hit'
+      : body.velocity.y < -30 ? 'jumping'
+      : body.velocity.y > 60 ? 'falling'
+      : Math.abs(body.velocity.x) > 25 ? 'running' : 'idle';
+    this.transport.sendPlayerSnapshot({
+      playerId: this.local.snapshot.id,
+      displayName: this.local.snapshot.name,
+      color: `#${this.local.snapshot.color.toString(16).padStart(6, '0')}`,
+      slot: this.local.slot,
+      skinIndex: this.local.skinIndex,
+      connected: true,
+      x: this.local.sprite.x,
+      y: this.local.sprite.y,
+      velocityX: body.velocity.x,
+      velocityY: body.velocity.y,
+      facing: this.local.facing < 0 ? 'left' : 'right',
+      movementState: this.local.snapshot.state,
+      animationState,
+      sequence: ++this.networkSequence,
+      clientTimestamp: Date.now(),
+      roundId: this.networkRoundId,
+    });
+    this.networkSnapshotsSent++;
   }
 
   private setPlayerState(player: PlayerRuntime, next: PlayerState) {

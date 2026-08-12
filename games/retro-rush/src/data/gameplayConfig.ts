@@ -20,6 +20,7 @@ export interface GameplayConfig {
   rocket: { speed: number; lifetimeMs: number; rocketKnockbackX: number; hitStunMs: number; maximumTargetDistance: number; homingTurnRateRadiansPerSecond: number; targetReacquireEnabled: boolean; collisionRadius: number; collisionWidth: number; collisionHeight: number; collisionOffsetX: number; collisionOffsetY: number; sweptCollisionEnabled: boolean };
   bot: { answerDelayMs: number };
   proceduralMap: ProceduralMapConfig;
+  network: { sendRateHz: number; interpolationDelayMs: number };
 }
 
 export interface ProceduralMapConfig {
@@ -80,4 +81,5 @@ export const gameplayConfig: GameplayConfig = {
     recentChunkHistory: 3,
     debugChunks: false,
   },
+  network: { sendRateHz: 20, interpolationDelayMs: 100 },
 };

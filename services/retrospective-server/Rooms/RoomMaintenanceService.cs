@@ -21,7 +21,12 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
             {
                 var clients = hub.Clients.Group(RoomHub.GroupName(change.RoomCode));
                 if (change.Snapshot is null) await clients.RoomClosed();
-                else await clients.RoomSnapshot(change.Snapshot);
+                else
+                {
+                    await clients.RoomSnapshot(change.Snapshot);
+                    if (rooms.GetRetroRushSnapshotForRoom(change.RoomCode) is { } retroRush)
+                        await clients.RetroRushSnapshot(retroRush);
+                }
             }
         }
     }

@@ -1,26 +1,28 @@
 import { useEffect, useRef } from 'react';
-import type { RetroQuestion } from '../domain/types';
+import type { PresentedRetroQuestion } from '../domain/types';
+import { retroQuestionCategoryLabels } from './retroRushLabels';
 
 interface Props {
-  question: RetroQuestion;
+  question: PresentedRetroQuestion;
   mode: 'verbal';
   onAnswered: () => void;
 }
 
 export function QuestionOverlay({ question, mode, onAnswered }: Props) {
   const confirmationRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => confirmationRef.current?.focus(), []);
+  useEffect(() => confirmationRef.current?.focus(), [question.id]);
+  const title = question.canConfirm || !question.ownerName ? 'Retrospektif sorusu' : `${question.ownerName} adlı oyuncunun sorusu`;
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="dialog question-dialog" data-answer-mode={mode} role="dialog" aria-modal="true" aria-labelledby="question-title">
-        <p className="eyebrow">{question.category}</p>
-        <h2 id="question-title">Retro question</h2>
+      <section className="dialog question-dialog" data-answer-mode={mode} data-question-id={question.id} data-owner-player-id={question.ownerPlayerId} role="dialog" aria-modal="true" aria-labelledby="question-title">
+        <p className="eyebrow">{retroQuestionCategoryLabels[question.category]}</p>
+        <h2 id="question-title">{title}</h2>
         <p className="question-prompt">{question.prompt}</p>
-        <p className="gentle-note">Answer this question verbally with your team.</p>
-        <div className="dialog-actions">
-          <button ref={confirmationRef} className="button primary" type="button" onClick={onAnswered}>Answered &mdash; Restart</button>
-        </div>
+        <p className="gentle-note">Bu soruyu ekibinle sözlü olarak yanıtla.</p>
+        {question.canConfirm
+          ? <div className="dialog-actions"><button ref={confirmationRef} className="button primary" type="button" onClick={onAnswered}>CEVAPLADIM &mdash; YENİDEN BAŞLAT</button></div>
+          : <p className="gentle-note">{question.ownerName ?? 'Soru sahibi'} bekleniyor...</p>}
       </section>
     </div>
   );

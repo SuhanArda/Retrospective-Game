@@ -21,6 +21,104 @@ export interface GameSessionSnapshot {
   state: 'ACTIVE' | 'ENDED';
 }
 
+export type RetroRushPhase = 'COUNTDOWN' | 'RUNNING' | 'QUESTION' | 'RESTARTING';
+export type RetroRushMovementState =
+  | 'ACTIVE'
+  | 'FALLEN'
+  | 'ANSWERING_QUESTION'
+  | 'RESPAWNING'
+  | 'INVULNERABLE'
+  | 'FINISHED'
+  | 'DISCONNECTED';
+export type RetroRushAnimationState = 'idle' | 'running' | 'jumping' | 'falling' | 'hit' | 'eliminated';
+
+export interface RetroRushPlayerSnapshot {
+  playerId: string;
+  displayName: string;
+  color: string;
+  slot: number;
+  skinIndex: number;
+  connected: boolean;
+  x: number;
+  y: number;
+  velocityX: number;
+  velocityY: number;
+  facing: 'left' | 'right';
+  movementState: RetroRushMovementState;
+  animationState: RetroRushAnimationState;
+  sequence: number;
+  clientTimestamp: number;
+  roundId: number;
+}
+
+export interface RetroRushQuestionSnapshot {
+  questionId: string;
+  ownerPlayerId: string;
+  status: 'ACTIVE';
+  roundId: number;
+  category: string;
+  type: 'text' | 'singleChoice' | 'rating';
+  prompt: string;
+  options?: readonly string[];
+  required: boolean;
+}
+
+export interface RetroRushRocketSnapshot {
+  rocketId: string;
+  ownerPlayerId: string;
+  targetPlayerId: string;
+  x: number;
+  y: number;
+  spawnedAtUtc: number;
+  roundId: number;
+}
+
+export interface RetroRushGameSnapshot {
+  gameSessionId: string;
+  roundId: number;
+  mapSeed: number;
+  phase: RetroRushPhase;
+  phaseStartedAtUtc: number;
+  roundStartsAtUtc: number;
+  players: readonly RetroRushPlayerSnapshot[];
+  collectedPickupIds: readonly string[];
+  activeRockets: readonly RetroRushRocketSnapshot[];
+  activeQuestion?: RetroRushQuestionSnapshot;
+}
+
+export interface UpdateRetroRushPlayerRequest {
+  gameSessionId: string;
+  playerId: string;
+  roundId: number;
+  x: number;
+  y: number;
+  velocityX: number;
+  velocityY: number;
+  facing: 'left' | 'right';
+  movementState: RetroRushMovementState;
+  animationState: RetroRushAnimationState;
+  sequence: number;
+  clientTimestamp: number;
+}
+
+export interface RequestRetroRushShoveRequest { gameSessionId: string; roundId: number; targetPlayerId: string; sequence: number }
+export interface RetroRushShoveApplied { actionId: string; roundId: number; attackerPlayerId: string; targetPlayerId: string; velocityX: number; hitStunMs: number }
+export type RetroRushShoveRejection = 'DUPLICATE_SHOVE' | 'SELF_SHOVE' | 'PLAYER_NOT_ACTIVE' | 'SHOVE_COOLDOWN' | 'SHOVE_OUT_OF_RANGE' | 'INVALID_SHOVE_TARGET' | 'STALE_ROUND' | 'WRONG_GAME_SESSION';
+export interface RetroRushShoveCommandResult { accepted: boolean; rejection?: RetroRushShoveRejection }
+export interface RequestRetroRushRocketFireRequest { gameSessionId: string; roundId: number }
+export interface RequestRetroRushRocketHitRequest { gameSessionId: string; roundId: number; rocketId: string }
+export interface RetroRushRocketHitApplied { rocketId: string; roundId: number; targetPlayerId: string; velocityX: number; hitStunMs: number }
+export interface RequestRetroRushPickupCollectionRequest { gameSessionId: string; roundId: number; pickupId: string; abilityId: AbilityId }
+export interface RetroRushPickupCollected { pickupId: string; roundId: number; playerId: string; abilityId: AbilityId }
+export interface RequestRetroRushPlayerEliminationRequest { gameSessionId: string; roundId: number; playerId: string }
+export interface RetroRushPlayerEliminated { roundId: number; playerId: string; question: RetroRushQuestionSnapshot }
+export interface CompleteRetroRushQuestionRequest { gameSessionId: string; roundId: number; questionId: string }
+export interface UseRetroRushAbilityRequest { gameSessionId: string; roundId: number; abilityId: AbilityId }
+export interface RequestRetroRushAskTargetRequest { gameSessionId: string; roundId: number; targetPlayerId: string }
+export interface RetroRushTargetQuestioned { roundId: number; sourcePlayerId: string; targetPlayerId: string }
+
+export type AbilityId = 'speed' | 'rocket' | 'ask';
+
 export type SpinBottleStateStatus =
   | 'IDLE'
   | 'SPINNING'
