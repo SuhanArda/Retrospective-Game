@@ -1,6 +1,10 @@
 # Services
 
-## retro-platform-api
+## retrospective-server
+
+The current production-oriented multiplayer authority. It provides REST room admission, authenticated SignalR rejoin, host-controlled room/game lifecycle, disconnect grace and host transfer, and authoritative Spin the Bottle results. See [its README](retrospective-server/README.md) and the [multiplayer architecture](../docs/online-multiplayer.md).
+
+## retro-platform-api (legacy)
 
 ASP.NET Core (.NET 10) API and SignalR hub. This is the authority for rooms:
 it owns room codes, membership, capacity, the host role, and — importantly —

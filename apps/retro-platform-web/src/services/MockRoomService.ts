@@ -194,6 +194,8 @@ export class MockRoomService implements RoomService {
     return room?.players.find((player) => player.id === session?.playerId) ?? null;
   }
 
+  getConnectionStatus(): 'connected' { return 'connected'; }
+
   async ensureRoom(roomCode: string): Promise<RetroRoom | null> {
     // Nothing to connect to: the snapshot is already in this browser.
     return this.getRoom(roomCode);
@@ -202,11 +204,13 @@ export class MockRoomService implements RoomService {
   async beginGameSelection(candidateGameIds: readonly string[]): Promise<RetroRoom> {
     return this.updateCurrentRoom((room, session) => {
       if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');
+      const votingStartedAt = this.now();
       const next: RetroRoom = {
         ...room,
         status: 'GAME_SELECTION',
         votes: {},
-        votingEndsAt: this.now() + room.votingTimeSeconds * 1000,
+        votingStartedAt,
+        votingEndsAt: votingStartedAt + room.votingTimeSeconds * 1000,
         candidateGameIds: [...candidateGameIds],
       };
       delete next.selectedGameId;
@@ -231,6 +235,7 @@ export class MockRoomService implements RoomService {
       if (!outcome) return room;
 
       const next: RetroRoom = { ...room, selectedGameId: outcome.winner, status: 'PLAYING' };
+      delete next.votingStartedAt;
       delete next.votingEndsAt;
       if (outcome.tiedCandidates.length > 1) {
         next.tieBreak = { candidates: outcome.tiedCandidates, winner: outcome.winner };
@@ -252,6 +257,7 @@ export class MockRoomService implements RoomService {
     return this.updateCurrentRoom((room, session) => {
       if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');
       const next: RetroRoom = { ...room, status: 'LOBBY', votes: {} };
+      delete next.votingStartedAt;
       delete next.votingEndsAt;
       delete next.selectedGameId;
       delete next.tieBreak;

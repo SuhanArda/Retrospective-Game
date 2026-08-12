@@ -5,6 +5,8 @@ export interface PlatformSession {
   displayName: string;
   roomCode: string;
   isHost: boolean;
+  reconnectToken?: string;
+  gameSessionId?: string;
   selectedGameId?: string;
 }
 
@@ -22,6 +24,8 @@ export function isPlatformSession(value: unknown): value is PlatformSession {
     typeof value.roomCode === 'string' &&
     /^[A-Z0-9]{6}$/.test(value.roomCode) &&
     typeof value.isHost === 'boolean' &&
+    (value.reconnectToken === undefined || typeof value.reconnectToken === 'string') &&
+    (value.gameSessionId === undefined || typeof value.gameSessionId === 'string') &&
     (value.selectedGameId === undefined || typeof value.selectedGameId === 'string')
   );
 }

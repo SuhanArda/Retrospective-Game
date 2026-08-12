@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@retro-platform/contracts": "0.1.0",
+    "@retro-platform/realtime-client": "0.1.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

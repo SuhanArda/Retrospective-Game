@@ -1,4 +1,4 @@
-export type RoomStatus = 'LOBBY' | 'GAME_SELECTION' | 'PLAYING' | 'FINISHED';
+export type RoomStatus = 'LOBBY' | 'GAME_SELECTION' | 'PLAYING' | 'FINISHED' | 'CLOSED';
 
 export interface RoomPlayer {
   id: string;
@@ -6,6 +6,8 @@ export interface RoomPlayer {
   color: string;
   isHost: boolean;
   isReady: boolean;
+  isConnected?: boolean;
+  joinedAt?: number;
 }
 
 /** Records that a draw was settled at random, so the UI can show it happening. */
@@ -25,6 +27,8 @@ export interface RetroRoom {
   votes?: Record<string, string>;
   /** Epoch ms when the vote closes; absent once the vote is resolved. */
   votingEndsAt?: number;
+  /** Epoch ms when the room-wide vote opened. */
+  votingStartedAt?: number;
   /** The games this round may choose between, so the server can close the vote itself. */
   candidateGameIds?: string[];
   tieBreak?: TieBreak;
@@ -35,6 +39,13 @@ export interface RetroRoom {
   fileName?: string;
   description?: string;
   createdAt: number;
+  currentGameSession?: {
+    gameSessionId: string;
+    gameId: string;
+    roundId: string;
+    seed: number;
+    state: 'ACTIVE' | 'ENDED';
+  };
 }
 
 export interface CreateRoomRequest {
@@ -57,6 +68,7 @@ export interface JoinRoomRequest {
 export interface CreateRoomResult {
   room: RetroRoom;
   player: RoomPlayer;
+  reconnectToken?: string;
 }
 
 export type JoinRoomErrorCode =
@@ -66,5 +78,5 @@ export type JoinRoomErrorCode =
   | 'INVALID_ROOM_CODE';
 
 export type JoinRoomResult =
-  | { ok: true; room: RetroRoom; player: RoomPlayer }
+  | { ok: true; room: RetroRoom; player: RoomPlayer; reconnectToken?: string }
   | { ok: false; error: JoinRoomErrorCode };

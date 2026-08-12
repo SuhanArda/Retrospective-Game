@@ -3,6 +3,7 @@ import type { RoomReaction } from '../domain/reactions';
 
 export type RoomListener = (room: RetroRoom | null) => void;
 export type ReactionListener = (reaction: RoomReaction) => void;
+export type RoomConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
 export interface RoomService {
   createRoom(request: CreateRoomRequest): Promise<CreateRoomResult>;
@@ -20,6 +21,7 @@ export interface RoomService {
   getRoom(roomCode: string): RetroRoom | null;
   getCurrentRoom(): RetroRoom | null;
   getCurrentPlayer(): RoomPlayer | null;
+  getConnectionStatus(): RoomConnectionStatus;
 
   /** Host-only. `candidateGameIds` is what the vote may choose between. */
   beginGameSelection(candidateGameIds: readonly string[]): Promise<RetroRoom>;

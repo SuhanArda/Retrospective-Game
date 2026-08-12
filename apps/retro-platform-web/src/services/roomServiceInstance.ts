@@ -2,7 +2,10 @@ import { MockRoomService } from './MockRoomService';
 import { SignalRRoomService } from './SignalRRoomService';
 import type { RoomService } from './RoomService';
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = typeof import.meta.env.VITE_API_URL === 'string' && import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL
+  : 'http://localhost:5281';
+const roomServiceMode = import.meta.env.VITE_ROOM_SERVICE;
 
 /**
  * Real rooms when an API is configured, the browser-only simulation otherwise.
@@ -11,8 +14,8 @@ const apiUrl = import.meta.env.VITE_API_URL;
  * backend running — but it cannot reach another computer, so anything that
  * needs real players requires VITE_API_URL.
  */
-export const isMockMode = typeof apiUrl !== 'string' || apiUrl.length === 0;
+export const isMockMode = roomServiceMode === 'mock';
 
 export const roomService: RoomService = isMockMode
   ? new MockRoomService(window.localStorage, window.sessionStorage)
-  : new SignalRRoomService(`${apiUrl.replace(/\/$/, '')}/hubs/room`, window.sessionStorage);
+  : new SignalRRoomService(apiUrl.replace(/\/$/, ''), window.sessionStorage);

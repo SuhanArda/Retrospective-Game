@@ -5,6 +5,7 @@ import { findGame } from '../games/gameRegistry'
 import { gameLauncher } from '../games/gameLauncherInstance'
 import { roomService } from '../services/roomServiceInstance'
 import { useRoom } from '../hooks/useRoom'
+import { loadPlatformSession } from '../session/platformSession'
 import '../App.css'
 
 function GameStarting() {
@@ -15,6 +16,7 @@ function GameStarting() {
   const [error, setError] = useState('')
   const { room, loading } = useRoom(roomCode)
   const player = roomService.getCurrentPlayer()
+  const platformSession = loadPlatformSession(window.sessionStorage)
   const game = findGame(gameId)
 
   const isPlayable = game?.status === 'available'
@@ -22,7 +24,7 @@ function GameStarting() {
   useEffect(() => {
     // A placeholder game can win the vote — say so plainly instead of
     // reporting a launch failure.
-    if (launchedRef.current || !room || !player || !game || !isPlayable) return
+    if (launchedRef.current || !room || !player || !game || !isPlayable || !platformSession?.reconnectToken || !room.currentGameSession) return
     launchedRef.current = true
     try {
       gameLauncher.launchGame({
@@ -31,11 +33,13 @@ function GameStarting() {
         displayName: player.displayName,
         gameId: game.id,
         isHost: player.isHost,
+        gameSessionId: room.currentGameSession.gameSessionId,
+        reconnectToken: platformSession.reconnectToken,
       })
     } catch {
       setError(t('starting.launchError'))
     }
-  }, [room, player, game, isPlayable, t])
+  }, [room, player, game, isPlayable, platformSession, t])
 
   if (loading) {
     return (
