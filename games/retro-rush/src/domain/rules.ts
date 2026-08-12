@@ -11,9 +11,9 @@ export function isEligibleTarget(player: PlayerSnapshot, actorId: string, protec
 
 export function validateQuestionResponse(question: RetroQuestion, value: string): string | null {
   const normalized = value.trim();
-  if (!normalized) return question.required ? 'Please share a response to continue.' : null;
-  if (question.type !== 'text' && !question.options?.includes(normalized)) return 'Choose one of the available options.';
-  if (question.type === 'text' && normalized.length > 500) return 'Keep your reflection under 500 characters.';
+  if (!normalized) return question.required ? 'Devam etmek için bir yanıt paylaş.' : null;
+  if (question.type !== 'text' && !question.options?.includes(normalized)) return 'Mevcut seçeneklerden birini seç.';
+  if (question.type === 'text' && normalized.length > 500) return 'Değerlendirmeni 500 karakterin altında tut.';
   return null;
 }
 
@@ -27,7 +27,7 @@ export function selectSafeRespawn(checkpoints: readonly Checkpoint[], latestId: 
   const latest = sorted[latestIndex];
   if (latest && latest.x >= dangerX + 80) return latest;
   const next = sorted.find((point) => point.x >= dangerX + 180);
-  return next ?? sorted[sorted.length - 1] ?? { id: 'start', label: 'Start', x: dangerX + 220, y: 540 };
+  return next ?? sorted[sorted.length - 1] ?? { id: 'start', label: 'Başlangıç', x: dangerX + 220, y: 540 };
 }
 
 export function canRocketHit(ownerId: string, target: PlayerSnapshot) {

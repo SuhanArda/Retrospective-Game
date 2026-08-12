@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { gameplayConfig } from '../../data/gameplayConfig';
 import type { ChunkTemplate } from './ProceduralChunkTemplates';
 import { HANDCRAFTED_CHUNK_TEMPLATES, findChunkTemplate } from './ProceduralChunkTemplates';
@@ -65,6 +65,23 @@ describe('handcrafted procedural chunk library', () => {
 describe('ProceduralMapGenerator', () => {
   it('produces the same chunk order and safe variations for the same seed', () => {
     expect(serialize(generate(42, 40).activeChunks)).toEqual(serialize(generate(42, 40).activeChunks));
+  });
+
+  it('gives two clients the same first 40 template and gameplay pickup IDs for a server seed', () => {
+    const firstClient = generate(94815321, 40).activeChunks;
+    const secondClient = generate(94815321, 40).activeChunks;
+    expect(firstClient.map((chunk) => chunk.templateId)).toEqual(secondClient.map((chunk) => chunk.templateId));
+    expect(firstClient.flatMap((chunk) => chunk.pickups.map((pickup) => pickup.id)))
+      .toEqual(secondClient.flatMap((chunk) => chunk.pickups.map((pickup) => pickup.id)));
+  });
+
+  it('never consults uncontrolled Math.random for gameplay-critical generation', () => {
+    const uncontrolled = vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('unseeded random used'); });
+    try {
+      expect(() => generate(94815321, 60)).not.toThrow();
+    } finally {
+      uncontrolled.mockRestore();
+    }
   });
 
   it('usually produces a different chunk order for different seeds', () => {

@@ -7,7 +7,7 @@ describe('game flow event bridge', () => {
     const bridge = new GameEventBridge();
     const questionListener = vi.fn(); const answerListener = vi.fn();
     bridge.on('questionOpened', questionListener); bridge.on('questionAnswered', answerListener);
-    const question = retroQuestions[0]!;
+    const question = { ...retroQuestions[0]!, canConfirm: true };
     bridge.emit('questionOpened', question);
     bridge.emit('questionAnswered', { questionId: question.id });
     expect(questionListener).toHaveBeenCalledWith(question);

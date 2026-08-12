@@ -7,6 +7,7 @@ import {
   type SpinBottleStateSnapshot,
   type SpinResult,
 } from "@retro-platform/contracts";
+import { BackToGamesButton } from "./BackToGamesButton";
 import {
   buildPlatformGameSelectionUrl,
   resolveSpinTheBottleLaunchContext,
@@ -161,7 +162,7 @@ export default function Home() {
   const [history, setHistory] = useState<string[]>([]);
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [roomIsHost, setRoomIsHost] = useState(launchContext?.isHost ?? false);
+  const [roomIsHost, setRoomIsHost] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("standalone");
   const [spinState, setSpinState] = useState<SpinBottleStateSnapshot | null>(null);
   const [questionActionPending, setQuestionActionPending] = useState(false);
@@ -468,11 +469,7 @@ export default function Home() {
           {launchContext && <small>{connectionStatus}</small>}
         </div>
         <div className="topbar-actions">
-          {launchContext && (
-            <button className="back-to-games-button" type="button" onClick={returnToGames}>
-              BACK TO GAMES
-            </button>
-          )}
+          {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
           <button
             className={`sound-button ${sound ? "" : "is-muted"}`}
             type="button"

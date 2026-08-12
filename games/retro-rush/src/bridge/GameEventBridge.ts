@@ -1,8 +1,8 @@
-import type { AbilityId, MatchSnapshot, RetroQuestion } from '../domain/types';
+import type { AbilityId, MatchSnapshot, PresentedRetroQuestion } from '../domain/types';
 
 export interface GameToUiEvents {
   snapshot: MatchSnapshot;
-  questionOpened: RetroQuestion;
+  questionOpened: PresentedRetroQuestion;
   roundReset: undefined;
   targetSelectionOpened: { protectedTargets: Readonly<Record<string, number>> };
   announcement: string;

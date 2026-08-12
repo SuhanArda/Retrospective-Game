@@ -16,5 +16,5 @@ export function GameCanvas({ bridge, transport }: Props) {
     return () => { gameRef.current?.destroy(true); gameRef.current = null; };
   }, [bridge, transport]);
 
-  return <div ref={hostRef} className="game-canvas" aria-label="Retro Rush game world" />;
+  return <div ref={hostRef} className="game-canvas" aria-label="Retro Rush oyun dünyası" />;
 }

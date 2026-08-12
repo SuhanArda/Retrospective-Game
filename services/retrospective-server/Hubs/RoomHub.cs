@@ -16,6 +16,9 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             logger.LogInformation("Player {PlayerId} attached to room {RoomCode}", playerId, room.Code);
             await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(room.Code));
             await Clients.Group(GroupName(room.Code)).RoomSnapshot(room);
+            if (room.CurrentGameSession?.GameId == "retro-rush")
+                await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(
+                    rooms.GetRetroRushSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
             return new HubJoinResult(true, room);
         }
         catch (RoomException error)
@@ -96,7 +99,12 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
         var room = rooms.Leave(Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(player.RoomCode));
-        if (room.Players.Count > 0) await Broadcast(room);
+        if (room.Players.Count > 0)
+        {
+            await Broadcast(room);
+            if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
+                await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+        }
         else await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
     }
 
@@ -108,9 +116,84 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             player.PlayerId, player.DisplayName, player.Color, emoji, timeProvider.GetUtcNow().ToUnixTimeMilliseconds()));
     }
 
+    public Task<RetroRushGameSnapshot> GetRetroRushSnapshot(string gameSessionId) =>
+        Task.FromResult(rooms.GetRetroRushSnapshot(Context.ConnectionId, gameSessionId));
+
+    public async Task UpdateRetroRushPlayer(UpdateRetroRushPlayerRequest request)
+    {
+        var mutation = rooms.UpdateRetroRushPlayer(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.OthersInGroup(GroupName(mutation.RoomCode)).RetroRushPlayerUpdated(mutation.Event);
+    }
+
+    public async Task<RetroRushShoveCommandResult> RequestRetroRushShove(RequestRetroRushShoveRequest request)
+    {
+        var mutation = rooms.RequestRetroRushShove(Context.ConnectionId, request);
+        if (mutation.Applied is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushShoveApplied(mutation.Applied);
+        return mutation.Result;
+    }
+
+    public async Task RequestRetroRushRocketFire(RequestRetroRushRocketFireRequest request)
+    {
+        var mutation = rooms.RequestRetroRushRocketFire(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketSpawned(mutation.Event);
+    }
+
+    public async Task RequestRetroRushRocketHit(RequestRetroRushRocketHitRequest request)
+    {
+        var mutation = rooms.RequestRetroRushRocketHit(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketHit(mutation.Event);
+    }
+
+    public async Task RequestRetroRushPickupCollection(RequestRetroRushPickupCollectionRequest request)
+    {
+        var mutation = rooms.RequestRetroRushPickupCollection(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushPickupCollected(mutation.Event);
+    }
+
+    public async Task RequestRetroRushPlayerElimination(RequestRetroRushPlayerEliminationRequest request)
+    {
+        var mutation = rooms.RequestRetroRushPlayerElimination(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushPlayerEliminated(mutation.Event);
+    }
+
+    public async Task CompleteRetroRushQuestion(CompleteRetroRushQuestionRequest request)
+    {
+        var mutation = rooms.CompleteRetroRushQuestion(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+        {
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRoundStarted(mutation.Event);
+            var room = rooms.Get(mutation.RoomCode);
+            if (room is not null) await Broadcast(room);
+        }
+    }
+
+    public Task UseRetroRushAbility(UseRetroRushAbilityRequest request)
+    {
+        rooms.UseRetroRushAbility(Context.ConnectionId, request);
+        return Task.CompletedTask;
+    }
+
+    public async Task RequestRetroRushAskTarget(RequestRetroRushAskTargetRequest request)
+    {
+        var mutation = rooms.RequestRetroRushAskTarget(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushTargetQuestioned(mutation.Event);
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (rooms.Disconnect(Context.ConnectionId) is { } room) await Broadcast(room);
+        if (rooms.Disconnect(Context.ConnectionId) is { } room)
+        {
+            await Broadcast(room);
+            if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
+                await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+        }
         await base.OnDisconnectedAsync(exception);
     }
 

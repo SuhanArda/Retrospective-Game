@@ -2,6 +2,9 @@ import type { GameTransport } from './GameTransport';
 import type { GameTransportListener, JoinRoomRequest, PlayerInputMessage, SelectTargetCommand, ShoveCommand, UseAbilityCommand } from './transportMessages';
 
 export class MockGameTransport implements GameTransport {
+  readonly mode = 'standalone' as const;
+  readonly localPlayerId = undefined;
+  readonly gameSessionId = undefined;
   private readonly listeners = new Set<GameTransportListener>();
   private connected = false;
 
@@ -22,6 +25,13 @@ export class MockGameTransport implements GameTransport {
   sendShove(command: ShoveCommand) { void command; /* mock authority is simulated by GameScene */ }
   useAbility(command: UseAbilityCommand) { if (this.connected) this.emit({ type: 'abilityAccepted', abilityId: command.abilityId }); }
   selectAbilityTarget(command: SelectTargetCommand) { if (this.connected) this.emit({ type: 'targetQuestioned', playerId: command.targetPlayerId }); }
+  sendPlayerSnapshot() { /* standalone authority is simulated by GameScene */ }
+  requestShove() { /* standalone authority is simulated by GameScene */ }
+  requestRocketFire() { /* standalone authority is simulated by GameScene */ }
+  requestRocketHit() { /* standalone authority is simulated by GameScene */ }
+  requestPickupCollection() { /* standalone authority is simulated by GameScene */ }
+  requestPlayerElimination() { /* standalone authority is simulated by GameScene */ }
+  completeQuestion() { /* standalone authority is simulated by GameScene */ }
 
   subscribe(listener: GameTransportListener) {
     this.listeners.add(listener);
