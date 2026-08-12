@@ -73,7 +73,12 @@ const questions = {
 } as const;
 
 type Category = keyof typeof questions;
-type FlowPhase = "idle" | "choice" | "confirm" | "loading" | "question";
+type FlowPhase =
+  | "idle"
+  | "choice"
+  | "confirm"
+  | "loading"
+  | "question";
 
 const reactionOptions = [
   { kind: "happy", label: "ᴗ", name: "Mutlu kedi" },
