@@ -489,6 +489,12 @@
   animation: pulse 1s ease-in-out infinite;
 }
 
+.connection-status.reconnecting .status-dot,
+.connection-status.disconnected .status-dot {
+  background: #e0a33a;
+  animation: pulse 1s ease-in-out infinite;
+}
+
 .connection-status.connected .status-dot {
   background: #2fb344;
 }

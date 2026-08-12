@@ -4,13 +4,14 @@ import { useLanguage } from '../context/LanguageContext.jsx'
 import { gameRegistry, findGame } from '../games/gameRegistry'
 import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { tallyVotes } from '../domain/voting'
+import { gameSelectionSecondsRemaining } from '../domain/gameSelectionTimer'
 import { useRoom } from '../hooks/useRoom'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
 import TieBreakRoll from '../components/TieBreakRoll.jsx'
 import '../App.css'
 
-const CANDIDATE_IDS = gameRegistry.map((game) => game.id)
+const CANDIDATE_IDS = gameRegistry.filter((game) => game.status === 'available').map((game) => game.id)
 
 function GameVote() {
   const { roomCode = '' } = useParams()
@@ -33,25 +34,23 @@ function GameVote() {
   // they would restart the tie-break animation's timers on every tick.
   useEffect(() => {
     if (resolved) return
+    setNow(Date.now())
     const tick = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(tick)
-  }, [resolved])
+  }, [resolved, room?.votingEndsAt])
 
-  const secondsLeft = room?.votingEndsAt
-    ? Math.max(0, Math.ceil((room.votingEndsAt - now) / 1000))
-    : 0
+  const secondsLeft = gameSelectionSecondsRemaining(room?.votingEndsAt, now)
 
   // Stable identity so the animation's completion timer is never reset.
   const handleRollDone = useCallback(() => setRollDone(true), [])
 
-  // Against the real API the server closes the vote on its own schedule; this
-  // only matters in mock mode, where there is no server to run the countdown.
-  // Harmless either way: resolving an already-resolved vote is a no-op.
+  // Mock mode has no server maintenance loop, so its host preserves the
+  // original behavior by closing the vote when the shared deadline expires.
   useEffect(() => {
     if (!isMockMode) return
     if (!isHost || room?.status !== 'GAME_SELECTION' || !room.votingEndsAt) return
     if (secondsLeft > 0) return
-    void roomService.resolveVote(CANDIDATE_IDS).then(setRoom)
+    void roomService.resolveVote(CANDIDATE_IDS).then(setRoom).catch(() => undefined)
   }, [isHost, room, secondsLeft, setRoom])
 
   useEffect(() => {
@@ -138,10 +137,12 @@ function GameVote() {
         />
         <p className="subtitle">{t('vote.subtitle')}</p>
 
-        <div className={`vote-timer${secondsLeft <= 5 ? ' urgent' : ''}`}>
-          {secondsLeft}
-          {t('vote.secondsSuffix')}
-        </div>
+        {room.status === 'GAME_SELECTION' && room.votingEndsAt && (
+          <div className={`vote-timer${secondsLeft <= 5 ? ' urgent' : ''}`} data-testid="game-selection-countdown">
+            {secondsLeft}
+            {t('vote.secondsSuffix')}
+          </div>
+        )}
 
         <div className="game-grid">
           {gameRegistry.map((game) => {
@@ -153,6 +154,7 @@ function GameVote() {
                 key={game.id}
                 className={`game-card${picked ? ' picked' : ''}`}
                 onClick={() => handleVote(game.id)}
+                disabled={game.status !== 'available'}
                 aria-pressed={picked}
               >
                 <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>

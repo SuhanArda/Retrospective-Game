@@ -23,6 +23,6 @@ export default defineConfig(({ mode }) => {
   // browser code.
   const env = loadEnv(mode, import.meta.dirname, '')
   return {
-    plugins: [react(), contentSecurityPolicy(env.VITE_API_URL)],
+    plugins: [react(), contentSecurityPolicy(env.VITE_API_URL || 'http://localhost:5281')],
   }
 })

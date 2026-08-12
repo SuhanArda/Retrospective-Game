@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { RoomRealtimeClient } from "@retro-platform/realtime-client";
+import {
+  canControlSpinQuestion,
+  type SpinBottleStateSnapshot,
+  type SpinResult,
+} from "@retro-platform/contracts";
 import {
   buildPlatformGameSelectionUrl,
   resolveSpinTheBottleLaunchContext,
@@ -8,6 +14,7 @@ import {
 } from "./platformIntegration";
 
 type Player = {
+  id: string;
   name: string;
   variant: string;
   position: string;
@@ -28,6 +35,7 @@ function getBrowserLaunchContext(): SpinTheBottleLaunchContext {
     cachedLaunchContext = resolveSpinTheBottleLaunchContext(
       window.location.search,
       window.sessionStorage,
+      window,
     );
     launchContextResolved = true;
   }
@@ -39,12 +47,12 @@ function getServerLaunchContext(): SpinTheBottleLaunchContext {
 }
 
 const basePlayers: Player[] = [
-  { name: "Oyuncu 1", variant: "orange", position: "pos-0", mood: "Hazır" },
-  { name: "Oyuncu 2", variant: "black", position: "pos-1", mood: "Hazır" },
-  { name: "Oyuncu 3", variant: "gray", position: "pos-2", mood: "Hazır" },
-  { name: "Oyuncu 4", variant: "white", position: "pos-3", mood: "Hazır" },
-  { name: "Oyuncu 5", variant: "tuxedo", position: "pos-4", mood: "Hazır" },
-  { name: "Oyuncu 6", variant: "brown", position: "pos-5", mood: "Hazır" },
+  { id: "local-1", name: "Oyuncu 1", variant: "orange", position: "pos-0", mood: "Hazır" },
+  { id: "local-2", name: "Oyuncu 2", variant: "black", position: "pos-1", mood: "Hazır" },
+  { id: "local-3", name: "Oyuncu 3", variant: "gray", position: "pos-2", mood: "Hazır" },
+  { id: "local-4", name: "Oyuncu 4", variant: "white", position: "pos-3", mood: "Hazır" },
+  { id: "local-5", name: "Oyuncu 5", variant: "tuxedo", position: "pos-4", mood: "Hazır" },
+  { id: "local-6", name: "Oyuncu 6", variant: "brown", position: "pos-5", mood: "Hazır" },
 ];
 
 const questions = {
@@ -148,6 +156,12 @@ export default function Home() {
   const [history, setHistory] = useState<string[]>([]);
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [roomIsHost, setRoomIsHost] = useState(launchContext?.isHost ?? false);
+  const [connectionStatus, setConnectionStatus] = useState("standalone");
+  const [spinState, setSpinState] = useState<SpinBottleStateSnapshot | null>(null);
+  const [questionActionPending, setQuestionActionPending] = useState(false);
+  const roomClientRef = useRef<RoomRealtimeClient | null>(null);
+  const lastResolvedRevisionRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reactionId = useRef(0);
@@ -184,8 +198,102 @@ export default function Home() {
     return () => cancelAnimationFrame(frame);
   }, [launchContext]);
 
+  useEffect(() => {
+    if (!launchContext) return;
+    const client = RoomRealtimeClient.fromLaunchContext(spinTheBottleRuntimeConfig.apiUrl, launchContext);
+    roomClientRef.current = client;
+    const disposeRoom = client.on("roomSnapshot", (room) => {
+      if (room.currentGameSession?.gameSessionId !== launchContext.gameSessionId) return;
+      setPlayers(room.players.slice(0, basePlayers.length).map((participant, index) => ({
+        ...basePlayers[index],
+        id: participant.id,
+        name: participant.displayName,
+        mood: participant.isConnected ? "Hazır" : "Bağlantı bekleniyor",
+      })));
+      setRoomIsHost(room.hostPlayerId === launchContext.playerId);
+      applyAuthoritativeSpinState(room.spinBottleState ?? null);
+    });
+    const applySpin = (result: SpinResult) => {
+      if (result.gameSessionId !== launchContext.gameSessionId) return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setSelected(null);
+      setPhase("idle");
+      setCategory(null);
+      setQuestion("");
+      setSpinning(true);
+      setRotation(result.finalAngle);
+      timerRef.current = setTimeout(() => {
+        setSelected(result.targetIndex);
+        setSpinning(false);
+      }, result.durationMs);
+    };
+    const disposeSpin = client.on("spinResult", applySpin);
+    const disposeSpinState = client.on("spinBottleStateChanged", applyAuthoritativeSpinState);
+    const disposeReturn = client.on("returnedToGameSelection", () => {
+      window.location.assign(buildPlatformGameSelectionUrl(
+        spinTheBottleRuntimeConfig.platformUrl, launchContext.roomCode, window.location.origin,
+      ));
+    });
+    const disposeStatus = client.on("connectionChanged", setConnectionStatus);
+    void client.connect().catch(() => setConnectionStatus("disconnected"));
+    return () => {
+      disposeRoom();
+      disposeSpin();
+      disposeSpinState();
+      disposeReturn();
+      disposeStatus();
+      roomClientRef.current = null;
+      void client.disconnect();
+    };
+  }, [launchContext]);
+
+  function applyAuthoritativeSpinState(state: SpinBottleStateSnapshot | null) {
+    setSpinState(state);
+    setQuestionActionPending(false);
+    if (!state) {
+      setPhase("idle");
+      return;
+    }
+    setSelected(state.targetIndex);
+    setCategory(state.category ?? null);
+    setQuestion(state.questionText ?? "");
+    if (state.status === "SPINNING") {
+      setSpinning(true);
+      setPhase("idle");
+    } else if (state.status === "CHOICE") {
+      setSpinning(false);
+      setPhase("choice");
+    } else if (state.status === "CONFIRM") {
+      setSpinning(false);
+      setPhase("confirm");
+    } else if (state.status === "LOADING") {
+      setSpinning(false);
+      setPhase("loading");
+    } else if (state.status === "QUESTION_ACTIVE") {
+      setSpinning(false);
+      setPhase("question");
+    } else if (state.status === "RESOLVED") {
+      const resolutionKey = `${state.spinId}:${state.revision}`;
+      if (lastResolvedRevisionRef.current !== resolutionKey) {
+        lastResolvedRevisionRef.current = resolutionKey;
+        setHistory((current) =>
+          [`${state.targetIndex + 1}. kişi · ${state.category ?? ""} · tamamlandı`, ...current].slice(0, 3),
+        );
+        setRound((value) => value + 1);
+      }
+      setSpinning(false);
+      setPhase("idle");
+      setCategory(null);
+      setQuestion("");
+    }
+  }
+
   function returnToGames() {
     if (!launchContext) return;
+    if (roomIsHost && roomClientRef.current) {
+      void roomClientRef.current.returnToGameSelection().catch(() => undefined);
+      return;
+    }
     window.location.assign(
       buildPlatformGameSelectionUrl(
         spinTheBottleRuntimeConfig.platformUrl,
@@ -208,6 +316,11 @@ export default function Home() {
 
   function spinBottle() {
     if (spinning) return;
+    if (launchContext && roomClientRef.current) {
+      setSpinning(true);
+      void roomClientRef.current.requestSpin().catch(() => setSpinning(false));
+      return;
+    }
     const next = Math.floor(Math.random() * players.length);
     const extraTurns = 4 + Math.floor(Math.random() * 2);
     const normalized = ((rotation % 360) + 360) % 360;
@@ -225,12 +338,37 @@ export default function Home() {
   }
 
   function chooseCategory(nextCategory: Category) {
+    if (launchContext) {
+      if (!canControlSpinQuestion(spinState, launchContext.playerId) || !roomClientRef.current) return;
+      setQuestionActionPending(true);
+      void roomClientRef.current.chooseSpinCategory(nextCategory, spinState!.revision)
+        .catch(() => setQuestionActionPending(false));
+      return;
+    }
     setCategory(nextCategory);
     setPhase("confirm");
   }
 
+  function resetCategory() {
+    if (launchContext) {
+      if (!canControlSpinQuestion(spinState, launchContext.playerId) || !roomClientRef.current) return;
+      setQuestionActionPending(true);
+      void roomClientRef.current.resetSpinCategory(spinState!.revision)
+        .catch(() => setQuestionActionPending(false));
+      return;
+    }
+    setPhase("choice");
+  }
+
   function prepareQuestion() {
     if (!category) return;
+    if (launchContext) {
+      if (!canControlSpinQuestion(spinState, launchContext.playerId) || !roomClientRef.current) return;
+      setQuestionActionPending(true);
+      void roomClientRef.current.activateSpinQuestion(spinState!.revision)
+        .catch(() => setQuestionActionPending(false));
+      return;
+    }
     setPhase("loading");
     timerRef.current = setTimeout(() => {
       const pool = questions[category];
@@ -240,6 +378,14 @@ export default function Home() {
   }
 
   function finishTurn() {
+    if (launchContext) {
+      if (!canControlSpinQuestion(spinState, launchContext.playerId) ||
+          !roomClientRef.current || !spinState?.questionId) return;
+      setQuestionActionPending(true);
+      void roomClientRef.current.completeSpinQuestion(spinState.questionId, spinState.revision)
+        .catch(() => setQuestionActionPending(false));
+      return;
+    }
     if (selected !== null && category) {
       setHistory((current) =>
         [`${selected + 1}. kişi · ${category} · tamamlandı`, ...current].slice(0, 3),
@@ -249,6 +395,14 @@ export default function Home() {
     setCategory(null);
     setQuestion("");
     setRound((value) => value + 1);
+  }
+
+  function passQuestion() {
+    if (!launchContext || !canControlSpinQuestion(spinState, launchContext.playerId) ||
+        !roomClientRef.current || !spinState?.questionId) return;
+    setQuestionActionPending(true);
+    void roomClientRef.current.passSpinQuestion(spinState.questionId, spinState.revision)
+      .catch(() => setQuestionActionPending(false));
   }
 
   function sendReaction(kind: ReactionKind, label: string) {
@@ -278,8 +432,21 @@ export default function Home() {
       .catch(() => setSound(false));
   }
 
+  const isQuestionOwner = launchContext
+    ? canControlSpinQuestion(spinState, launchContext.playerId)
+    : true;
+  const questionOwnerName = spinState
+    ? players.find((player) => player.id === spinState.targetPlayerId)?.name ?? `${spinState.targetIndex + 1}. kişi`
+    : selected !== null
+      ? players[selected]?.name
+      : "";
+
   return (
-    <main className="game-shell">
+    <main
+      className="game-shell"
+      data-room-connection={connectionStatus}
+      data-game-session={launchContext?.gameSessionId}
+    >
       {/* Arka plan müziğinde konuşma olmadığı için altyazı parçası gerekmiyor. */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} src="/music/cat-song.wav" loop preload="metadata" />
@@ -293,6 +460,7 @@ export default function Home() {
           <span>ODA</span>
           <strong>{roomCode}</strong>
           <i />
+          {launchContext && <small>{connectionStatus}</small>}
         </div>
         <div className="topbar-actions">
           {launchContext && (
@@ -317,7 +485,7 @@ export default function Home() {
         <aside className="player-panel panel">
           <div className="panel-title">
             <span>OYUNCULAR</span>
-            <b>6 / 6</b>
+            <b>{players.length} / 6</b>
           </div>
           <div className="player-list">
             {players.map((player, index) => (
@@ -452,8 +620,16 @@ export default function Home() {
       </aside>
       {phase !== "idle" && selected !== null && (
         <div className="modal-backdrop" role="presentation">
-          <section className="challenge-card" role="dialog" aria-modal="true" aria-labelledby="challenge-title">
-            {phase !== "loading" && (
+          <section
+            className="challenge-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="challenge-title"
+            data-question-id={spinState?.questionId}
+            data-spin-revision={spinState?.revision}
+            data-question-owner={spinState?.targetPlayerId}
+          >
+            {phase !== "loading" && !launchContext && (
               <button
                 className="close-card"
                 type="button"
@@ -474,15 +650,17 @@ export default function Home() {
                 <p className="challenge-type">✦ {selected + 1}. KİŞİ SEÇİLDİ ✦</p>
                 <h2 id="challenge-title">İş mi Eğlence mi?</h2>
                 <p className="selection-note">
-                  {players[selected].name} için soru kategorisini seçin.
+                  {isQuestionOwner
+                    ? `${players[selected].name} için soru kategorisini seçin.`
+                    : `${questionOwnerName} seçim yapıyor...`}
                 </p>
                 <div className="category-actions">
-                  <button type="button" className="work-button" onClick={() => chooseCategory("İş")}>
+                  <button type="button" className="work-button" onClick={() => chooseCategory("İş")} disabled={!isQuestionOwner || questionActionPending}>
                     <span>▣</span>
                     <b>İŞ</b>
                     <small>Ekip & toplantı</small>
                   </button>
-                  <button type="button" className="fun-button" onClick={() => chooseCategory("Eğlence")}>
+                  <button type="button" className="fun-button" onClick={() => chooseCategory("Eğlence")} disabled={!isQuestionOwner || questionActionPending}>
                     <span>★</span>
                     <b>EĞLENCE</b>
                     <small>Keyifli & sürpriz</small>
@@ -497,15 +675,19 @@ export default function Home() {
                   ✦ {selected + 1}. KİŞİ · {category?.toUpperCase()} ✦
                 </p>
                 <h2 id="challenge-title">Seçim hazır!</h2>
-                <p className="challenge-text">Moderatör hazır olduğunda devam edebilir.</p>
-                <div className="card-actions">
-                  <button type="button" className="pass-button" onClick={() => setPhase("choice")}>
-                    GERİ
-                  </button>
-                  <button type="button" className="done-button" onClick={prepareQuestion}>
-                    DEVAM <span>▶</span>
-                  </button>
-                </div>
+                <p className="challenge-text">
+                  {isQuestionOwner ? "Moderatör hazır olduğunda devam edebilir." : `${questionOwnerName} için bekleniyor...`}
+                </p>
+                {isQuestionOwner && (
+                  <div className="card-actions">
+                    <button type="button" className="pass-button" onClick={resetCategory} disabled={questionActionPending}>
+                      GERİ
+                    </button>
+                    <button type="button" className="done-button" onClick={prepareQuestion} disabled={questionActionPending}>
+                      DEVAM <span>▶</span>
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
@@ -526,11 +708,20 @@ export default function Home() {
                 <p className="challenge-type">✦ {category?.toUpperCase()} SORUSU ✦</p>
                 <h2 id="challenge-title">{selected + 1}. Kişi için</h2>
                 <p className="challenge-text">“{question}”</p>
-                <div className="card-actions">
-                  <button type="button" className="done-button" onClick={finishTurn}>
-                    TAMAMLANDI <span>✓</span>
-                  </button>
-                </div>
+                {isQuestionOwner ? (
+                  <div className="card-actions">
+                    {launchContext && (
+                      <button type="button" className="pass-button" onClick={passQuestion} disabled={questionActionPending}>
+                        PAS
+                      </button>
+                    )}
+                    <button type="button" className="done-button" onClick={finishTurn} disabled={questionActionPending}>
+                      TAMAMLANDI <span>✓</span>
+                    </button>
+                  </div>
+                ) : (
+                  <p className="selection-note">{questionOwnerName} için bekleniyor...</p>
+                )}
               </>
             )}
           </section>

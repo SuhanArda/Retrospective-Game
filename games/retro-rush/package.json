@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@retro-platform/contracts": "0.1.0",
+    "@retro-platform/realtime-client": "0.1.0",
     "@vitejs/plugin-react": "^5.0.4",
     "phaser": "^3.90.0",
     "react": "^19.1.1",

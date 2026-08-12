@@ -9,7 +9,7 @@ import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
 import '../App.css'
 
-const CANDIDATE_IDS = gameRegistry.map((game) => game.id)
+const CANDIDATE_IDS = gameRegistry.filter((game) => game.status === 'available').map((game) => game.id)
 
 function RoomLobby() {
   const { roomCode = '' } = useParams()
@@ -19,6 +19,7 @@ function RoomLobby() {
   const [copied, setCopied] = useState(null)
   const me = roomService.getCurrentPlayer()
   const isHost = me?.isHost ?? false
+  const connectionStatus = roomService.getConnectionStatus()
 
   // Everyone follows the room's phase, not just the host who triggered it —
   // otherwise guests sit in the lobby while the vote runs without them.
@@ -82,9 +83,15 @@ function RoomLobby() {
         <div className="brand">{t('lobby.brand')}</div>
         <HighlightTitle className="title title-sm" prefix={`${room.roomName} `} highlight={`#${canonicalCode}`} animate={false} />
         <p className="subtitle">{t('lobby.waiting')}</p>
-        <div className="connection-status connected" role="status">
+        <div className={`connection-status ${connectionStatus}`} role="status">
           <span className="status-dot" />
-          {isMockMode ? t('lobby.mockStatus') : t('lobby.liveStatus')}
+          {isMockMode
+            ? t('lobby.mockStatus')
+            : connectionStatus === 'connected'
+              ? t('lobby.liveStatus')
+              : connectionStatus === 'disconnected'
+                ? t('lobby.disconnectedStatus')
+                : t('lobby.reconnectingStatus')}
         </div>
 
         <div className="card" style={{ marginTop: 20 }}>

@@ -65,6 +65,7 @@ describe('MockRoomService', () => {
 
       expect(room.status).toBe('GAME_SELECTION');
       expect(room.votes).toEqual({});
+      expect(room.votingStartedAt).toBe(1_000);
       expect(room.votingEndsAt).toBe(1_000 + 30 * 1000);
       expect(room.selectedGameId).toBeUndefined();
     });

@@ -7,7 +7,8 @@ This monorepo contains the entry platform and independently runnable retrospecti
 - `apps/retro-platform-web/` — the existing React/Vite Website, now the main create/join/lobby/game-selection application.
 - `games/retro-rush/` — the existing React/TypeScript/Vite/Phaser game. It remains an independent application.
 - `packages/platform-contracts/` — the small typed launch contract shared by the platform and games.
-- `services/` — reserved for the future ASP.NET Core room API and SignalR hubs.
+- `packages/realtime-client/` — shared SignalR connection, reconnect, and room/game event client.
+- `services/retrospective-server/` — ASP.NET Core room and game-session authority.
 - `packages/` — shared frontend/domain boundaries that have multiple real consumers.
 - `docs/` — repository-wide architecture and integration documentation.
 
@@ -17,13 +18,15 @@ Use a current Node.js LTS release and run from the repository root:
 
 ```bash
 npm install
-npm run dev
+npm run dev:all
 ```
 
 The combined command starts:
 
 - Platform Website: <http://localhost:5173>
 - Retro Rush: <http://localhost:5174>
+- Spin the Bottle: <http://localhost:5175>
+- Room server: <http://localhost:5281>
 
 The applications can also be started separately:
 
@@ -56,6 +59,6 @@ VITE_PLATFORM_URL=http://localhost:5173
 
 Production may instead use paths such as `/games/retro-rush/`.
 
-## Mock room limitation
+## Multiplayer
 
-`MockRoomService` is for frontend development. Room snapshots use localStorage and same-origin tab updates use BroadcastChannel, so they do not synchronize separate browsers, devices, or users on different computers. ASP.NET Core and SignalR must replace this authority for production. See [Platform/game integration](docs/platform-game-integration.md).
+The real room server is the default. `MockRoomService` remains an explicit `VITE_ROOM_SERVICE=mock` fallback for isolated frontend work and cannot synchronize separate browsers or devices. See [Online multiplayer foundation](docs/online-multiplayer.md) for architecture, security, lifecycle, and LAN setup.
