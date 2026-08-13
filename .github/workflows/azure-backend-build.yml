@@ -1,0 +1,28 @@
+name: Azure readiness - Realtime Backend
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "services/retrospective-server/**"
+      - "services/retrospective-server.Tests/**"
+      - ".github/workflows/azure-backend-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test services/retrospective-server.Tests --configuration Release
+      - run: dotnet publish services/retrospective-server --configuration Release --output artifacts/retrospective-server
+      - uses: actions/upload-artifact@v7
+        with:
+          name: retrospective-server-app-service
+          path: artifacts/retrospective-server
+

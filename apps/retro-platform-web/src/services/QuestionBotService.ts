@@ -11,8 +11,9 @@ interface RoomQuestionSet {
 }
 
 const questionBotUrl = typeof import.meta.env.VITE_AI_BOT_URL === "string"
+  && import.meta.env.VITE_AI_BOT_URL
   ? import.meta.env.VITE_AI_BOT_URL
-  : "http://localhost:3002";
+  : (() => { throw new Error("Missing required build-time environment variable: VITE_AI_BOT_URL"); })();
 
 export async function prepareRoomQuestions(input: {
   roomCode: string;

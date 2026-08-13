@@ -11,6 +11,18 @@ const maximumBodySize = 32_768;
 const roomRoute = /^\/rooms\/([A-Z0-9]{6})\/questions$/;
 const closeRoomRoute = /^\/rooms\/([A-Z0-9]{6})$/;
 
+function applyCors(request: IncomingMessage, response: ServerResponse): void {
+  const requestOrigin = request.headers.origin;
+  if (config.allowedOrigins === "*") {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (requestOrigin && config.allowedOrigins.includes(requestOrigin)) {
+    response.setHeader("Access-Control-Allow-Origin", requestOrigin);
+    response.setHeader("Vary", "Origin");
+  }
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Internal-Service-Key");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+}
+
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
@@ -46,9 +58,7 @@ async function produce(requestData: ReturnType<typeof validateGenerateQuestionsR
 }
 
 const server = createServer(async (request, response) => {
-  response.setHeader("Access-Control-Allow-Origin", config.allowedOrigin);
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Internal-Service-Key");
-  response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  applyCors(request, response);
 
   if (request.method === "OPTIONS") {
     response.writeHead(204);
@@ -64,7 +74,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  const url = new URL(request.url ?? "/", "http://localhost");
+  const url = new URL(request.url ?? "/", "http://request.invalid");
   const roomMatch = roomRoute.exec(url.pathname);
   const closeMatch = closeRoomRoute.exec(url.pathname);
 
@@ -112,5 +122,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(config.port, () => {
-  console.log(`AI bot http://localhost:${config.port} adresinde ${config.questionProvider} modunda çalışıyor.`);
+  console.log(`AI bot is listening on port ${config.port} in ${config.questionProvider} mode.`);
 });

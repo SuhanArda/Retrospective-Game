@@ -7,8 +7,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "tsx --env-file=.env watch src/server.ts",
-    "start": "node --env-file=.env dist/server.js",
+    "dev": "tsx --env-file-if-exists=.env watch src/server.ts",
+    "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test src/**/*.test.ts"
