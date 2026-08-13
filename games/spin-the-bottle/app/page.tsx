@@ -178,7 +178,7 @@ export default function Home() {
   }, [botQuestions]);
 
   useEffect(() => {
-    if (!launchContext?.roomCode) return;
+    if (!launchContext?.roomCode || !spinTheBottleRuntimeConfig.aiBotUrl) return;
     let cancelled = false;
     loadRoomQuestions(spinTheBottleRuntimeConfig.aiBotUrl, launchContext.roomCode)
       .then((loaded) => { if (!cancelled) setBotQuestions(loaded); })
@@ -317,7 +317,10 @@ export default function Home() {
   function returnToGames() {
     if (!launchContext) return;
     if (roomIsHost && roomClientRef.current) {
-      void deleteRoomQuestions(spinTheBottleRuntimeConfig.aiBotUrl, launchContext.roomCode)
+      const deleteQuestions = spinTheBottleRuntimeConfig.aiBotUrl
+        ? deleteRoomQuestions(spinTheBottleRuntimeConfig.aiBotUrl, launchContext.roomCode)
+        : Promise.resolve();
+      void deleteQuestions
         .catch(() => undefined)
         .finally(() => roomClientRef.current?.returnToGameSelection().catch(() => undefined));
       return;

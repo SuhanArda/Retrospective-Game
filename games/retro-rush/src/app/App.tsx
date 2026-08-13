@@ -44,6 +44,10 @@ export function App() {
       setSessionQuestions(retroQuestions);
       return;
     }
+    if (!runtimeConfig.aiBotUrl) {
+      setSessionQuestions(retroQuestions);
+      return;
+    }
     let cancelled = false;
     loadRoomQuestions(runtimeConfig.aiBotUrl, launchContext.roomCode)
       .then((questions) => { if (!cancelled) setSessionQuestions(questions.length > 0 ? questions : retroQuestions); })
@@ -83,7 +87,10 @@ export function App() {
   const returnToGames = () => {
     if (!launchContext) return;
     if (roomIsHost && roomClient) {
-      void deleteRoomQuestions(runtimeConfig.aiBotUrl, roomCode)
+      const deleteQuestions = runtimeConfig.aiBotUrl
+        ? deleteRoomQuestions(runtimeConfig.aiBotUrl, roomCode)
+        : Promise.resolve();
+      void deleteQuestions
         .catch(() => undefined)
         .finally(() => roomClient.returnToGameSelection().catch(() => setAnnouncement('Oyunlara yalnızca mevcut oda yöneticisi dönebilir.')));
       return;

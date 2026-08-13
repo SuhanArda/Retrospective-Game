@@ -13,7 +13,12 @@ interface RoomQuestionSet {
 const questionBotUrl = typeof import.meta.env.VITE_AI_BOT_URL === "string"
   && import.meta.env.VITE_AI_BOT_URL
   ? import.meta.env.VITE_AI_BOT_URL
-  : (() => { throw new Error("Missing required build-time environment variable: VITE_AI_BOT_URL"); })();
+  : null;
+
+function requireQuestionBotUrl(): string {
+  if (!questionBotUrl) throw new Error("QUESTION_BOT_UNAVAILABLE");
+  return questionBotUrl;
+}
 
 export async function prepareRoomQuestions(input: {
   roomCode: string;
@@ -22,7 +27,7 @@ export async function prepareRoomQuestions(input: {
   contextPrompt?: string;
   reportText?: string;
 }): Promise<RoomQuestionSet> {
-  const response = await fetch(`${questionBotUrl}/rooms/${encodeURIComponent(input.roomCode)}/questions`, {
+  const response = await fetch(`${requireQuestionBotUrl()}/rooms/${encodeURIComponent(input.roomCode)}/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -44,7 +49,7 @@ export async function prepareRoomQuestions(input: {
 }
 
 export async function roomQuestionsAreReady(roomCode: string, gameId: string): Promise<boolean> {
-  const response = await fetch(`${questionBotUrl}/rooms/${encodeURIComponent(roomCode)}/questions`);
+  const response = await fetch(`${requireQuestionBotUrl()}/rooms/${encodeURIComponent(roomCode)}/questions`);
   if (response.status === 404) return false;
   if (!response.ok) throw new Error("QUESTION_BOT_UNAVAILABLE");
   const result = await response.json() as RoomQuestionSet;
