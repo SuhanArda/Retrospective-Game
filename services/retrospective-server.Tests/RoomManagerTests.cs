@@ -225,10 +225,7 @@ public sealed class RoomManagerTests
         Assert.Equal("CHOICE", choice.Status);
         Assert.Throws<RoomException>(() => manager.ChooseSpinCategory("host", "\u0130\u015F", choice.Revision));
 
-        var confirm = manager.ChooseSpinCategory("target", "\u0130\u015F", choice.Revision).SpinBottleState!;
-        manager.ActivateSpinQuestion("target", confirm.Revision);
-        clock.Advance(TimeSpan.FromMilliseconds(1800));
-        var active = Assert.Single(manager.AdvanceTimedStates()).Snapshot.SpinBottleState!;
+        var active = manager.ChooseSpinCategory("target", "\u0130\u015F", choice.Revision).SpinBottleState!;
         Assert.Equal("QUESTION_ACTIVE", active.Status);
         Assert.NotNull(active.QuestionId);
         Assert.NotNull(active.QuestionText);

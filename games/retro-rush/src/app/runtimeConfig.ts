@@ -4,6 +4,7 @@ export interface RuntimeConfig {
   transportMode: 'mock' | 'signalr';
   platformUrl: string;
   roomApiUrl: string;
+  aiBotUrl: string;
 }
 
 export function parseRuntimeConfig(env: Record<string, string | boolean | undefined>): RuntimeConfig {
@@ -12,6 +13,7 @@ export function parseRuntimeConfig(env: Record<string, string | boolean | undefi
     transportMode: requestedMode === 'signalr' ? 'signalr' : 'mock',
     platformUrl: typeof env.VITE_PLATFORM_URL === 'string' && env.VITE_PLATFORM_URL ? env.VITE_PLATFORM_URL : 'http://localhost:5173',
     roomApiUrl: typeof env.VITE_API_URL === 'string' && env.VITE_API_URL ? env.VITE_API_URL : 'http://localhost:5281',
+    aiBotUrl: typeof env.VITE_AI_BOT_URL === 'string' && env.VITE_AI_BOT_URL ? env.VITE_AI_BOT_URL : 'http://localhost:3002',
     ...(typeof env.VITE_API_BASE_URL === 'string' && env.VITE_API_BASE_URL ? { apiBaseUrl: env.VITE_API_BASE_URL } : {}),
     ...(typeof env.VITE_HUB_URL === 'string' && env.VITE_HUB_URL ? { hubUrl: env.VITE_HUB_URL } : {}),
   };

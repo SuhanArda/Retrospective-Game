@@ -27,6 +27,7 @@ The combined command starts:
 - Retro Rush: <http://localhost:5174>
 - Spin the Bottle: <http://localhost:5175>
 - Room server: <http://localhost:5281>
+- Demo AI question service: <http://localhost:3002>
 
 The applications can also be started separately:
 

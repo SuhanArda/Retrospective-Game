@@ -9,6 +9,7 @@ export const SPIN_THE_BOTTLE_GAME_ID = "spin-the-bottle";
 export interface SpinTheBottleRuntimeConfig {
   platformUrl: string;
   apiUrl: string;
+  aiBotUrl: string;
 }
 
 export function parseSpinTheBottleRuntimeConfig(
@@ -23,6 +24,10 @@ export function parseSpinTheBottleRuntimeConfig(
       typeof env.VITE_API_URL === "string" && env.VITE_API_URL
         ? env.VITE_API_URL
         : "http://localhost:5281",
+    aiBotUrl:
+      typeof env.VITE_AI_BOT_URL === "string" && env.VITE_AI_BOT_URL
+        ? env.VITE_AI_BOT_URL
+        : "http://localhost:3002",
   };
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { roomService } from '../services/roomServiceInstance'
+import { saveRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
@@ -16,8 +17,10 @@ function CreateRoom() {
   const [maxParticipants, setMaxParticipants] = useState('10')
   const [questionTime, setQuestionTime] = useState(30)
   const [votingTime, setVotingTime] = useState(30)
-  const [file, setFile] = useState(null)
-  const [description, setDescription] = useState('')
+  const [contextPrompt, setContextPrompt] = useState('')
+  const [reportFile, setReportFile] = useState(null)
+  const [reportText, setReportText] = useState('')
+  const [questionStyle, setQuestionStyle] = useState('dengeli')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -45,11 +48,28 @@ function CreateRoom() {
       maxParticipants: Number(maxParticipants),
       questionTimeSeconds: questionTime,
       votingTimeSeconds: votingTime,
-      ...(file?.name ? { fileName: file.name } : {}),
-      ...(description.trim() ? { description: description.trim() } : {}),
+    })
+    saveRoomQuestionDraft(room.code, {
+      contextPrompt: contextPrompt.trim(),
+      reportText,
+      reportFileName: reportFile?.name ?? null,
+      style: questionStyle,
     })
     setSubmitting(false)
     navigate(`/room/${room.code}`)
+  }
+
+  async function handleReportChange(event) {
+    const selectedFile = event.target.files?.[0] ?? null
+    setReportFile(selectedFile)
+    setReportText('')
+    if (!selectedFile) return
+    try {
+      setReportText((await selectedFile.text()).slice(0, 18000))
+    } catch {
+      setReportFile(null)
+      setErrors((current) => ({ ...current, report: 'Rapor okunamadı. Metin tabanlı bir dosya seç.' }))
+    }
   }
 
   return (
@@ -109,20 +129,27 @@ function CreateRoom() {
           </div>
 
           <div className="field">
-            <label htmlFor="report">{t('createRoom.fileLabel')}</label>
-            <label className={`file-drop${file ? ' has-file' : ''}`} htmlFor="report">
-              <span className="file-drop-content">{file ? file.name : t('createRoom.filePlaceholder')}</span>
-              <input id="report" type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-            </label>
-            <span className="helper-text">{t('createRoom.fileHelper')}</span>
+            <label htmlFor="roomPrompt">Kısa prompt (opsiyonel)</label>
+            <textarea id="roomPrompt" className="input textarea" value={contextPrompt} onChange={(event) => setContextPrompt(event.target.value)} maxLength={1000} rows={3} placeholder="Örn. Son sprintte yaşanan iletişim sorunlarına odaklan." />
           </div>
 
-          <div className="or-divider"><span>{t('createRoom.orDivider')}</span></div>
+          <div className="field">
+            <label htmlFor="roomReport">Rapor (opsiyonel)</label>
+            <label className={`file-drop${reportFile ? ' has-file' : ''}`} htmlFor="roomReport">
+              <span className="file-drop-content">{reportFile ? reportFile.name : 'TXT, MD, CSV veya JSON dosyası seç'}</span>
+              <input id="roomReport" type="file" accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" onChange={handleReportChange} />
+            </label>
+            <span className="helper-text">İçerik oda verisine yazılmaz; yalnızca moderatörün tarayıcı belleğinde geçici tutulur.</span>
+            {errors.report && <span className="error-text">{errors.report}</span>}
+          </div>
 
           <div className="field">
-            <label htmlFor="description">{t('createRoom.descriptionLabel')}</label>
-            <textarea id="description" className="input textarea" placeholder={t('createRoom.descriptionPlaceholder')} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={3} />
-            <span className="helper-text">{t('createRoom.descriptionHelper')}</span>
+            <label htmlFor="questionStyle">Soru kategorisi</label>
+            <select id="questionStyle" className="select" value={questionStyle} onChange={(event) => setQuestionStyle(event.target.value)}>
+              <option value="dengeli">Dengeli</option>
+              <option value="eğlendirici">Eğlendirici</option>
+              <option value="düşündürücü">Düşündürücü</option>
+            </select>
           </div>
 
           <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>

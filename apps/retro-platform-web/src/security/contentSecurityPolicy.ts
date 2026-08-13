@@ -5,7 +5,10 @@
  * scheme, which browsers treat separately from http — because the API lives on
  * a different origin to the site. Everything else stays locked to 'self'.
  */
-export function buildContentSecurityPolicy(apiUrl: string | undefined): string {
+export function buildContentSecurityPolicy(
+  apiUrl: string | undefined,
+  questionBotUrl?: string,
+): string {
   const connectSources = new Set(["'self'"]);
 
   if (apiUrl) {
@@ -16,6 +19,14 @@ export function buildContentSecurityPolicy(apiUrl: string | undefined): string {
     } catch {
       // A malformed URL must not silently widen the policy; leave it at 'self'
       // so the failure shows up as a blocked request rather than a hole.
+    }
+  }
+
+  if (questionBotUrl) {
+    try {
+      connectSources.add(new URL(questionBotUrl).origin);
+    } catch {
+      // Keep malformed optional service URLs out of the policy.
     }
   }
 
