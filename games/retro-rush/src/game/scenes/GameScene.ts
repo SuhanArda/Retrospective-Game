@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { gameplayConfig } from '../../data/gameplayConfig';
 import { retroQuestions } from '../../data/retroQuestions';
-import type { AbilityId, MatchSnapshot, PlayerSnapshot, PlayerState, Point } from '../../domain/types';
+import type { AbilityId, MatchSnapshot, PlayerSnapshot, PlayerState, Point, RetroQuestion } from '../../domain/types';
 import { transitionPlayer } from '../../domain/types';
 import { isBehindCamera, isEligibleTarget } from '../../domain/rules';
 import type { GameEventBridge } from '../../bridge/GameEventBridge';
@@ -120,7 +120,7 @@ export class GameScene extends Phaser.Scene {
   private networkSnapshotsSent = 0;
   private networkSnapshotsReceived = 0;
 
-  constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport) {
+  constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport, private readonly questionPool: readonly RetroQuestion[] = retroQuestions) {
     super({ key: 'GameScene' });
   }
 
@@ -805,7 +805,8 @@ export class GameScene extends Phaser.Scene {
     player.sprite.disableBody(true, true); player.label.setVisible(false);
     if (player.snapshot.isLocal) {
       this.setPlayerState(player, 'ANSWERING_QUESTION');
-      const question = retroQuestions[this.questionIndex++ % retroQuestions.length]!;
+      const questions = this.questionPool.length > 0 ? this.questionPool : retroQuestions;
+      const question = questions[this.questionIndex++ % questions.length]!;
       this.activeQuestionId = question.id;
       this.bridge.emit('questionOpened', { ...question, canConfirm: true });
       this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');

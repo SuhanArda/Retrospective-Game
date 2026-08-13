@@ -16,6 +16,7 @@
     "dev:spin-the-bottle": "npm --workspace games/spin-the-bottle run dev -- --port 5175 --strictPort",
     "dev:api": "dotnet run --project services/retro-platform-api --urls http://localhost:5280",
     "dev:server": "dotnet run --project services/retrospective-server --urls http://localhost:5281",
+    "dev:ai-bot": "npm --prefix ai-bot start",
     "build": "npm run build:web && npm run build:retro-rush && npm run build:spin-the-bottle",
     "build:web": "npm --workspace apps/retro-platform-web run build",
     "build:retro-rush": "npm --workspace games/retro-rush run build",

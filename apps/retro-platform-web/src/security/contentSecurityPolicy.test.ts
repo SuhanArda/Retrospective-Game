@@ -15,6 +15,13 @@ describe('buildContentSecurityPolicy', () => {
     expect(connectSrc(policy)).toBe("connect-src 'self' http://localhost:5280 ws://localhost:5280");
   });
 
+  it('allows the question bot origin without opening a websocket origin', () => {
+    const policy = buildContentSecurityPolicy('http://localhost:5281', 'http://localhost:3002/api');
+    expect(connectSrc(policy)).toBe(
+      "connect-src 'self' http://localhost:5281 ws://localhost:5281 http://localhost:3002",
+    );
+  });
+
   it('uses wss for an https API', () => {
     const policy = buildContentSecurityPolicy('https://api.example.com');
     expect(connectSrc(policy)).toContain('wss://api.example.com');

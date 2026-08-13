@@ -4,7 +4,7 @@ import { GameEventBridge } from '../bridge/GameEventBridge';
 import { MockGameTransport } from '../networking/MockGameTransport';
 import { SignalRGameTransport } from '../networking/SignalRGameTransport';
 import { buildPlatformGameSelectionUrl, runtimeConfig } from './runtimeConfig';
-import type { ConnectionStatus, MatchSnapshot, PresentedRetroQuestion } from '../domain/types';
+import type { ConnectionStatus, MatchSnapshot, PresentedRetroQuestion, RetroQuestion } from '../domain/types';
 import { Hud } from '../ui/Hud';
 import { QuestionOverlay } from '../ui/QuestionOverlay';
 import { TargetSelection } from '../ui/TargetSelection';
@@ -13,6 +13,8 @@ import { BackToGamesButton } from '../ui/BackToGamesButton';
 import { consumeGameHandoff, resolveGameLaunchContext } from '@retro-platform/contracts';
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels';
+import { retroQuestions } from '../data/retroQuestions';
+import { deleteRoomQuestions, loadRoomQuestions } from '../data/roomQuestions';
 
 const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, cooldowns: { speed: 0, rocket: 0, ask: 0 } };
 
@@ -35,6 +37,19 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(false);
   const [authoritativeMapSeed, setAuthoritativeMapSeed] = useState<number | null>(null);
+  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[] | null>(null);
+
+  useEffect(() => {
+    if (!launchContext?.roomCode) {
+      setSessionQuestions(retroQuestions);
+      return;
+    }
+    let cancelled = false;
+    loadRoomQuestions(runtimeConfig.aiBotUrl, launchContext.roomCode)
+      .then((questions) => { if (!cancelled) setSessionQuestions(questions.length > 0 ? questions : retroQuestions); })
+      .catch(() => { if (!cancelled) setSessionQuestions(retroQuestions); });
+    return () => { cancelled = true; };
+  }, [launchContext]);
 
   useEffect(() => {
     const disposers = [
@@ -68,7 +83,9 @@ export function App() {
   const returnToGames = () => {
     if (!launchContext) return;
     if (roomIsHost && roomClient) {
-      void roomClient.returnToGameSelection().catch(() => setAnnouncement('Oyunlara yalnızca mevcut oda yöneticisi dönebilir.'));
+      void deleteRoomQuestions(runtimeConfig.aiBotUrl, roomCode)
+        .catch(() => undefined)
+        .finally(() => roomClient.returnToGameSelection().catch(() => setAnnouncement('Oyunlara yalnızca mevcut oda yöneticisi dönebilir.')));
       return;
     }
     window.location.assign(buildPlatformGameSelectionUrl(runtimeConfig.platformUrl, roomCode, window.location.origin));
@@ -76,7 +93,7 @@ export function App() {
 
   const toggleMute = () => { const next = !muted; setMuted(next); bridge.emit('audioMuted', { muted: next }); };
   return <main className="app-shell" data-map-seed={authoritativeMapSeed ?? undefined}>
-    <GameCanvas bridge={bridge} transport={transport} />
+    {sessionQuestions && <GameCanvas bridge={bridge} transport={transport} questions={sessionQuestions} />}
     <Hud snapshot={snapshot} muted={muted} onMute={toggleMute} onAbility={(abilityId) => bridge.emit('abilityRequested', { abilityId })} />
     {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
     {snapshot.state === 'WAITING' && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}

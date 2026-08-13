@@ -7,11 +7,14 @@ import { buildContentSecurityPolicy } from './src/security/contentSecurityPolicy
  * than a constant, so it is stamped into index.html at build time instead of
  * being hard-coded there.
  */
-function contentSecurityPolicy(apiUrl) {
+function contentSecurityPolicy(apiUrl, questionBotUrl) {
   return {
     name: 'inject-content-security-policy',
     transformIndexHtml(html) {
-      return html.replace('%CONTENT_SECURITY_POLICY%', buildContentSecurityPolicy(apiUrl))
+      return html.replace(
+        '%CONTENT_SECURITY_POLICY%',
+        buildContentSecurityPolicy(apiUrl, questionBotUrl),
+      )
     },
   }
 }
@@ -23,6 +26,12 @@ export default defineConfig(({ mode }) => {
   // browser code.
   const env = loadEnv(mode, import.meta.dirname, '')
   return {
-    plugins: [react(), contentSecurityPolicy(env.VITE_API_URL || 'http://localhost:5281')],
+    plugins: [
+      react(),
+      contentSecurityPolicy(
+        env.VITE_API_URL || 'http://localhost:5281',
+        env.VITE_AI_BOT_URL || 'http://localhost:3002',
+      ),
+    ],
   }
 })

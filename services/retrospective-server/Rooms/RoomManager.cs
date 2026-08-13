@@ -201,7 +201,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             var state = AuthorizeSpinAction(room, player, expectedRevision, "CHOICE");
             if (!SpinQuestions.ContainsKey(category)) throw new RoomException("INVALID_QUESTION_CATEGORY");
             state.Category = category;
-            AdvanceSpinState(state, "CONFIRM");
+            SetQuestion(state, exceptQuestionId: null);
+            AdvanceSpinState(state, "QUESTION_ACTIVE");
             return Snapshot(room);
         }
     }
