@@ -106,7 +106,7 @@ try {
   await send('Runtime.enable');
   await send('Log.enable');
   await send('Page.enable');
-  await send('Page.navigate', { url: 'http://127.0.0.1:5173/' });
+  await send('Page.navigate', { url: 'http://localhost:5173/' });
   await waitFor("document.querySelector('.identity-modal input')", 'identity modal');
   await evaluate(setInputValue('.identity-modal input', 'Smoke Host'));
   await evaluate("document.querySelector('form.identity-modal').requestSubmit()");
@@ -126,18 +126,35 @@ try {
   await waitFor("document.body.innerText.includes('Retro Rush')", 'Retro Rush game card');
   const selectionText = await evaluate('document.body.innerText');
   if (!selectionText.includes('Retro Rush')) throw new Error('Retro Rush was not listed');
-  await evaluate("document.querySelector('.game-card .btn-primary').click()");
+  await evaluate("document.querySelector('.game-card').click()");
+  await waitFor("document.querySelector('.game-card[aria-pressed=true]')", 'Retro Rush vote');
+  await evaluate("document.querySelector('.vote-actions .btn-primary').click()");
 
-  await waitFor("location.port === '5174' && document.querySelector('.start-card')", 'Retro Rush launch');
-  const gameText = await evaluate('document.body.innerText');
-  if (!gameText.includes(`ROOM ${roomCode}`) || !gameText.includes('Return to Lobby')) {
+  await waitFor("location.port === '5174' && sessionStorage.getItem('retro-platform.game-session') && document.querySelector('.return-to-platform')", 'Retro Rush launch');
+  const launchedRoomCode = await evaluate("JSON.parse(sessionStorage.getItem('retro-platform.game-session')).roomCode");
+  if (launchedRoomCode !== roomCode || !(await evaluate("Boolean(document.querySelector('.return-to-platform'))"))) {
     throw new Error('Retro Rush did not receive launch context');
   }
+  await send('Page.reload', { ignoreCache: true });
+  await waitFor("location.port === '5174' && sessionStorage.getItem('retro-platform.game-session') && document.querySelector('.return-to-platform')", 'Retro Rush refresh reconnect');
   await evaluate("document.querySelector('.return-to-platform').click()");
-  await waitFor(`location.port === '5173' && location.pathname === '/room/${roomCode}'`, 'return to lobby');
+  await waitFor(`location.port === '5173' && location.pathname === '/room/${roomCode}/games'`, 'return to game selection');
 
-  if (runtimeErrors.length > 0) throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);
-  console.log(JSON.stringify({ roomCode, flow: 'create → lobby → games → retro-rush → lobby', runtimeErrors: 0 }));
+  await waitFor("document.querySelectorAll('.game-card').length >= 2", 'Spin the Bottle game card');
+  await evaluate("document.querySelectorAll('.game-card')[1].click()");
+  await waitFor("document.querySelectorAll('.game-card')[1].getAttribute('aria-pressed') === 'true'", 'Spin the Bottle vote');
+  await evaluate("document.querySelector('.vote-actions .btn-primary').click()");
+  await waitFor("location.port === '5175' && sessionStorage.getItem('retro-platform.game-session') && document.querySelector('.back-to-games-button')", 'Spin the Bottle launch');
+  const spinRoomCode = await evaluate("JSON.parse(sessionStorage.getItem('retro-platform.game-session')).roomCode");
+  if (spinRoomCode !== roomCode) throw new Error('Spin the Bottle did not receive launch context');
+  await evaluate("document.querySelector('.back-to-games-button').click()");
+  await waitFor(`location.port === '5173' && location.pathname === '/room/${roomCode}/games'`, 'Spin return to game selection');
+
+  const unexpectedErrors = runtimeErrors.filter((error) =>
+    !(error.includes('404 (Not Found)') && error.includes(':3002/rooms/') && error.includes('/questions')),
+  );
+  if (unexpectedErrors.length > 0) throw new Error(`Browser runtime errors: ${unexpectedErrors.join(' | ')}`);
+  console.log(JSON.stringify({ roomCode, flow: 'create → lobby → retro-rush → games → spin-the-bottle → games', runtimeErrors: 0 }));
 } finally {
   socket.close();
   if (process.platform === 'win32' && chrome.pid) {

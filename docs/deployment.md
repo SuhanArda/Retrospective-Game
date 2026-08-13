@@ -1,5 +1,7 @@
 # Deployment
 
+> **Legacy note:** this document describes the older `services/retro-platform-api` deployment experiment. It is not the current Azure target. Use [Azure deployment readiness](AZURE_DEPLOYMENT.md) for the `services/retrospective-server` architecture and production commands. Nothing in either document performs a deployment.
+
 Two things get deployed separately: the room API (a long-running service) and
 the web app (static files). The game, `games/retro-rush`, is also static and
 follows the same pattern as the web app.

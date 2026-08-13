@@ -25,13 +25,30 @@ export default defineConfig(({ mode }) => {
   // from, and avoids reaching for Node globals in a config ESLint lints as
   // browser code.
   const env = loadEnv(mode, import.meta.dirname, '')
+  const publicValue = (name, developmentValue) => {
+    const value = env[name] || (mode !== 'production' ? developmentValue : '')
+    if (mode === 'production' && value) {
+      try {
+        if (new URL(value).protocol !== 'https:') throw new Error()
+      } catch {
+        throw new Error(`${name} must be an absolute HTTPS URL for a production build`)
+      }
+    }
+    return JSON.stringify(value)
+  }
   return {
     plugins: [
       react(),
       contentSecurityPolicy(
-        env.VITE_API_URL || 'http://localhost:5281',
-        env.VITE_AI_BOT_URL || 'http://localhost:3002',
+        env.VITE_API_URL || (mode !== 'production' ? 'http://localhost:5281' : undefined),
+        env.VITE_AI_BOT_URL || (mode !== 'production' ? 'http://localhost:3002' : undefined),
       ),
     ],
+    define: {
+      'import.meta.env.VITE_API_URL': publicValue('VITE_API_URL', 'http://localhost:5281'),
+      'import.meta.env.VITE_AI_BOT_URL': publicValue('VITE_AI_BOT_URL', 'http://localhost:3002'),
+      'import.meta.env.VITE_RETRO_RUSH_URL': publicValue('VITE_RETRO_RUSH_URL', 'http://localhost:5174'),
+      'import.meta.env.VITE_SPIN_THE_BOTTLE_URL': publicValue('VITE_SPIN_THE_BOTTLE_URL', 'http://localhost:5175'),
+    },
   }
 })

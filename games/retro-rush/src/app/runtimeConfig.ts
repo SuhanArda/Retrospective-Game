@@ -4,16 +4,23 @@ export interface RuntimeConfig {
   transportMode: 'mock' | 'signalr';
   platformUrl: string;
   roomApiUrl: string;
-  aiBotUrl: string;
+  aiBotUrl: string | null;
 }
 
-export function parseRuntimeConfig(env: Record<string, string | boolean | undefined>): RuntimeConfig {
+export function parseRuntimeConfig(
+  env: Record<string, string | boolean | undefined>,
+): RuntimeConfig {
   const requestedMode = env.VITE_TRANSPORT_MODE;
+  const requiredUrl = (name: string): string => {
+    const value = env[name];
+    if (typeof value === 'string' && value) return value;
+    throw new Error(`Missing required build-time environment variable: ${name}`);
+  };
   return {
     transportMode: requestedMode === 'signalr' ? 'signalr' : 'mock',
-    platformUrl: typeof env.VITE_PLATFORM_URL === 'string' && env.VITE_PLATFORM_URL ? env.VITE_PLATFORM_URL : 'http://localhost:5173',
-    roomApiUrl: typeof env.VITE_API_URL === 'string' && env.VITE_API_URL ? env.VITE_API_URL : 'http://localhost:5281',
-    aiBotUrl: typeof env.VITE_AI_BOT_URL === 'string' && env.VITE_AI_BOT_URL ? env.VITE_AI_BOT_URL : 'http://localhost:3002',
+    platformUrl: requiredUrl('VITE_PLATFORM_URL'),
+    roomApiUrl: requiredUrl('VITE_API_URL'),
+    aiBotUrl: typeof env.VITE_AI_BOT_URL === 'string' && env.VITE_AI_BOT_URL ? env.VITE_AI_BOT_URL : null,
     ...(typeof env.VITE_API_BASE_URL === 'string' && env.VITE_API_BASE_URL ? { apiBaseUrl: env.VITE_API_BASE_URL } : {}),
     ...(typeof env.VITE_HUB_URL === 'string' && env.VITE_HUB_URL ? { hubUrl: env.VITE_HUB_URL } : {}),
   };

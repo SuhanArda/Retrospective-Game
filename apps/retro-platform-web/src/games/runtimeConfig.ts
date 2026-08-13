@@ -6,15 +6,15 @@ export interface GameRuntimeConfig {
 export function parseGameRuntimeConfig(
   env: Record<string, string | boolean | undefined>,
 ): GameRuntimeConfig {
+  const requiredUrl = (name: string): string => {
+    const value = env[name];
+    if (typeof value === 'string' && value) return value;
+    throw new Error(`Missing required build-time environment variable: ${name}`);
+  };
+
   return {
-    retroRushUrl:
-      typeof env.VITE_RETRO_RUSH_URL === 'string' && env.VITE_RETRO_RUSH_URL
-        ? env.VITE_RETRO_RUSH_URL
-        : 'http://localhost:5174',
-    spinTheBottleUrl:
-      typeof env.VITE_SPIN_THE_BOTTLE_URL === 'string' && env.VITE_SPIN_THE_BOTTLE_URL
-        ? env.VITE_SPIN_THE_BOTTLE_URL
-        : 'http://localhost:5175',
+    retroRushUrl: requiredUrl('VITE_RETRO_RUSH_URL'),
+    spinTheBottleUrl: requiredUrl('VITE_SPIN_THE_BOTTLE_URL'),
   };
 }
 

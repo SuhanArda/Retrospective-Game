@@ -63,3 +63,7 @@ Production may instead use paths such as `/games/retro-rush/`.
 ## Multiplayer
 
 The real room server is the default. `MockRoomService` remains an explicit `VITE_ROOM_SERVICE=mock` fallback for isolated frontend work and cannot synchronize separate browsers or devices. See [Online multiplayer foundation](docs/online-multiplayer.md) for architecture, security, lifecycle, and LAN setup.
+
+## Azure deployment readiness
+
+The planned public architecture, build outputs, environment/App Service settings, startup commands, CORS/SignalR strategy, CI artifacts, deployment order, and current blockers are documented in [Azure deployment readiness](docs/AZURE_DEPLOYMENT.md). The runbook does not create or deploy Azure resources.
