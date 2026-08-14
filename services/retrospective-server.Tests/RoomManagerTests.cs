@@ -226,6 +226,81 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void RouletteStateIsAuthoritativeHiddenAndGatedByHolderAndTarget()
+    {
+        // FixedRoomRandom(0) always answers 0, so chamber pointer and bullet
+        // chamber land on the same slot — the very first shot is a guaranteed
+        // hit, which is exactly what this test needs to exercise the hit path.
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var target = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, target.PlayerId, target.ReconnectToken, "target");
+        manager.BeginGameSelection("host", ["rus-ruleti"]);
+        manager.CastVote("host", "rus-ruleti");
+        manager.ResolveVote("host");
+
+        var state = manager.Get(host.RoomCode)!.RussianRouletteState!;
+        Assert.Equal("IDLE", state.Status);
+        Assert.Equal(host.PlayerId, state.HolderPlayerId);
+
+        Assert.Throws<RoomException>(() => manager.Fire("target", host.PlayerId));
+        Assert.Throws<RoomException>(() => manager.Fire("host", host.PlayerId));
+
+        var fire = manager.Fire("host", target.PlayerId);
+        Assert.Equal(host.PlayerId, fire.ShooterPlayerId);
+        Assert.Equal(target.PlayerId, fire.TargetPlayerId);
+        Assert.True(fire.Hit);
+
+        var afterFire = manager.Get(host.RoomCode)!.RussianRouletteState!;
+        Assert.Equal("QUESTION_ACTIVE", afterFire.Status);
+        Assert.Equal(host.PlayerId, afterFire.HolderPlayerId);
+        Assert.NotNull(afterFire.QuestionText);
+        Assert.Throws<RoomException>(() => manager.Fire("host", target.PlayerId));
+
+        Assert.Throws<RoomException>(() => manager.CompleteFireQuestion("host", afterFire.Revision));
+        var resolved = manager.CompleteFireQuestion("target", afterFire.Revision).RussianRouletteState!;
+        Assert.Equal("IDLE", resolved.Status);
+        Assert.Equal(target.PlayerId, resolved.HolderPlayerId);
+        Assert.Null(resolved.QuestionText);
+        Assert.Throws<RoomException>(() => manager.CompleteFireQuestion("target", afterFire.Revision));
+    }
+
+    [Fact]
+    public void MissesSilentlyPassTheGunAndTheBulletIsGuaranteedWithinOneCylinder()
+    {
+        // Values, in consumption order: the single-candidate winner pick,
+        // holder pick, chamber-count offset, bullet chamber (2), pointer
+        // start (0) — giving two misses at pointer 0 and 1, a guaranteed hit
+        // at pointer 2, then a fresh reload once the question is completed.
+        var manager = CreateManager(random: new SequenceRoomRandom(0, 0, 0, 2, 0, 1, 3, 4));
+        var host = manager.Create(CreateRequest("Arda"));
+        var target = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, target.PlayerId, target.ReconnectToken, "target");
+        manager.BeginGameSelection("host", ["rus-ruleti"]);
+        manager.CastVote("host", "rus-ruleti");
+        manager.ResolveVote("host");
+
+        var first = manager.Fire("host", target.PlayerId);
+        Assert.False(first.Hit);
+        Assert.Equal(target.PlayerId, manager.Get(host.RoomCode)!.RussianRouletteState!.HolderPlayerId);
+
+        var second = manager.Fire("target", host.PlayerId);
+        Assert.False(second.Hit);
+        Assert.Equal(host.PlayerId, manager.Get(host.RoomCode)!.RussianRouletteState!.HolderPlayerId);
+
+        var third = manager.Fire("host", target.PlayerId);
+        Assert.True(third.Hit);
+        var hitState = manager.Get(host.RoomCode)!.RussianRouletteState!;
+        // Holder does not change on a hit until the question is completed.
+        Assert.Equal(host.PlayerId, hitState.HolderPlayerId);
+
+        var reloaded = manager.CompleteFireQuestion("target", hitState.Revision).RussianRouletteState!;
+        Assert.Equal(target.PlayerId, reloaded.HolderPlayerId);
+    }
+
+    [Fact]
     public void HostTransfersAfterDisconnectGraceButNotBefore()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
@@ -268,5 +343,14 @@ public sealed class RoomManagerTests
         public int Next(int maximumExclusive) => value % maximumExclusive;
         public int Next(int minimumInclusive, int maximumExclusive) =>
             minimumInclusive + value % (maximumExclusive - minimumInclusive);
+    }
+
+    /// <summary>Hands out the given values in order, one per call, across either overload.</summary>
+    private sealed class SequenceRoomRandom(params int[] values) : IRoomRandom
+    {
+        private int _index;
+        public int Next(int maximumExclusive) => values[_index++] % maximumExclusive;
+        public int Next(int minimumInclusive, int maximumExclusive) =>
+            minimumInclusive + values[_index++] % (maximumExclusive - minimumInclusive);
     }
 }

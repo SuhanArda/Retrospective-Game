@@ -16,6 +16,7 @@ const context = {
 const config = {
   retroRushUrl: '/games/retro-rush/',
   spinTheBottleUrl: '/games/spin-the-bottle/',
+  rusRuletiUrl: '/games/rus-ruleti/',
 };
 
 describe('GameLauncher', () => {

@@ -1,0 +1,139 @@
+:root {
+  color-scheme: dark;
+  --pixel-font: 'Press Start 2P', 'Trebuchet MS', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  /* dvh accounts for mobile browser chrome (address bar) resizing the
+     viewport; vh is the fallback for browsers that don't support it —
+     unsupported values are ignored, so the vh line above still applies. */
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: hidden;
+  background: #160b0c;
+  color: #fff0ce;
+  font-family: 'Trebuchet MS', system-ui, sans-serif;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* GameCanvas's own host div: the game area fills whatever the sidebar
+   doesn't. Horizontal overflow/cropping from the canvas below is expected
+   and fine — vertical scrolling on the page itself is what must never
+   happen. */
+.table-canvas-host {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  line-height: 0;
+}
+
+/* Phaser sets the canvas's own inline width/height in px; !important makes
+   sure this wins so the canvas covers its host box (object-fit: cover,
+   cropping whatever overflows) instead of sitting at its fixed internal
+   960x640 size. */
+.table-canvas-host canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  display: block;
+}
+
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #1a0f12;
+  border-left: 1px solid rgba(217, 164, 65, 0.35);
+  /* The one place allowed to scroll: if the player list ever runs long, it
+     scrolls inside the sidebar — the page itself still never does. */
+  overflow-y: auto;
+}
+
+.sidebar-header h1 {
+  margin: 0;
+  font-family: var(--pixel-font);
+  /* Press Start 2P's glyphs are much wider/blockier than a normal typeface at the same size — sized down from the 32px an ordinary heading font would use. */
+  font-size: 18px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-header .subtitle {
+  margin: 6px 0 0;
+  font-family: var(--pixel-font);
+  color: #d8b3a8;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.sidebar-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-players li {
+  font-family: var(--pixel-font);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(217, 164, 65, 0.35);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.sidebar-players li.is-you {
+  background: rgba(255, 209, 102, 0.16);
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+.button {
+  font-family: var(--pixel-font);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #2c2227;
+  background: #ffd166;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #241014;
+  border: 1px solid #d9a441;
+  color: #fff0ce;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+}

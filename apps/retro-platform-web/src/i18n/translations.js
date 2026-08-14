@@ -224,6 +224,17 @@ export const translations = {
           'Oyun durduğunda gelen soruyu cevapla, sonra parkura geri dön.',
         ],
       },
+      'rus-ruleti': {
+        description:
+          'Namluda tek mermi var. Silah elden ele geçer; dolu çıkarsa hedef bir retro sorusu cevaplar.',
+        detail:
+          'Masanın karşısında oturan takım arkadaşlarını görürsün, kendini değil. Namluda tek mermi var; sıradaki kişi istediği birine ateş eder. Boş çıkarsa silah sessizce vurulan kişiye geçer. Dolu çıkarsa vurulan kişi bir retro sorusu cevaplar, namlu gizlice yeniden doldurulur ve o kişi silahı alıp devam eder. Kimse elenmez — oyun sürekli döner.',
+        steps: [
+          'Sıra sendeyse karşındaki bir takım arkadaşını seç ve ateş et.',
+          'Boş çıkarsa silah sessizce vurduğun kişiye geçer, sıra ona gelir.',
+          'Dolu çıkarsa hedef retro sorusunu cevaplar, namlu yeniden dolar ve oyun devam eder.',
+        ],
+      },
       'pixel-arena': {
         description: 'Daralan arenada ayakta kalan kazanır — her eleme bir soruyu açar.',
         detail:
@@ -484,6 +495,17 @@ export const translations = {
           'Run right, jump the gaps, stay ahead of the mist.',
           'Grab the abilities on the route: speed pushes you forward, a rocket slows a rival.',
           'When the game pauses, answer the question, then head back to the course.',
+        ],
+      },
+      'rus-ruleti': {
+        description:
+          'One bullet, one cylinder, passed hand to hand — when it fires, the target answers a question.',
+        detail:
+          'You see your teammates seated across the table, never yourself. The cylinder holds a single bullet; whoever holds the gun fires at anyone else. An empty chamber passes the gun silently to whoever was just shot at. A loaded one means they answer a retrospective question, the cylinder is secretly reloaded, and they keep the gun and fire next. Nobody is ever out — the round just keeps going.',
+        steps: [
+          'On your turn, pick a teammate across the table and fire.',
+          'An empty chamber passes the gun silently to whoever you just shot.',
+          'A loaded chamber means they answer a question, then the cylinder reloads and play continues.',
         ],
       },
       'pixel-arena': {

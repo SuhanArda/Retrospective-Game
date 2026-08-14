@@ -1,6 +1,7 @@
 export interface GameRuntimeConfig {
   retroRushUrl: string;
   spinTheBottleUrl: string;
+  rusRuletiUrl: string;
 }
 
 export function parseGameRuntimeConfig(
@@ -15,6 +16,10 @@ export function parseGameRuntimeConfig(
       typeof env.VITE_SPIN_THE_BOTTLE_URL === 'string' && env.VITE_SPIN_THE_BOTTLE_URL
         ? env.VITE_SPIN_THE_BOTTLE_URL
         : 'http://localhost:5175',
+    rusRuletiUrl:
+      typeof env.VITE_RUS_RULETI_URL === 'string' && env.VITE_RUS_RULETI_URL
+        ? env.VITE_RUS_RULETI_URL
+        : 'http://localhost:5176',
   };
 }
 

@@ -91,6 +91,20 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public Task<RoomSnapshot> CompleteSpinQuestion(string questionId, int expectedRevision) =>
         MutateSpinState(rooms.CompleteSpinQuestion(Context.ConnectionId, questionId, expectedRevision));
 
+    public async Task<FireResult> RequestFire(string targetPlayerId)
+    {
+        var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        var result = rooms.Fire(Context.ConnectionId, targetPlayerId);
+        await Clients.Group(GroupName(player.RoomCode)).FireResult(result);
+        var room = rooms.Get(player.RoomCode)!;
+        await Broadcast(room);
+        await Clients.Group(GroupName(player.RoomCode)).RussianRouletteStateChanged(room.RussianRouletteState!);
+        return result;
+    }
+
+    public Task<RoomSnapshot> CompleteFireQuestion(int expectedRevision) =>
+        MutateRouletteState(rooms.CompleteFireQuestion(Context.ConnectionId, expectedRevision));
+
     public async Task LeaveRoom()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
@@ -120,6 +134,13 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         await Broadcast(room);
         await Clients.Group(GroupName(room.Code)).SpinBottleStateChanged(room.SpinBottleState!);
+        return room;
+    }
+
+    private async Task<RoomSnapshot> MutateRouletteState(RoomSnapshot room)
+    {
+        await Broadcast(room);
+        await Clients.Group(GroupName(room.Code)).RussianRouletteStateChanged(room.RussianRouletteState!);
         return room;
     }
 }

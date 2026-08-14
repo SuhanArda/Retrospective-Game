@@ -49,6 +49,17 @@ export const gameRegistry: readonly GameDefinition[] = [
     visualLabel: 'SB',
     getLaunchUrl: (config) => config.spinTheBottleUrl,
   },
+  {
+    id: 'rus-ruleti',
+    name: 'Rus Ruleti',
+    descriptionKey: 'games.rus-ruleti.description',
+    detailKey: 'games.rus-ruleti.detail',
+    stepsKey: 'games.rus-ruleti.steps',
+    status: 'available',
+    minPlayers: 2,
+    visualLabel: 'RU',
+    getLaunchUrl: (config) => config.rusRuletiUrl,
+  },
   // Placeholders so the vote has real choices while the games are being built.
   // Flip `status` to 'available' and return a real URL once each one exists.
   {

@@ -9,7 +9,7 @@ npm install
 npm run dev:all
 ```
 
-This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, and Spin the Bottle on `5175`. `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
+This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, Spin the Bottle on `5175`, and Rus Ruleti on `5176`. `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
 
 ## Authority and boundaries
 
@@ -23,6 +23,7 @@ Platform / games
        room phase + selected game
        active game-session id / round id / seed
        Spin the Bottle result
+       Rus Ruleti cylinder + shot outcome
 ```
 
 - `services/retrospective-server` is the room and game-session authority. Its `ConcurrentDictionary` is intentionally process-local for this milestone.
@@ -45,6 +46,8 @@ The room phases are `LOBBY -> GAME_SELECTION -> STARTING_GAME -> PLAYING`. The c
 
 For Spin the Bottle, any attached participant may request a spin. The server selects the target, computes the cumulative final angle and duration, stores the latest result, and broadcasts one `SpinResult`; clients never choose their own online result. Standalone launch still uses the original local behavior.
 
+For Rus Ruleti, the server owns the cylinder: chamber count, bullet position, and pointer are held server-side and deliberately excluded from `RussianRouletteStateSnapshot`, so no client can read a hit before firing. Only the current holder may `RequestFire`, never at themselves; the pointer advances on every shot, so the bullet is guaranteed within one cylinder rather than re-rolled per shot. A miss silently passes the gun to whoever was shot at. A hit puts the room in `QUESTION_ACTIVE` with a server-chosen question, and only that target may `CompleteFireQuestion` — which reloads the cylinder in secret and hands them the gun. Nobody is ever eliminated. Standalone launch keeps the original local bot behavior.
+
 ## REST and SignalR surface
 
 | Surface | Purpose |
@@ -53,7 +56,7 @@ For Spin the Bottle, any attached participant may request a spin. The server sel
 | `POST /api/rooms/{code}/join` | Join before play starts |
 | `GET /api/rooms/{code}` | Public non-secret snapshot |
 | `GET /health` | Liveness |
-| `/hubs/room` | Rejoin, leave, host lifecycle, reactions, spin |
+| `/hubs/room` | Rejoin, leave, host lifecycle, reactions, spin, fire |
 
 SignalR groups are deterministically named `room:{ROOM_CODE}`. State-changing hub methods resolve player and host authority from server state, never from client-provided `isHost` flags.
 
@@ -65,10 +68,11 @@ Use the host machine's LAN address, for example `192.168.1.50`:
 $env:AllowedOrigins__0='http://192.168.1.50:5173'
 $env:AllowedOrigins__1='http://192.168.1.50:5174'
 $env:AllowedOrigins__2='http://192.168.1.50:5175'
+$env:AllowedOrigins__3='http://192.168.1.50:5176'
 dotnet run --project services/retrospective-server --urls http://0.0.0.0:5281
 ```
 
-Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5175` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
+Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5176` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
 
 ## Verification
 

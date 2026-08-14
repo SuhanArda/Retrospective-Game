@@ -9,7 +9,18 @@ namespace Retrospective.Server.Rooms;
 public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti"];
+    private static readonly string[] RouletteQuestions =
+    [
+        "Bu sprintte seni en çok ne yordu?",
+        "Takımdan en çok neye güvendin?",
+        "Hangi kararı bir daha alsan farklı alırdın?",
+        "Bu dönem kimden ne öğrendin?",
+        "Önümüzdeki sprintte neyi değiştirmek istersin?",
+    ];
+    // Not tied to player count on purpose — see the client-side comment this mirrors.
+    private const int MinChambers = 5;
+    private const int MaxChambers = 12;
     private static readonly HashSet<int> SupportedVotingDurations = [15, 30, 45, 60];
     private static readonly IReadOnlyDictionary<string, string[]> SpinQuestions = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
@@ -157,6 +168,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
             room.CurrentGameSession = null;
             room.LastSpinResult = null;
             room.SpinBottleState = null;
+            room.RussianRouletteState = null;
             room.Votes.Clear();
             room.VotingStartedAt = null;
             room.VotingEndsAt = null;
@@ -251,6 +263,81 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         {
             var state = AuthorizeQuestionAction(room, player, questionId, expectedRevision);
             AdvanceSpinState(state, "RESOLVED");
+            return Snapshot(room);
+        }
+    }
+
+    /// <summary>
+    /// Only the current holder may call this, and only at whoever they name —
+    /// never at themselves. The chamber pointer always advances, hit or miss,
+    /// so the bullet is guaranteed within one full cylinder's worth of shots
+    /// rather than re-rolled fresh (and possibly dodged forever) every time.
+    /// </summary>
+    public FireResult Fire(string connectionId, string targetPlayerId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            if (room.Status != RoomPhase.Playing || room.CurrentGameSession?.GameId != "rus-ruleti")
+                throw new RoomException("INVALID_ROOM_STATE");
+            var state = room.RussianRouletteState ?? throw new RoomException("NO_ACTIVE_ROULETTE");
+            if (state.HolderPlayerId != player.Id) throw new RoomException("NOT_HOLDER");
+            if (state.Status != "IDLE") throw new RoomException("INVALID_ROULETTE_STATE");
+            if (targetPlayerId == player.Id) throw new RoomException("CANNOT_TARGET_SELF");
+            if (!room.Players.ContainsKey(targetPlayerId)) throw new RoomException("INVALID_TARGET");
+
+            var hit = state.ChamberPointer == state.BulletChamber;
+            state.ChamberPointer = (state.ChamberPointer + 1) % state.Chambers;
+            var now = timeProvider.GetUtcNow();
+            state.LastShooterPlayerId = player.Id;
+            state.LastTargetPlayerId = targetPlayerId;
+            state.LastShotHit = hit;
+            state.Revision++;
+            state.UpdatedAtUtc = now.ToUnixTimeMilliseconds();
+
+            if (hit)
+            {
+                var questionIndex = roomRandom.Next(RouletteQuestions.Length);
+                state.QuestionId = $"roulette:{questionIndex}";
+                state.QuestionText = RouletteQuestions[questionIndex];
+                state.Status = "QUESTION_ACTIVE";
+            }
+            else
+            {
+                state.QuestionId = null;
+                state.QuestionText = null;
+                // Nobody is eliminated — the person just shot at simply takes the gun next.
+                state.HolderPlayerId = targetPlayerId;
+            }
+
+            return new FireResult(room.CurrentGameSession.Id, room.CurrentGameSession.RoundId,
+                player.Id, targetPlayerId, hit, now.ToUnixTimeMilliseconds());
+        }
+    }
+
+    /// <summary>
+    /// Only the person who was just shot may complete their own question —
+    /// completing it is what hands them the gun and reloads the cylinder in
+    /// secret for the next round.
+    /// </summary>
+    public RoomSnapshot CompleteFireQuestion(string connectionId, int expectedRevision)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            var state = room.RussianRouletteState ?? throw new RoomException("NO_ACTIVE_ROULETTE");
+            if (state.LastTargetPlayerId != player.Id) throw new RoomException("NOT_QUESTION_OWNER");
+            if (state.Revision != expectedRevision) throw new RoomException("STALE_ROULETTE_STATE");
+            if (state.Status != "QUESTION_ACTIVE") throw new RoomException("INVALID_ROULETTE_STATE");
+
+            state.HolderPlayerId = player.Id;
+            state.BulletChamber = roomRandom.Next(state.Chambers);
+            state.ChamberPointer = roomRandom.Next(state.Chambers);
+            state.QuestionId = null;
+            state.QuestionText = null;
+            state.Status = "IDLE";
+            state.Revision++;
+            state.UpdatedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             return Snapshot(room);
         }
     }
@@ -359,6 +446,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         room.CurrentGameSession = null;
         room.LastSpinResult = null;
         room.SpinBottleState = null;
+        room.RussianRouletteState = null;
         room.Votes.Clear();
         room.CandidateGameIds = candidates;
         room.VotingStartedAt = now;
@@ -392,7 +480,23 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         room.CurrentGameSession = new GameSession(
             Guid.NewGuid().ToString("N"), winner, Guid.NewGuid().ToString("N"),
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
+        room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
         return true;
+    }
+
+    /// <summary>
+    /// Chamber count is deliberately not equal to the player count (same
+    /// independence the client-side prototype had) — it is picked once, here,
+    /// and never revealed; only this method and <see cref="Fire"/> /
+    /// <see cref="CompleteFireQuestion"/> ever read the bullet position.
+    /// </summary>
+    private RussianRouletteState CreateRouletteState(GameRoom room)
+    {
+        var players = room.Players.Values.OrderBy(player => player.JoinedAt).ToArray();
+        var holder = players[roomRandom.Next(players.Length)];
+        var chambers = Math.Clamp(players.Length + roomRandom.Next(-1, 4), MinChambers, MaxChambers);
+        var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        return new RussianRouletteState(holder.Id, chambers, roomRandom.Next(chambers), roomRandom.Next(chambers), "IDLE", 1, now);
     }
 
     private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
@@ -505,7 +609,13 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
             room.SpinBottleState.SpinnerPlayerId, room.SpinBottleState.TargetPlayerId, room.SpinBottleState.TargetIndex,
             room.SpinBottleState.Category, room.SpinBottleState.QuestionId, room.SpinBottleState.QuestionText,
             room.SpinBottleState.Status, room.SpinBottleState.Revision, room.SpinBottleState.UpdatedAtUtc,
-            room.SpinBottleState.StateEndsAtUtc));
+            room.SpinBottleState.StateEndsAtUtc),
+        room.RussianRouletteState is null ? null : new RussianRouletteStateSnapshot(
+            room.RussianRouletteState.HolderPlayerId, room.RussianRouletteState.Status,
+            room.RussianRouletteState.LastShooterPlayerId, room.RussianRouletteState.LastTargetPlayerId,
+            room.RussianRouletteState.LastShotHit, room.RussianRouletteState.QuestionId,
+            room.RussianRouletteState.QuestionText, room.RussianRouletteState.Revision,
+            room.RussianRouletteState.UpdatedAtUtc));
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -536,6 +646,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         public GameSession? CurrentGameSession { get; set; }
         public SpinResult? LastSpinResult { get; set; }
         public SpinBottleState? SpinBottleState { get; set; }
+        public RussianRouletteState? RussianRouletteState { get; set; }
     }
 
     private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt)
@@ -575,6 +686,27 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         public int Revision { get; set; } = revision;
         public long UpdatedAtUtc { get; set; } = updatedAtUtc;
         public long? StateEndsAtUtc { get; set; } = stateEndsAtUtc;
+    }
+
+    /// <summary>
+    /// <see cref="BulletChamber"/> and <see cref="ChamberPointer"/> never leave
+    /// this class — <see cref="Snapshot"/> deliberately does not map them.
+    /// </summary>
+    private sealed class RussianRouletteState(string holderPlayerId, int chambers, int bulletChamber,
+        int chamberPointer, string status, int revision, long updatedAtUtc)
+    {
+        public string HolderPlayerId { get; set; } = holderPlayerId;
+        public int Chambers { get; } = chambers;
+        public int BulletChamber { get; set; } = bulletChamber;
+        public int ChamberPointer { get; set; } = chamberPointer;
+        public string? LastShooterPlayerId { get; set; }
+        public string? LastTargetPlayerId { get; set; }
+        public bool? LastShotHit { get; set; }
+        public string? QuestionId { get; set; }
+        public string? QuestionText { get; set; }
+        public string Status { get; set; } = status;
+        public int Revision { get; set; } = revision;
+        public long UpdatedAtUtc { get; set; } = updatedAtUtc;
     }
 }
 

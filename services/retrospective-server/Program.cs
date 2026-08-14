@@ -4,7 +4,7 @@ using Retrospective.Server.Rooms;
 
 var builder = WebApplication.CreateBuilder(args);
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ??
-    ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"];
+    ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176"];
 
 builder.Services.Configure<RoomOptions>(builder.Configuration.GetSection("Rooms"));
 builder.Services.AddSingleton(TimeProvider.System);

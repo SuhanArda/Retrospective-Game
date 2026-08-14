@@ -16,3 +16,6 @@ node-portable.zip
 # .NET build output
 bin/
 obj/
+
+# Raw AI-generated asset sources (large; cropped/optimized output lives in public/)
+games/*/assets-raw/
