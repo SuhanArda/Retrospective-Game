@@ -277,7 +277,6 @@ try {
 
   async function resolveCurrentQuestion(ownerContext) {
     await click(ownerContext, `document.querySelector('.work-button')`, 'question category');
-    await click(ownerContext, `document.querySelector('.done-button')`, 'question continue');
     await waitForQuestion(ownerContext, 'question activation');
     await click(ownerContext, `document.querySelector('.done-button')`, 'question complete');
     await waitFor(host.sessionId, `document.querySelector('.challenge-card') === null`, 'host question resolved');
@@ -321,7 +320,6 @@ try {
 
   await click(guest, `document.querySelector('.work-button')`, 'Ali question category');
   await waitFor(host.sessionId, `document.querySelector('.done-button') === null`, 'Arda read-only confirmation');
-  await click(guest, `document.querySelector('.done-button')`, 'Ali question continue');
   const [ardaQuestionA, aliQuestionA] = await Promise.all([
     waitForQuestion(host, 'Arda sees Ali question'),
     waitForQuestion(guest, 'Ali sees owned question'),
@@ -352,7 +350,6 @@ try {
 
   await spinUntil('Arda');
   await click(host, `document.querySelector('.work-button')`, 'Arda question category');
-  await click(host, `document.querySelector('.done-button')`, 'Arda question continue');
   const ardaOwnedQuestion = await waitForQuestion(host, 'Arda owned question');
   const aliCanPassArdaQuestion = await evaluate(guest.sessionId, `document.querySelector('.pass-button') !== null`);
   if (aliCanPassArdaQuestion) throw new Error('Ali received controls for Arda question');
