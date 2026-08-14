@@ -2,15 +2,27 @@ import { spawn, spawnSync } from 'node:child_process';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const commands = process.argv.includes('--with-server')
-  ? ['dev:server', 'dev:ai-bot', 'dev:web', 'dev:retro-rush', 'dev:spin-the-bottle']
-  : ['dev:web', 'dev:retro-rush', 'dev:spin-the-bottle'];
-const children = commands.map((script) =>
-  spawn(npmCommand, ['run', script], {
+  ? [
+      { script: 'dev:server', required: true },
+      { script: 'dev:ai-bot', required: false },
+      { script: 'dev:web', required: true },
+      { script: 'dev:retro-rush', required: true },
+      { script: 'dev:spin-the-bottle', required: true },
+    ]
+  : [
+      { script: 'dev:web', required: true },
+      { script: 'dev:retro-rush', required: true },
+      { script: 'dev:spin-the-bottle', required: true },
+    ];
+const children = commands.map(({ script, required }) => ({
+  script,
+  required,
+  child: spawn(npmCommand, ['run', script], {
     stdio: 'inherit',
     windowsHide: true,
     shell: process.platform === 'win32',
   }),
-);
+}));
 
 let stopping = false;
 function stopChild(child) {
@@ -25,16 +37,22 @@ function stopChild(child) {
 function stop(exitCode = 0) {
   if (stopping) return;
   stopping = true;
-  for (const child of children) stopChild(child);
+  for (const { child } of children) stopChild(child);
   process.exitCode = exitCode;
 }
 
-for (const child of children) {
+for (const { child, script, required } of children) {
   child.on('error', (error) => {
-    console.error(error.message);
-    stop(1);
+    if (required) {
+      console.error(error.message);
+      stop(1);
+    } else console.warn(`[dev] Optional ${script} failed to start: ${error.message}. Core services will continue.`);
   });
-  child.on('exit', (code) => stop(code ?? 0));
+  child.on('exit', (code) => {
+    if (stopping) return;
+    if (required) stop(code ?? 0);
+    else console.warn(`[dev] Optional ${script} exited with code ${code ?? 0}. Core services will continue.`);
+  });
 }
 
 process.on('SIGINT', () => stop(0));

@@ -37,21 +37,16 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(false);
   const [authoritativeMapSeed, setAuthoritativeMapSeed] = useState<number | null>(null);
-  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[] | null>(null);
+  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[]>(retroQuestions);
 
   useEffect(() => {
-    if (!launchContext?.roomCode) {
-      setSessionQuestions(retroQuestions);
-      return;
-    }
-    if (!runtimeConfig.aiBotUrl) {
-      setSessionQuestions(retroQuestions);
-      return;
-    }
+    if (!launchContext?.roomCode || !runtimeConfig.aiBotUrl) return;
     let cancelled = false;
     loadRoomQuestions(runtimeConfig.aiBotUrl, launchContext.roomCode)
       .then((questions) => { if (!cancelled) setSessionQuestions(questions.length > 0 ? questions : retroQuestions); })
-      .catch(() => { if (!cancelled) setSessionQuestions(retroQuestions); });
+      .catch((cause) => {
+        if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
+      });
     return () => { cancelled = true; };
   }, [launchContext]);
 
@@ -100,7 +95,7 @@ export function App() {
 
   const toggleMute = () => { const next = !muted; setMuted(next); bridge.emit('audioMuted', { muted: next }); };
   return <main className="app-shell" data-map-seed={authoritativeMapSeed ?? undefined}>
-    {sessionQuestions && <GameCanvas bridge={bridge} transport={transport} questions={sessionQuestions} />}
+    <GameCanvas bridge={bridge} transport={transport} questions={sessionQuestions} />
     <Hud snapshot={snapshot} muted={muted} onMute={toggleMute} onAbility={(abilityId) => bridge.emit('abilityRequested', { abilityId })} />
     {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
     {snapshot.state === 'WAITING' && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}

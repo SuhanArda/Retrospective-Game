@@ -13,7 +13,6 @@ import {
   resolveSpinTheBottleLaunchContext,
   spinTheBottleRuntimeConfig,
 } from "./platformIntegration";
-import { deleteRoomQuestions, loadRoomQuestions, type BotQuestion } from "./questionBotClient";
 
 type Player = {
   id: string;
@@ -156,7 +155,6 @@ export default function Home() {
   const [phase, setPhase] = useState<FlowPhase>("idle");
   const [category, setCategory] = useState<Category | null>(null);
   const [question, setQuestion] = useState("");
-  const [botQuestions, setBotQuestions] = useState<BotQuestion[]>([]);
   const [round, setRound] = useState(1);
   const [sound, setSound] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
@@ -171,21 +169,6 @@ export default function Home() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reactionId = useRef(0);
-  const botQuestionsRef = useRef<BotQuestion[]>([]);
-
-  useEffect(() => {
-    botQuestionsRef.current = botQuestions;
-  }, [botQuestions]);
-
-  useEffect(() => {
-    if (!launchContext?.roomCode || !spinTheBottleRuntimeConfig.aiBotUrl) return;
-    let cancelled = false;
-    loadRoomQuestions(spinTheBottleRuntimeConfig.aiBotUrl, launchContext.roomCode)
-      .then((loaded) => { if (!cancelled) setBotQuestions(loaded); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [launchContext]);
-
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -276,7 +259,7 @@ export default function Home() {
     }
     setSelected(state.targetIndex);
     setCategory(state.category ?? null);
-    setQuestion(resolveQuestionText(state.questionId, state.category, state.questionText));
+    setQuestion(state.questionText ?? "");
     if (state.status === "SPINNING") {
       setSpinning(true);
       setPhase("idle");
@@ -302,27 +285,10 @@ export default function Home() {
     }
   }
 
-  function resolveQuestionText(questionId: string | undefined, selectedCategory: Category | undefined, fallback: string | undefined): string {
-    const loaded = botQuestionsRef.current;
-    if (!questionId || loaded.length === 0) return fallback ?? "";
-    const wantsFun = selectedCategory === Object.keys(questions)[1];
-    const pool = loaded.filter((item) =>
-      item.gameCategory ? item.gameCategory === (wantsFun ? "entertainment" : "work") : (item.category === "fun") === wantsFun,
-    );
-    const candidates = pool.length > 0 ? pool : loaded;
-    const hash = [...questionId].reduce((total, character) => total + character.charCodeAt(0), 0);
-    return candidates[hash % candidates.length]?.text ?? fallback ?? "";
-  }
-
   function returnToGames() {
     if (!launchContext) return;
     if (roomIsHost && roomClientRef.current) {
-      const deleteQuestions = spinTheBottleRuntimeConfig.aiBotUrl
-        ? deleteRoomQuestions(spinTheBottleRuntimeConfig.aiBotUrl, launchContext.roomCode)
-        : Promise.resolve();
-      void deleteQuestions
-        .catch(() => undefined)
-        .finally(() => roomClientRef.current?.returnToGameSelection().catch(() => undefined));
+      void roomClientRef.current.returnToGameSelection().catch(() => undefined);
       return;
     }
     window.location.assign(
@@ -377,14 +343,8 @@ export default function Home() {
       return;
     }
     setCategory(nextCategory);
-    const wantsFun = nextCategory === "Eğlence";
-    const generatedPool = botQuestions.filter((item) =>
-      item.gameCategory ? item.gameCategory === (wantsFun ? "entertainment" : "work") : (item.category === "fun") === wantsFun,
-    );
     const fallbackPool = questions[nextCategory];
-    setQuestion(generatedPool.length > 0
-      ? generatedPool[Math.floor(Math.random() * generatedPool.length)]!.text
-      : fallbackPool[Math.floor(Math.random() * fallbackPool.length)]);
+    setQuestion(fallbackPool[Math.floor(Math.random() * fallbackPool.length)]);
     setPhase("question");
   }
 

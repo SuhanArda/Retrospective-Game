@@ -14,7 +14,9 @@ const categoryMap: Readonly<Record<string, RetroQuestionCategory>> = {
 };
 
 export async function loadRoomQuestions(baseUrl: string, roomCode: string): Promise<readonly RetroQuestion[]> {
-  const response = await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}/questions`);
+  const response = await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}/questions`, {
+    signal: AbortSignal.timeout(3_000),
+  });
   if (!response.ok) throw new Error('ROOM_QUESTIONS_UNAVAILABLE');
   const result = await response.json() as { questions?: unknown };
   if (!Array.isArray(result.questions)) throw new Error('INVALID_ROOM_QUESTIONS');
@@ -33,5 +35,7 @@ export async function loadRoomQuestions(baseUrl: string, roomCode: string): Prom
 }
 
 export async function deleteRoomQuestions(baseUrl: string, roomCode: string): Promise<void> {
-  await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}`, { method: 'DELETE' });
+  await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}`, {
+    method: 'DELETE', signal: AbortSignal.timeout(3_000),
+  });
 }
