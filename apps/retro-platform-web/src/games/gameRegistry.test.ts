@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { findGame, gameRegistry } from './gameRegistry';
 
 describe('game registry', () => {
-  it('registers Retro Rush and Spin the Bottle as uniquely identified playable games', () => {
+  it('registers Retro Rush, Spin the Bottle, and Rus Ruleti as uniquely identified playable games', () => {
     const available = gameRegistry.filter((game) => game.status === 'available');
-    expect(available.map((game) => game.id)).toEqual(['retro-rush', 'spin-the-bottle']);
+    expect(available.map((game) => game.id)).toEqual(['retro-rush', 'spin-the-bottle', 'rus-ruleti']);
     expect(new Set(gameRegistry.map((game) => game.id)).size).toBe(gameRegistry.length);
     expect(findGame('retro-rush')?.name).toBe('Retro Rush');
     expect(findGame('spin-the-bottle')?.name).toBe('Spin the Bottle');
+    expect(findGame('rus-ruleti')?.name).toBe('Rus Ruleti');
   });
 
   it('offers the upcoming games as placeholders that cannot be launched', () => {
@@ -17,6 +18,7 @@ describe('game registry', () => {
       expect(() => game.getLaunchUrl({
         retroRushUrl: 'http://localhost:5174',
         spinTheBottleUrl: 'http://localhost:5175',
+        rusRuletiUrl: 'http://localhost:5176',
       })).toThrow();
     }
   });

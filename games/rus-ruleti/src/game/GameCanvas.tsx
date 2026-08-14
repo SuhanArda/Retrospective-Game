@@ -1,0 +1,46 @@
+import { useEffect, useRef } from 'react';
+import type Phaser from 'phaser';
+import type { RouletteRoomBridge } from '../app/roomBridge';
+import type { RouletteSeat } from '../app/seats';
+import { createPhaserGame } from './PhaserGame';
+
+interface Props {
+  /** Present only when launched from a real room; null means the local bot demo. */
+  bridge: RouletteRoomBridge | null;
+  opponents: readonly RouletteSeat[] | null;
+  localPlayerId: string | null;
+  /** The local player's own sprite, resolved against the same room so it never collides with an opponent's. Null means the local bot demo picks its own. */
+  youSprite: string | null;
+}
+
+/**
+ * Read once, when the world is built, and not in the effect's dependencies
+ * on purpose: rebuilding the Phaser game mid-round would throw away the
+ * table. The caller settles the room before mounting this, same as
+ * retro-rush's GameCanvas.
+ */
+export function GameCanvas({ bridge, opponents, localPlayerId, youSprite }: Props) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+  const propsRef = useRef({ bridge, opponents, localPlayerId, youSprite });
+  propsRef.current = { bridge, opponents, localPlayerId, youSprite };
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    // React StrictMode (dev only) mounts, cleans up, and remounts this effect
+    // back-to-back. Phaser's destroy(true) doesn't guarantee its canvas is
+    // gone from the DOM before that remount runs, so without this a second
+    // canvas can land right next to the first — clearing the host directly
+    // makes the remount safe no matter how destroy() times out.
+    hostRef.current.replaceChildren();
+    const { bridge: initialBridge, opponents: initialOpponents, localPlayerId: initialLocalPlayerId, youSprite: initialYouSprite } = propsRef.current;
+    const game = createPhaserGame(hostRef.current, initialBridge, initialOpponents, initialLocalPlayerId, initialYouSprite);
+    gameRef.current = game;
+    return () => {
+      game.destroy(true);
+      if (gameRef.current === game) gameRef.current = null;
+    };
+  }, []);
+
+  return <div ref={hostRef} className="table-canvas-host" />;
+}

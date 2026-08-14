@@ -10,6 +10,8 @@ public interface IRoomClient
     Task ReturnedToGameSelection(RoomSnapshot room);
     Task SpinResult(SpinResult result);
     Task SpinBottleStateChanged(SpinBottleStateSnapshot state);
+    Task FireResult(FireResult result);
+    Task RussianRouletteStateChanged(RussianRouletteStateSnapshot state);
     Task ReactionReceived(RoomReaction reaction);
     Task RetroRushSnapshot(RetroRushGameSnapshot snapshot);
     Task RetroRushPlayerUpdated(RetroRushPlayerSnapshot player);

@@ -1,6 +1,7 @@
 export interface GameRuntimeConfig {
   retroRushUrl: string;
   spinTheBottleUrl: string;
+  rusRuletiUrl: string;
 }
 
 export function parseGameRuntimeConfig(
@@ -15,6 +16,7 @@ export function parseGameRuntimeConfig(
   return {
     retroRushUrl: requiredUrl('VITE_RETRO_RUSH_URL'),
     spinTheBottleUrl: requiredUrl('VITE_SPIN_THE_BOTTLE_URL'),
+    rusRuletiUrl: requiredUrl('VITE_RUS_RULETI_URL'),
   };
 }
 

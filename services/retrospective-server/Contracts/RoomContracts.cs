@@ -54,6 +54,30 @@ public sealed record SpinBottleStateSnapshot(
     long UpdatedAtUtc,
     long? StateEndsAtUtc);
 
+/// <summary>
+/// The wire shape of the roulette cylinder deliberately omits which chamber
+/// holds the bullet and which one is up next — a client that could read
+/// those in the room snapshot could see a hit coming before firing.
+/// </summary>
+public sealed record RussianRouletteStateSnapshot(
+    string HolderPlayerId,
+    string Status,
+    string? LastShooterPlayerId,
+    string? LastTargetPlayerId,
+    bool? LastShotHit,
+    string? QuestionId,
+    string? QuestionText,
+    int Revision,
+    long UpdatedAtUtc);
+
+public sealed record FireResult(
+    string GameSessionId,
+    string RoundId,
+    string ShooterPlayerId,
+    string TargetPlayerId,
+    bool Hit,
+    long CreatedAt);
+
 public sealed record RoomSnapshot(
     string Id,
     string Code,
@@ -74,7 +98,8 @@ public sealed record RoomSnapshot(
     string? Description,
     long CreatedAt,
     GameSessionSnapshot? CurrentGameSession,
-    SpinBottleStateSnapshot? SpinBottleState);
+    SpinBottleStateSnapshot? SpinBottleState,
+    RussianRouletteStateSnapshot? RussianRouletteState);
 
 public sealed record SpinResult(
     string SpinId,

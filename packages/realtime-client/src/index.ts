@@ -5,10 +5,12 @@ import {
   LogLevel,
 } from '@microsoft/signalr';
 import type {
+  FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
   RoomReactionEvent,
   RoomSnapshot,
+  RussianRouletteStateSnapshot,
   SpinBottleStateSnapshot,
   SpinResult,
   CompleteRetroRushQuestionRequest,
@@ -50,6 +52,8 @@ type EventMap = {
   returnedToGameSelection: RoomSnapshot;
   spinResult: SpinResult;
   spinBottleStateChanged: SpinBottleStateSnapshot;
+  fireResult: FireResult;
+  russianRouletteStateChanged: RussianRouletteStateSnapshot;
   reaction: RoomReactionEvent;
   connectionChanged: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   retroRushSnapshot: RetroRushGameSnapshot;
@@ -127,6 +131,10 @@ export class RoomRealtimeClient {
   completeSpinQuestion(questionId: string, expectedRevision: number): Promise<RoomSnapshot> {
     return this.invoke('CompleteSpinQuestion', questionId, expectedRevision);
   }
+  requestFire(targetPlayerId: string): Promise<FireResult> { return this.invoke('RequestFire', targetPlayerId); }
+  completeFireQuestion(expectedRevision: number): Promise<RoomSnapshot> {
+    return this.invoke('CompleteFireQuestion', expectedRevision);
+  }
   leaveRoom(): Promise<void> { return this.invoke('LeaveRoom'); }
   sendReaction(emoji: string): Promise<void> { return this.invoke('SendReaction', emoji); }
   getRetroRushSnapshot(gameSessionId: string): Promise<RetroRushGameSnapshot> {
@@ -173,6 +181,8 @@ export class RoomRealtimeClient {
     connection.on('ReturnedToGameSelection', (room: RoomSnapshot) => this.emit('returnedToGameSelection', room));
     connection.on('SpinResult', (result: SpinResult) => this.emit('spinResult', result));
     connection.on('SpinBottleStateChanged', (state: SpinBottleStateSnapshot) => this.emit('spinBottleStateChanged', state));
+    connection.on('FireResult', (result: FireResult) => this.emit('fireResult', result));
+    connection.on('RussianRouletteStateChanged', (state: RussianRouletteStateSnapshot) => this.emit('russianRouletteStateChanged', state));
     connection.on('ReactionReceived', (reaction: RoomReactionEvent) => this.emit('reaction', reaction));
     connection.on('RetroRushSnapshot', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushSnapshot', snapshot));
     connection.on('RetroRushPlayerUpdated', (player: RetroRushPlayerSnapshot) => this.emit('retroRushPlayerUpdated', player));

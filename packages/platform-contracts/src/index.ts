@@ -144,6 +144,26 @@ export interface SpinBottleStateSnapshot {
   stateEndsAtUtc?: number;
 }
 
+export type RussianRouletteStateStatus = 'IDLE' | 'QUESTION_ACTIVE';
+
+/**
+ * Which chamber holds the bullet is never part of this shape — the server
+ * keeps that to itself so no client can read ahead of a shot. All this
+ * carries is who holds the gun, what the last shot did, and (while a hit is
+ * being answered) the question itself.
+ */
+export interface RussianRouletteStateSnapshot {
+  holderPlayerId: string;
+  status: RussianRouletteStateStatus;
+  lastShooterPlayerId?: string;
+  lastTargetPlayerId?: string;
+  lastShotHit?: boolean;
+  questionId?: string;
+  questionText?: string;
+  revision: number;
+  updatedAtUtc: number;
+}
+
 export interface RoomSnapshot {
   id: string;
   code: string;
@@ -160,6 +180,7 @@ export interface RoomSnapshot {
   createdAt: number;
   currentGameSession?: GameSessionSnapshot;
   spinBottleState?: SpinBottleStateSnapshot;
+  russianRouletteState?: RussianRouletteStateSnapshot;
   /** Authoritative playerId -> gameId selections for the active room vote. */
   votes?: Record<string, string>;
   /** Unix milliseconds when the authoritative room vote opened. */
@@ -190,6 +211,23 @@ export interface SpinResult {
   finalAngle: number;
   durationMs: number;
   createdAt: number;
+}
+
+export interface FireResult {
+  gameSessionId: string;
+  roundId: string;
+  shooterPlayerId: string;
+  targetPlayerId: string;
+  hit: boolean;
+  createdAt: number;
+}
+
+/** Only the person who was just shot may complete their own question. */
+export function canCompleteFireQuestion(
+  state: RussianRouletteStateSnapshot | null | undefined,
+  playerId: string | null | undefined,
+): boolean {
+  return Boolean(state && playerId && state.lastTargetPlayerId === playerId);
 }
 
 export function canControlSpinQuestion(

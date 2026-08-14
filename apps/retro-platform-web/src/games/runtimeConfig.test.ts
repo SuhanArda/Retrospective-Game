@@ -10,9 +10,11 @@ describe('game runtime configuration', () => {
     expect(parseGameRuntimeConfig({
       VITE_RETRO_RUSH_URL: '/games/retro-rush/',
       VITE_SPIN_THE_BOTTLE_URL: '/games/spin-the-bottle/',
+      VITE_RUS_RULETI_URL: '/games/rus-ruleti/',
     })).toEqual({
       retroRushUrl: '/games/retro-rush/',
       spinTheBottleUrl: '/games/spin-the-bottle/',
+      rusRuletiUrl: '/games/rus-ruleti/',
     });
   });
 });
