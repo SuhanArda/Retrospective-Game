@@ -1602,6 +1602,17 @@
 
 /* ---------- Identity modal ---------- */
 
+.ai-question-panel { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; text-align: left; margin-top: 10px; }
+.ai-question-panel h3, .ai-waiting h3 { font-family: var(--font-heading); color: var(--color-text); }
+.ai-question-panel > p, .ai-waiting p { color: var(--color-text-muted); line-height: 1.5; }
+.ai-demo-badge { align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.ai-panel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ai-panel-row label { display: flex; flex-direction: column; gap: 6px; }
+.ai-waiting { display: grid; justify-items: center; gap: 10px; padding: 24px 0; }
+.ai-ready-note { color: var(--color-primary); font-weight: 700; }
+@media (max-width: 520px) { .ai-panel-row { grid-template-columns: 1fr; } }
+
+
 .identity-overlay {
   position: fixed;
   inset: 0;

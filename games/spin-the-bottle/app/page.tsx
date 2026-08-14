@@ -7,6 +7,7 @@ import {
   type SpinBottleStateSnapshot,
   type SpinResult,
 } from "@retro-platform/contracts";
+import { BackToGamesButton } from "./BackToGamesButton";
 import {
   buildPlatformGameSelectionUrl,
   resolveSpinTheBottleLaunchContext,
@@ -76,8 +77,6 @@ type Category = keyof typeof questions;
 type FlowPhase =
   | "idle"
   | "choice"
-  | "confirm"
-  | "loading"
   | "question";
 
 const reactionOptions = [
@@ -161,7 +160,7 @@ export default function Home() {
   const [history, setHistory] = useState<string[]>([]);
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [roomIsHost, setRoomIsHost] = useState(launchContext?.isHost ?? false);
+  const [roomIsHost, setRoomIsHost] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("standalone");
   const [spinState, setSpinState] = useState<SpinBottleStateSnapshot | null>(null);
   const [questionActionPending, setQuestionActionPending] = useState(false);
@@ -170,7 +169,6 @@ export default function Home() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reactionId = useRef(0);
-
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -268,12 +266,6 @@ export default function Home() {
     } else if (state.status === "CHOICE") {
       setSpinning(false);
       setPhase("choice");
-    } else if (state.status === "CONFIRM") {
-      setSpinning(false);
-      setPhase("confirm");
-    } else if (state.status === "LOADING") {
-      setSpinning(false);
-      setPhase("loading");
     } else if (state.status === "QUESTION_ACTIVE") {
       setSpinning(false);
       setPhase("question");
@@ -351,35 +343,9 @@ export default function Home() {
       return;
     }
     setCategory(nextCategory);
-    setPhase("confirm");
-  }
-
-  function resetCategory() {
-    if (launchContext) {
-      if (!canControlSpinQuestion(spinState, launchContext.playerId) || !roomClientRef.current) return;
-      setQuestionActionPending(true);
-      void roomClientRef.current.resetSpinCategory(spinState!.revision)
-        .catch(() => setQuestionActionPending(false));
-      return;
-    }
-    setPhase("choice");
-  }
-
-  function prepareQuestion() {
-    if (!category) return;
-    if (launchContext) {
-      if (!canControlSpinQuestion(spinState, launchContext.playerId) || !roomClientRef.current) return;
-      setQuestionActionPending(true);
-      void roomClientRef.current.activateSpinQuestion(spinState!.revision)
-        .catch(() => setQuestionActionPending(false));
-      return;
-    }
-    setPhase("loading");
-    timerRef.current = setTimeout(() => {
-      const pool = questions[category];
-      setQuestion(pool[Math.floor(Math.random() * pool.length)]);
-      setPhase("question");
-    }, 1800);
+    const fallbackPool = questions[nextCategory];
+    setQuestion(fallbackPool[Math.floor(Math.random() * fallbackPool.length)]);
+    setPhase("question");
   }
 
   function finishTurn() {
@@ -468,11 +434,7 @@ export default function Home() {
           {launchContext && <small>{connectionStatus}</small>}
         </div>
         <div className="topbar-actions">
-          {launchContext && (
-            <button className="back-to-games-button" type="button" onClick={returnToGames}>
-              BACK TO GAMES
-            </button>
-          )}
+          {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
           <button
             className={`sound-button ${sound ? "" : "is-muted"}`}
             type="button"
@@ -634,7 +596,7 @@ export default function Home() {
             data-spin-revision={spinState?.revision}
             data-question-owner={spinState?.targetPlayerId}
           >
-            {phase !== "loading" && !launchContext && (
+            {!launchContext && (
               <button
                 className="close-card"
                 type="button"
@@ -644,11 +606,9 @@ export default function Home() {
                 ×
               </button>
             )}
-            {phase !== "loading" && (
-              <div className="chosen-avatar">
-                <PixelCat player={players[selected]} selected index={selected} />
-              </div>
-            )}
+            <div className="chosen-avatar">
+              <PixelCat player={players[selected]} selected index={selected} />
+            </div>
 
             {phase === "choice" && (
               <>
@@ -672,40 +632,6 @@ export default function Home() {
                   </button>
                 </div>
               </>
-            )}
-
-            {phase === "confirm" && (
-              <>
-                <p className="challenge-type">
-                  ✦ {selected + 1}. KİŞİ · {category?.toUpperCase()} ✦
-                </p>
-                <h2 id="challenge-title">Seçim hazır!</h2>
-                <p className="challenge-text">
-                  {isQuestionOwner ? "Moderatör hazır olduğunda devam edebilir." : `${questionOwnerName} için bekleniyor...`}
-                </p>
-                {isQuestionOwner && (
-                  <div className="card-actions">
-                    <button type="button" className="pass-button" onClick={resetCategory} disabled={questionActionPending}>
-                      GERİ
-                    </button>
-                    <button type="button" className="done-button" onClick={prepareQuestion} disabled={questionActionPending}>
-                      DEVAM <span>▶</span>
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {phase === "loading" && (
-              <div className="loading-state" role="status">
-                <span className="pixel-loader">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <h2 id="challenge-title">Soru hazırlanıyor</h2>
-                <p>lütfen bekleyin...</p>
-              </div>
             )}
 
             {phase === "question" && (

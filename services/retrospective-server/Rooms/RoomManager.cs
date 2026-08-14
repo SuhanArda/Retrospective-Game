@@ -6,7 +6,7 @@ using Retrospective.Server.Contracts;
 
 namespace Retrospective.Server.Rooms;
 
-public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
+public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti"];
@@ -98,6 +98,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
             var player = Authenticate(room, playerId, token);
             player.ConnectionId = connectionId;
             player.DisconnectedAt = null;
+            SetRetroRushPlayerConnected(room, player.Id, true);
             return Snapshot(room);
         }
     }
@@ -212,7 +213,8 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
             var state = AuthorizeSpinAction(room, player, expectedRevision, "CHOICE");
             if (!SpinQuestions.ContainsKey(category)) throw new RoomException("INVALID_QUESTION_CATEGORY");
             state.Category = category;
-            AdvanceSpinState(state, "CONFIRM");
+            SetQuestion(state, exceptQuestionId: null);
+            AdvanceSpinState(state, "QUESTION_ACTIVE");
             return Snapshot(room);
         }
     }
@@ -348,6 +350,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
         lock (room.Gate)
         {
             room.Players.Remove(player.Id);
+            RemoveRetroRushPlayer(room, player.Id);
             ElectHost(room);
             if (room.Players.Count == 0) _rooms.TryRemove(room.Code, out _);
             return Snapshot(room);
@@ -364,6 +367,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
                 if (player is null) continue;
                 player.ConnectionId = null;
                 player.DisconnectedAt = timeProvider.GetUtcNow();
+                SetRetroRushPlayerConnected(room, player.Id, false);
                 return Snapshot(room);
             }
         }
@@ -382,7 +386,11 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
                     .Where(player => player.DisconnectedAt is not null && player.DisconnectedAt <= cutoff)
                     .Select(player => player.Id).ToArray();
                 if (expired.Length == 0) continue;
-                foreach (var playerId in expired) room.Players.Remove(playerId);
+                foreach (var playerId in expired)
+                {
+                    room.Players.Remove(playerId);
+                    RemoveRetroRushPlayer(room, playerId);
+                }
                 ElectHost(room);
                 if (room.Players.Count == 0)
                 {
@@ -481,6 +489,7 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
             Guid.NewGuid().ToString("N"), winner, Guid.NewGuid().ToString("N"),
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
         room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
+        if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
         return true;
     }
 
@@ -664,9 +673,10 @@ public sealed class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions>
     {
         public string Id { get; } = id;
         public string GameId { get; } = gameId;
-        public string RoundId { get; } = roundId;
-        public int Seed { get; } = seed;
+        public string RoundId { get; set; } = roundId;
+        public int Seed { get; set; } = seed;
         public string State { get; set; } = state;
+        public RetroRushState? RetroRush { get; set; }
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);

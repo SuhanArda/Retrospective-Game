@@ -181,6 +181,26 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void OnlyTheAuthoritativeHostCanReturnToGameSelection()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Guest", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        manager.BeginGameSelection("host", Games);
+        manager.CastVote("host", "retro-rush");
+        manager.ResolveVote("host");
+
+        var rejection = Assert.Throws<RoomException>(() => manager.ReturnToGameSelection("guest"));
+        Assert.Equal("HOST_REQUIRED", rejection.Code);
+
+        var reopened = manager.ReturnToGameSelection("host");
+        Assert.Equal("GAME_SELECTION", reopened.Status);
+        Assert.Equal(host.PlayerId, reopened.HostPlayerId);
+    }
+
+    [Fact]
     public void SpinQuestionStateRemainsAuthoritativeAfterVoteResolution()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T12:00:00Z"));
@@ -205,10 +225,7 @@ public sealed class RoomManagerTests
         Assert.Equal("CHOICE", choice.Status);
         Assert.Throws<RoomException>(() => manager.ChooseSpinCategory("host", "\u0130\u015F", choice.Revision));
 
-        var confirm = manager.ChooseSpinCategory("target", "\u0130\u015F", choice.Revision).SpinBottleState!;
-        manager.ActivateSpinQuestion("target", confirm.Revision);
-        clock.Advance(TimeSpan.FromMilliseconds(1800));
-        var active = Assert.Single(manager.AdvanceTimedStates()).Snapshot.SpinBottleState!;
+        var active = manager.ChooseSpinCategory("target", "\u0130\u015F", choice.Revision).SpinBottleState!;
         Assert.Equal("QUESTION_ACTIVE", active.Status);
         Assert.NotNull(active.QuestionId);
         Assert.NotNull(active.QuestionText);
@@ -318,6 +335,7 @@ public sealed class RoomManagerTests
         clock.Advance(TimeSpan.FromSeconds(2));
         Assert.Single(manager.SweepDisconnected());
         Assert.Equal(guest.PlayerId, manager.Get(host.RoomCode)!.HostPlayerId);
+        Assert.Equal("GAME_SELECTION", manager.ReturnToGameSelection("guest").Status);
     }
 
     private static RoomManager CreateManager(TimeProvider? timeProvider = null, IRoomRandom? random = null) => new(

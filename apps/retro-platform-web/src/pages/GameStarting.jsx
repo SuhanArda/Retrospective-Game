@@ -6,6 +6,8 @@ import { gameLauncher } from '../games/gameLauncherInstance'
 import { roomService } from '../services/roomServiceInstance'
 import { useRoom } from '../hooks/useRoom'
 import { loadPlatformSession } from '../session/platformSession'
+import { prepareRoomQuestions } from '../services/QuestionBotService'
+import { deleteRoomQuestionDraft, getRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import '../App.css'
 
 function GameStarting() {
@@ -14,12 +16,31 @@ function GameStarting() {
   const { t } = useLanguage()
   const launchedRef = useRef(false)
   const [error, setError] = useState('')
+  const preparationStartedRef = useRef(false)
   const { room, loading } = useRoom(roomCode)
   const player = roomService.getCurrentPlayer()
   const platformSession = loadPlatformSession(window.sessionStorage)
   const game = findGame(gameId)
 
   const isPlayable = game?.status === 'available'
+  const isHost = Boolean(player?.isHost)
+
+  useEffect(() => {
+    if (!isHost || !isPlayable || !room || !game || preparationStartedRef.current) return
+    preparationStartedRef.current = true
+    const draft = getRoomQuestionDraft(room.code)
+    void prepareRoomQuestions({
+      roomCode: room.code,
+      gameId: game.id,
+      style: draft?.style ?? 'dengeli',
+      contextPrompt: draft?.contextPrompt,
+      reportText: draft?.reportText,
+    }).then(() => {
+      deleteRoomQuestionDraft(room.code)
+    }).catch((cause) => {
+      if (import.meta.env.DEV) console.warn('[AIQuestion] preparation failed; continuing with authoritative defaults', cause)
+    })
+  }, [isHost, isPlayable, room, game])
 
   useEffect(() => {
     // A placeholder game can win the vote — say so plainly instead of

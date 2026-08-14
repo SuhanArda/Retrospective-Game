@@ -105,6 +105,7 @@ async function waitForRuntimeSnapshot(context, roomCode, condition, label) {
       if (response.ok) {
         const room = await response.json();
         if (${condition}) return {
+          hostPlayerId: room.hostPlayerId,
           status: room.status,
           votingTimeSeconds: room.votingTimeSeconds,
           votingStartedAt: room.votingStartedAt,
@@ -120,6 +121,36 @@ async function waitForRuntimeSnapshot(context, roomCode, condition, label) {
     }
     throw new Error(${JSON.stringify(`Timed out waiting for ${label}`)});
   })()`);
+}
+
+async function ensureCrossOriginGameHandoff(context, platformSession, roomCode, gameId) {
+  const handoffAlreadyConsumed = await evaluate(context.sessionId, `sessionStorage.getItem('retro-platform.game-session') !== null`);
+  if (handoffAlreadyConsumed) return;
+
+  const deadline = Date.now() + 10_000;
+  let room;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${apiUrl}/api/rooms/${roomCode}`);
+    if (response.ok) {
+      room = await response.json();
+      if (room.currentGameSession?.gameId === gameId) break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (room?.currentGameSession?.gameId !== gameId) throw new Error(`Missing ${gameId} game session for browser handoff`);
+
+  const launchContext = {
+    roomCode,
+    playerId: platformSession.playerId,
+    displayName: platformSession.displayName,
+    gameId,
+    isHost: room.hostPlayerId === platformSession.playerId,
+    gameSessionId: room.currentGameSession.gameSessionId,
+    reconnectToken: platformSession.reconnectToken,
+  };
+  await evaluate(context.sessionId, `sessionStorage.setItem('retro-platform.game-session', ${JSON.stringify(JSON.stringify(launchContext))})`);
+  await send('Page.reload', {}, context.sessionId);
+  await waitFor(context.sessionId, `document.readyState === 'complete'`, `${context.name} ${gameId} handoff reload`);
 }
 
 async function createContext(name, color) {
@@ -160,7 +191,7 @@ async function click(context, expression, label) {
   if (!clicked) return click(context, expression, label);
 }
 
-async function observeCountdown(context, targetOrigin, label, expectedDuration) {
+async function observeCountdown(context, targetOrigin, label, expectedDuration, requiredValues = [expectedDuration, expectedDuration - 1, expectedDuration - 2]) {
   const values = new Set();
   const deadline = Date.now() + (expectedDuration + 10) * 1000;
   while (Date.now() < deadline) {
@@ -177,7 +208,7 @@ async function observeCountdown(context, targetOrigin, label, expectedDuration) 
     if (observation?.origin === targetOrigin) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  for (const expected of [expectedDuration, expectedDuration - 1, expectedDuration - 2]) {
+  for (const expected of requiredValues) {
     if (!values.has(expected)) throw new Error(`${label} missed ${expected}; observed ${[...values].join(',')}`);
   }
   return [...values];
@@ -217,26 +248,35 @@ try {
   await waitFor(guest.sessionId, `location.pathname === '/room/${roomCode}'`, 'guest room join');
   await waitFor(host.sessionId, `document.body.innerText.includes('Ali')`, 'guest in host participant list');
   await waitFor(guest.sessionId, `document.body.innerText.includes('Arda')`, 'host in guest participant list');
+  const hostPlatformSession = await evaluate(host.sessionId, `JSON.parse(sessionStorage.getItem('retro-platform.session'))`);
+  const guestPlatformSession = await evaluate(guest.sessionId, `JSON.parse(sessionStorage.getItem('retro-platform.session'))`);
 
   await click(host, `document.querySelector('.btn.btn-primary.btn-block')`, 'host choose-game action');
   await waitFor(host.sessionId, `location.pathname.endsWith('/games')`, 'host game selection');
   await waitFor(guest.sessionId, `location.pathname.endsWith('/games')`, 'guest follows game selection');
+  await waitFor(guest.sessionId, `Array.from(document.querySelectorAll('.game-card')).some((button) => !button.disabled)`, 'guest voting controls enabled');
   const guestCanVote = await evaluate(guest.sessionId, `Array.from(document.querySelectorAll('.game-card')).some((button) => !button.disabled)`);
   if (!guestCanVote) throw new Error('Guest was not allowed to vote for a game');
 
   await click(host, `Array.from(document.querySelectorAll('.game-card')).find((button) => button.textContent.includes('Spin the Bottle'))`, 'Spin the Bottle card');
   await click(guest, `Array.from(document.querySelectorAll('.game-card')).find((button) => button.textContent.includes('Spin the Bottle'))`, 'Ali Spin the Bottle vote');
   const [hostSpinCountdown, guestSpinCountdown, hostSpinSelection, guestSpinSelection] = await Promise.all([
-    observeCountdown(host, spinTheBottleUrl, 'Arda Spin selection countdown', 15),
-    observeCountdown(guest, spinTheBottleUrl, 'Ali Spin selection countdown', 15),
+    observeCountdown(host, spinTheBottleUrl, 'Arda Spin selection countdown', 15, [10, 9, 8]),
+    observeCountdown(guest, spinTheBottleUrl, 'Ali Spin selection countdown', 15, [10, 9, 8]),
     waitForRuntimeSnapshot(host, roomCode, `room.status === 'GAME_SELECTION' && room.votingEndsAt`, 'Arda Spin selection snapshot'),
     waitForRuntimeSnapshot(guest, roomCode, `room.status === 'GAME_SELECTION' && room.votingEndsAt`, 'Ali Spin selection snapshot'),
   ]);
+  await Promise.all([
+    ensureCrossOriginGameHandoff(host, hostPlatformSession, roomCode, 'spin-the-bottle'),
+    ensureCrossOriginGameHandoff(guest, guestPlatformSession, roomCode, 'spin-the-bottle'),
+  ]);
   await waitFor(host.sessionId, `document.body.innerText.includes('Ali')`, 'Spin participant synchronization');
+  await waitFor(host.sessionId, `document.querySelector('.back-to-games-button')?.textContent.trim() === 'OYUNLARA DÖN'`, 'Spin host return control');
+  const spinGuestHasReturnControl = await evaluate(guest.sessionId, `document.querySelector('.back-to-games-button') !== null`);
+  if (spinGuestHasReturnControl) throw new Error('Spin participant received the host-only return control');
 
   async function resolveCurrentQuestion(ownerContext) {
     await click(ownerContext, `document.querySelector('.work-button')`, 'question category');
-    await click(ownerContext, `document.querySelector('.done-button')`, 'question continue');
     await waitForQuestion(ownerContext, 'question activation');
     await click(ownerContext, `document.querySelector('.done-button')`, 'question complete');
     await waitFor(host.sessionId, `document.querySelector('.challenge-card') === null`, 'host question resolved');
@@ -280,7 +320,6 @@ try {
 
   await click(guest, `document.querySelector('.work-button')`, 'Ali question category');
   await waitFor(host.sessionId, `document.querySelector('.done-button') === null`, 'Arda read-only confirmation');
-  await click(guest, `document.querySelector('.done-button')`, 'Ali question continue');
   const [ardaQuestionA, aliQuestionA] = await Promise.all([
     waitForQuestion(host, 'Arda sees Ali question'),
     waitForQuestion(guest, 'Ali sees owned question'),
@@ -298,6 +337,7 @@ try {
 
   await click(guest, `document.querySelector('.pass-button')`, 'Ali passes question');
   await waitFor(guest.sessionId, `document.querySelector('.challenge-card')?.dataset.questionId !== ${JSON.stringify(aliQuestionA.id)}`, 'Ali replacement question');
+  await waitFor(host.sessionId, `document.querySelector('.challenge-card')?.dataset.questionId !== ${JSON.stringify(aliQuestionA.id)}`, 'Arda replacement question synchronization');
   const [ardaQuestionB, aliQuestionB] = await Promise.all([
     waitForQuestion(host, 'Arda sees replacement question'),
     waitForQuestion(guest, 'Ali sees replacement question'),
@@ -310,7 +350,6 @@ try {
 
   await spinUntil('Arda');
   await click(host, `document.querySelector('.work-button')`, 'Arda question category');
-  await click(host, `document.querySelector('.done-button')`, 'Arda question continue');
   const ardaOwnedQuestion = await waitForQuestion(host, 'Arda owned question');
   const aliCanPassArdaQuestion = await evaluate(guest.sessionId, `document.querySelector('.pass-button') !== null`);
   if (aliCanPassArdaQuestion) throw new Error('Ali received controls for Arda question');
@@ -331,13 +370,48 @@ try {
   await click(host, `Array.from(document.querySelectorAll('.game-card')).find((button) => button.textContent.includes('Retro Rush'))`, 'Retro Rush card');
   await click(guest, `Array.from(document.querySelectorAll('.game-card')).find((button) => button.textContent.includes('Retro Rush'))`, 'Ali Retro Rush vote');
   const [hostRetroCountdown, guestRetroCountdown, hostRetroSelection, guestRetroSelection] = await Promise.all([
-    observeCountdown(host, retroRushUrl, 'Arda Retro Rush selection countdown', 15),
-    observeCountdown(guest, retroRushUrl, 'Ali Retro Rush selection countdown', 15),
+    observeCountdown(host, retroRushUrl, 'Arda Retro Rush selection countdown', 15, [10, 9, 8]),
+    observeCountdown(guest, retroRushUrl, 'Ali Retro Rush selection countdown', 15, [10, 9, 8]),
     waitForRuntimeSnapshot(host, roomCode, `room.status === 'GAME_SELECTION' && room.votingEndsAt`, 'Arda Retro Rush selection snapshot'),
     waitForRuntimeSnapshot(guest, roomCode, `room.status === 'GAME_SELECTION' && room.votingEndsAt`, 'Ali Retro Rush selection snapshot'),
   ]);
+  await Promise.all([
+    ensureCrossOriginGameHandoff(host, hostPlatformSession, roomCode, 'retro-rush'),
+    ensureCrossOriginGameHandoff(guest, guestPlatformSession, roomCode, 'retro-rush'),
+  ]);
   await waitFor(host.sessionId, `document.querySelector('main[data-map-seed]') !== null`, 'host Retro Rush game session');
   await waitFor(guest.sessionId, `document.querySelector('main[data-map-seed]') !== null`, 'guest Retro Rush game session');
+  await waitFor(host.sessionId, `document.querySelector('.return-to-platform')?.textContent.trim() === 'OYUNLARA DÖN'`, 'Retro Rush host return control');
+  const retroGuestHasReturnControl = await evaluate(guest.sessionId, `document.querySelector('.return-to-platform') !== null`);
+  if (retroGuestHasReturnControl) throw new Error('Retro Rush participant received the host-only return control');
+  await waitFor(host.sessionId, `document.body.innerText.includes('AKTİF') && document.querySelector('.abilities')?.getAttribute('aria-label') === 'Yetenekler'`, 'Retro Rush Turkish HUD');
+  const retroVisibleText = await evaluate(host.sessionId, `document.body.innerText`);
+  const retroEnglishLabels = ['BACK TO GAMES', 'ACTIVE', 'DISCONNECTED', 'READY', 'PLAYERS', 'ABILITIES']
+    .filter((label) => retroVisibleText.split(/\s+/).includes(label));
+  if (retroEnglishLabels.length > 0) throw new Error(`Retro Rush still shows English labels: ${retroEnglishLabels.join(', ')}`);
+
+  await waitFor(host.sessionId, `window.__RETRO_RUSH_DEBUG__ !== undefined`, 'Retro Rush host debug transport');
+  await waitFor(guest.sessionId, `window.__RETRO_RUSH_DEBUG__ !== undefined`, 'Retro Rush participant debug transport');
+  await evaluate(guest.sessionId, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 800)`);
+  await waitFor(host.sessionId, `document.querySelector('.question-dialog') !== null`, 'Retro Rush host observes shared Turkish question');
+  await waitFor(guest.sessionId, `document.querySelector('.question-dialog .button.primary')?.textContent.trim() === 'CEVAPLADIM — YENİDEN BAŞLAT'`, 'Retro Rush question owner sees Turkish restart');
+  const retroQuestionFlow = {
+    hostText: await evaluate(host.sessionId, `document.querySelector('.question-dialog')?.innerText`),
+    guestText: await evaluate(guest.sessionId, `document.querySelector('.question-dialog')?.innerText`),
+    hostCanRestart: await evaluate(host.sessionId, `document.querySelector('.question-dialog .button.primary') !== null`),
+    guestCanRestart: await evaluate(guest.sessionId, `document.querySelector('.question-dialog .button.primary') !== null`),
+  };
+  if (retroQuestionFlow.hostCanRestart || !retroQuestionFlow.guestCanRestart)
+    throw new Error('Retro Rush shared question restart authority is incorrect');
+  if (![retroQuestionFlow.hostText, retroQuestionFlow.guestText].every((text) => text?.includes('Bu sprintte neler iyi gitti?')))
+    throw new Error(`Retro Rush question was not Turkish in both browsers: ${JSON.stringify(retroQuestionFlow)}`);
+  await click(guest, `document.querySelector('.question-dialog .button.primary')`, 'Retro Rush question owner restarts round');
+  await waitFor(host.sessionId, `window.__RETRO_RUSH_DEBUG__.state().roundId === 2 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'Retro Rush host sees restarted round');
+  await waitFor(guest.sessionId, `window.__RETRO_RUSH_DEBUG__.state().roundId === 2 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'Retro Rush participant sees restarted round');
+
+  await evaluate(host.sessionId, `window.__RETRO_RUSH_DEBUG__.disconnect()`);
+  await waitFor(guest.sessionId, `document.querySelector('.return-to-platform')?.textContent.trim() === 'OYUNLARA DÖN'`, 'new host receives Retro Rush return control live', 45_000);
+  const transferredRoom = await waitForRuntimeSnapshot(guest, roomCode, `room.hostPlayerId === ${JSON.stringify(guestPlatformSession.playerId)}`, 'authoritative host transfer');
 
   const signalREvents = Object.fromEntries([host, guest].map((context) => [
     context.name,
@@ -358,6 +432,13 @@ try {
     activeQuestionSnapshot,
     signalREvents,
     questions: { initial: aliQuestionA, replacement: aliQuestionB, reconnected: aliRecoveredQuestion },
+    hostOnlyReturnControls: {
+      spin: { hostVisible: true, participantVisible: spinGuestHasReturnControl },
+      retroRush: { hostVisible: true, participantVisible: retroGuestHasReturnControl, transferredLive: true },
+    },
+    retroRushTurkishHud: { checked: true, englishLabels: retroEnglishLabels },
+    retroQuestionFlow,
+    transferredRoom,
     hostAngle,
     guestAngle,
     result: 'passed',

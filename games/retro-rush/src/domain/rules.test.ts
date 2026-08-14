@@ -39,9 +39,9 @@ describe('ability rules', () => {
 
 describe('question validation', () => {
   const textQuestion: RetroQuestion = { id: 'x', category: 'Went well', type: 'text', prompt: 'Reflect', required: true };
-  it('requires a meaningful required response', () => expect(validateQuestionResponse(textQuestion, '   ')).toMatch(/share/i));
+  it('requires a meaningful required response', () => expect(validateQuestionResponse(textQuestion, '   ')).toMatch(/yanıt/i));
   it('accepts free text', () => expect(validateQuestionResponse(textQuestion, 'Pairing helped.')).toBeNull());
-  it('requires an approved choice', () => expect(validateQuestionResponse({ ...textQuestion, type: 'singleChoice', options: ['A', 'B'] }, 'C')).toMatch(/choose/i));
+  it('requires an approved choice', () => expect(validateQuestionResponse({ ...textQuestion, type: 'singleChoice', options: ['A', 'B'] }, 'C')).toMatch(/seç/i));
 });
 
 describe('map safety rules', () => {

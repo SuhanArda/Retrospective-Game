@@ -13,4 +13,13 @@ public interface IRoomClient
     Task FireResult(FireResult result);
     Task RussianRouletteStateChanged(RussianRouletteStateSnapshot state);
     Task ReactionReceived(RoomReaction reaction);
+    Task RetroRushSnapshot(RetroRushGameSnapshot snapshot);
+    Task RetroRushPlayerUpdated(RetroRushPlayerSnapshot player);
+    Task RetroRushShoveApplied(RetroRushShoveApplied shove);
+    Task RetroRushRocketSpawned(RetroRushRocketSnapshot rocket);
+    Task RetroRushRocketHit(RetroRushRocketHitApplied hit);
+    Task RetroRushPickupCollected(RetroRushPickupCollected pickup);
+    Task RetroRushPlayerEliminated(RetroRushPlayerEliminated elimination);
+    Task RetroRushRoundStarted(RetroRushGameSnapshot snapshot);
+    Task RetroRushTargetQuestioned(RetroRushTargetQuestioned question);
 }

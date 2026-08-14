@@ -4,7 +4,7 @@ import type { RoomService } from './RoomService';
 
 const apiUrl = typeof import.meta.env.VITE_API_URL === 'string' && import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL
-  : 'http://localhost:5281';
+  : (() => { throw new Error('Missing required build-time environment variable: VITE_API_URL'); })();
 const roomServiceMode = import.meta.env.VITE_ROOM_SERVICE;
 
 /**

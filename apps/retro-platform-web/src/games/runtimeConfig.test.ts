@@ -2,12 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseGameRuntimeConfig } from './runtimeConfig';
 
 describe('game runtime configuration', () => {
-  it('uses the development URL by default', () => {
-    expect(parseGameRuntimeConfig({})).toEqual({
-      retroRushUrl: 'http://localhost:5174',
-      spinTheBottleUrl: 'http://localhost:5175',
-      rusRuletiUrl: 'http://localhost:5176',
-    });
+  it('fails clearly when a required build-time URL is missing', () => {
+    expect(() => parseGameRuntimeConfig({})).toThrow('VITE_RETRO_RUSH_URL');
   });
 
   it('supports a production path', () => {

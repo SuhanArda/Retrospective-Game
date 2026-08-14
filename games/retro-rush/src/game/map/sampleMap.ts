@@ -3,7 +3,7 @@ import type { LevelDefinition, Platform } from './mapTypes';
 const ground = (id: string, x: number, width: number): Platform => ({ id, x, y: 640, width, height: 40 });
 
 export const sampleMap: LevelDefinition = {
-  id: 'skyline-sprint', name: 'Skyline Sprint', width: 6800, height: 720, spawn: { x: 180, y: 540 },
+  id: 'skyline-sprint', name: 'Ufuk Koşusu', width: 6800, height: 720, spawn: { x: 180, y: 540 },
   platforms: [
     ground('g1', 0, 980), ground('g2', 1120, 720), ground('g3', 1960, 880), ground('g4', 3000, 680),
     ground('g5', 3820, 940), ground('g6', 4920, 720), ground('g7', 5800, 1000),
@@ -16,11 +16,11 @@ export const sampleMap: LevelDefinition = {
     { id: 'p12', x: 5520, y: 410, width: 180, height: 24 }, { id: 'p13', x: 6020, y: 500, width: 210, height: 24 },
   ],
   checkpoints: [
-    { id: 'start', label: 'Launch Pad', x: 180, y: 540 },
-    { id: 'cp1', label: 'Idea Garden', x: 1450, y: 540 },
-    { id: 'cp2', label: 'Team Bridge', x: 3150, y: 540 },
-    { id: 'cp3', label: 'Focus Station', x: 4780, y: 540 },
-    { id: 'cp4', label: 'Final Stretch', x: 5850, y: 540 },
+    { id: 'start', label: 'Başlangıç Noktası', x: 180, y: 540 },
+    { id: 'cp1', label: 'Fikir Bahçesi', x: 1450, y: 540 },
+    { id: 'cp2', label: 'Takım Köprüsü', x: 3150, y: 540 },
+    { id: 'cp3', label: 'Odak İstasyonu', x: 4780, y: 540 },
+    { id: 'cp4', label: 'Son Düzlük', x: 5850, y: 540 },
   ],
   pickups: [
     { id: 'a1', ability: 'speed', x: 910, y: 370 }, { id: 'a2', ability: 'rocket', x: 2630, y: 350 },

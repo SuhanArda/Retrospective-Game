@@ -13,6 +13,8 @@ The process is intentionally ephemeral: restarting it removes rooms. Disconnecte
 
 Configuration:
 
-- `AllowedOrigins`: exact browser origins allowed to use credentialed SignalR connections.
+- `AllowedOrigins`: exact browser origins allowed to use credentialed SignalR connections. Localhost values live only in `appsettings.Development.json`; production must set `AllowedOrigins__0`, `AllowedOrigins__1`, and so on.
 - `Rooms:DisconnectGraceSeconds`: disconnect grace window.
-- `--urls`: listen address. For LAN testing use `--urls http://0.0.0.0:5281` and configure each frontend's `VITE_API_URL` with the host machine's LAN address.
+- `--urls`: local-only listen override. Azure App Service supplies the production binding through ASP.NET Core hosting configuration.
+
+Production intentionally refuses to start without at least one allowed origin. Do not use `AllowAnyOrigin`: browser SignalR connections use credentials. App Service terminates public HTTPS; set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so ASP.NET Core observes the forwarded scheme. The application does not force an HTTP-to-HTTPS redirect, avoiding an incorrect internal-port redirect behind the proxy.
