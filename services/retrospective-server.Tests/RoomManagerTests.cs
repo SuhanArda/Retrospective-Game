@@ -9,6 +9,51 @@ public sealed class RoomManagerTests
     private static readonly string[] Games = ["retro-rush", "spin-the-bottle"];
 
     [Fact]
+    public void AiAccessUsesRoomGameAndRequiresHostForGeneration()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Guest", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.BeginGameSelection("host", ["retro-rush"]);
+        manager.ResolveVote("host");
+
+        var access = manager.AuthorizeAiAccess(host.RoomCode, host.PlayerId, host.ReconnectToken, hostRequired: true);
+        Assert.Equal("retro-rush", access.GameId);
+        Assert.True(access.IsHost);
+        Assert.Throws<RoomException>(() => manager.AuthorizeAiAccess(host.RoomCode, guest.PlayerId, guest.ReconnectToken, hostRequired: true));
+        Assert.Throws<RoomException>(() => manager.AuthorizeAiAccess(host.RoomCode, host.PlayerId, "wrong", hostRequired: true));
+    }
+
+    [Fact]
+    public void AiQuestionSourceIsRestoredFromRoomMemoryForTheNextGame()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var sourceFile = new ReportFilePayload("retro.txt", "text/plain", "cmV0cm8=");
+        var initial = new GenerateRoomQuestionsRequest(
+            "  ekip iletişimi  ",
+            "  kararlar geç alındı  ",
+            "tr",
+            "düşündürücü",
+            20,
+            sourceFile);
+
+        var remembered = manager.RememberOrRestoreAiQuestionSource(host.RoomCode, initial);
+        var restored = manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(null, null, "tr", "dengeli", 15));
+
+        Assert.Equal("ekip iletişimi", remembered.Topic);
+        Assert.Equal("kararlar geç alındı", remembered.ReportText);
+        Assert.Equal(20, remembered.Count);
+        Assert.Equal("ekip iletişimi", restored.Topic);
+        Assert.Equal("kararlar geç alındı", restored.ReportText);
+        Assert.Equal(sourceFile, restored.ReportFile);
+        Assert.Equal("düşündürücü", restored.Style);
+        Assert.Equal(15, restored.Count);
+    }
+
+    [Fact]
     public void CreateJoinAndReconnectKeepStableIdentityAndDeriveHost()
     {
         var manager = CreateManager();

@@ -1,19 +1,24 @@
 export interface AppConfig {
   apiKey: string | null;
   model: string;
-  questionProvider: "demo" | "gemini";
+  questionProvider: "local" | "gemini";
   port: number;
   allowedOrigins: "*" | readonly string[];
   sessionTtlMs: number;
   internalServiceKey: string | null;
+  requestTimeoutMs: number;
+  maximumRetries: number;
+  roomRateLimitMs: number;
+  maxReportSizeBytes: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const rawApiKey = env.GEMINI_API_KEY?.trim() ?? "";
   const apiKey = rawApiKey && rawApiKey !== "your-api-key-here" ? rawApiKey : null;
-  const questionProvider = env.QUESTION_PROVIDER?.trim().toLowerCase() || "demo";
-  if (questionProvider !== "demo" && questionProvider !== "gemini") {
-    throw new Error("QUESTION_PROVIDER yalnızca demo veya gemini olabilir.");
+  const configuredProvider = (env.AI_PROVIDER ?? env.QUESTION_PROVIDER)?.trim().toLowerCase() || "local";
+  const questionProvider = configuredProvider === "demo" ? "local" : configuredProvider;
+  if (questionProvider !== "local" && questionProvider !== "gemini") {
+    throw new Error("AI_PROVIDER yalnızca local veya gemini olabilir.");
   }
   if (questionProvider === "gemini" && !apiKey) {
     throw new Error("Missing required environment variable: GEMINI_API_KEY");
@@ -34,6 +39,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const internalServiceKey = rawServiceKey && rawServiceKey !== "your-internal-service-key-here"
     ? rawServiceKey
     : null;
+  if (env.NODE_ENV === "production" && !internalServiceKey) {
+    throw new Error("Missing required environment variable: INTERNAL_SERVICE_KEY");
+  }
 
   const rawAllowedOrigins = env.ALLOWED_ORIGINS?.trim() || env.ALLOWED_ORIGIN?.trim() || "*";
   if (env.NODE_ENV === "production" && rawAllowedOrigins === "*") {
@@ -58,13 +66,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("ALLOWED_ORIGINS must contain at least one origin.");
   }
 
+  const requestTimeoutMs = Number(env.AI_REQUEST_TIMEOUT_MS ?? "30000");
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1000 || requestTimeoutMs > 120_000)
+    throw new Error("AI_REQUEST_TIMEOUT_MS 1000-120000 arasında olmalıdır.");
+  const maximumRetries = Number(env.AI_MAX_RETRIES ?? "2");
+  if (!Number.isInteger(maximumRetries) || maximumRetries < 0 || maximumRetries > 3)
+    throw new Error("AI_MAX_RETRIES 0-3 arasında olmalıdır.");
+  const roomRateLimitMs = Number(env.AI_ROOM_RATE_LIMIT_MS ?? "5000");
+  if (!Number.isInteger(roomRateLimitMs) || roomRateLimitMs < 1000 || roomRateLimitMs > 60_000)
+    throw new Error("AI_ROOM_RATE_LIMIT_MS 1000-60000 arasında olmalıdır.");
+  const maxReportSizeMb = Number(env.MAX_REPORT_SIZE_MB ?? "5");
+  if (!Number.isInteger(maxReportSizeMb) || maxReportSizeMb < 1 || maxReportSizeMb > 10)
+    throw new Error("MAX_REPORT_SIZE_MB 1-10 arasında olmalıdır.");
+
   return {
     apiKey,
-    model: env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
+    model: env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite",
     questionProvider,
     port,
     allowedOrigins,
     sessionTtlMs: ttlMinutes * 60_000,
     internalServiceKey,
+    requestTimeoutMs,
+    maximumRetries,
+    roomRateLimitMs,
+    maxReportSizeBytes: maxReportSizeMb * 1024 * 1024,
   };
 }

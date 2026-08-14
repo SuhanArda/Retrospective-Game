@@ -20,6 +20,7 @@ public sealed partial class RoomManager
     private const int RetroRushCountdownMs = 3_500;
     private const int RetroRushSpeedCooldownMs = 15_000;
     private const int RetroRushAskCooldownMs = 30_000;
+    private const int RetroRushQuestionPoolSize = 20;
     private static readonly Regex PickupIdPattern = new(
         "^chunk-[0-9]+-[a-z0-9-]+-pickup-[0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> MovementStates =
@@ -229,8 +230,9 @@ public sealed partial class RoomManager
             player.MovementState = "ANSWERING_QUESTION";
             player.AnimationState = "eliminated";
             var definition = RetroRushQuestions[(state.RoundId - 1) % RetroRushQuestions.Length];
+            var questionIndex = (state.RoundId - 1) % RetroRushQuestionPoolSize;
             var question = new RetroRushQuestionSnapshot(
-                definition.Id, player.PlayerId, "ACTIVE", state.RoundId, definition.Category, definition.Type,
+                definition.Id, questionIndex, player.PlayerId, "ACTIVE", state.RoundId, definition.Category, definition.Type,
                 definition.Prompt, definition.Options, definition.Required);
             state.ActiveQuestion = question;
             state.Phase = "QUESTION";

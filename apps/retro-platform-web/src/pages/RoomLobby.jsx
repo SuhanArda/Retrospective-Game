@@ -4,6 +4,7 @@ import { useLanguage } from '../context/LanguageContext.jsx'
 import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { findGame, gameRegistry } from '../games/gameRegistry'
 import { useRoom } from '../hooks/useRoom'
+import { deleteRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
@@ -43,6 +44,7 @@ function RoomLobby() {
   }
 
   async function handleLeave() {
+    deleteRoomQuestionDraft(roomCode)
     await roomService.leaveRoom()
     navigate('/')
   }

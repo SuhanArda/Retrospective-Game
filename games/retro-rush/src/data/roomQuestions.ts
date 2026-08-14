@@ -1,41 +1,24 @@
-import type { RetroQuestion, RetroQuestionCategory } from '../domain/types';
+import type { RetroQuestion } from '../domain/types';
+import { adaptRetroRushQuestions, type RoomQuestion } from './retroRushQuestionAdapter';
 
-interface BotQuestion {
-  id: string;
-  text: string;
-  category: string;
+function authHeaders(playerId: string, reconnectToken: string): Record<string, string> {
+  return { 'X-Player-Id': playerId, 'X-Reconnect-Token': reconnectToken };
 }
 
-const categoryMap: Readonly<Record<string, RetroQuestionCategory>> = {
-  reflection: 'Went well',
-  teamwork: 'Appreciation',
-  improvement: 'Improvement',
-  fun: 'Team mood',
-};
-
-export async function loadRoomQuestions(baseUrl: string, roomCode: string): Promise<readonly RetroQuestion[]> {
-  const response = await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}/questions`, {
+export async function loadRoomQuestions(baseUrl: string, roomCode: string, playerId: string, reconnectToken: string): Promise<readonly RetroQuestion[]> {
+  const response = await fetch(`${baseUrl}/api/rooms/${encodeURIComponent(roomCode)}/questions`, {
+    headers: authHeaders(playerId, reconnectToken),
     signal: AbortSignal.timeout(3_000),
   });
   if (!response.ok) throw new Error('ROOM_QUESTIONS_UNAVAILABLE');
   const result = await response.json() as { questions?: unknown };
   if (!Array.isArray(result.questions)) throw new Error('INVALID_ROOM_QUESTIONS');
-  return result.questions.flatMap((value): RetroQuestion[] => {
+  const questions = result.questions.flatMap((value): RoomQuestion[] => {
     if (typeof value !== 'object' || value === null) return [];
-    const item = value as Partial<BotQuestion>;
+    const item = value as Partial<RoomQuestion>;
     if (typeof item.id !== 'string' || typeof item.text !== 'string' || typeof item.category !== 'string') return [];
-    return [{
-      id: item.id,
-      category: categoryMap[item.category] ?? 'Challenges',
-      type: 'text',
-      prompt: item.text,
-      required: true,
-    }];
+    if (item.gameCategory !== undefined && item.gameCategory !== 'work' && item.gameCategory !== 'entertainment') return [];
+    return [{ id: item.id, text: item.text, category: item.category, ...(item.gameCategory ? { gameCategory: item.gameCategory } : {}) }];
   });
-}
-
-export async function deleteRoomQuestions(baseUrl: string, roomCode: string): Promise<void> {
-  await fetch(`${baseUrl}/rooms/${encodeURIComponent(roomCode)}`, {
-    method: 'DELETE', signal: AbortSignal.timeout(3_000),
-  });
+  return adaptRetroRushQuestions(questions);
 }

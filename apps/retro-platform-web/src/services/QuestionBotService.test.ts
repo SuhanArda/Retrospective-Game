@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { prepareRoomQuestions, roomQuestionsAreReady } from './QuestionBotService';
 
-const validQuestions = Array.from({ length: 15 }, (_, index) => ({
+const validQuestions = Array.from({ length: 20 }, (_, index) => ({
   id: `question-${index}`,
   text: `Question ${index}`,
   category: 'reflection',
@@ -12,18 +12,22 @@ describe('QuestionBotService', () => {
 
   it('uses the room question endpoint with a finite timeout', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      gameId: 'retro-rush', provider: 'demo', questions: validQuestions,
+      gameId: 'room-retrospective', provider: 'demo', questions: validQuestions,
     }), { status: 201, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(prepareRoomQuestions({
       roomCode: 'ABC234', gameId: 'retro-rush', style: 'dengeli',
-    })).resolves.toMatchObject({ gameId: 'retro-rush', questions: validQuestions });
+      playerId: 'player-1', reconnectToken: 'token-1',
+    })).resolves.toMatchObject({ gameId: 'room-retrospective', questions: validQuestions });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3002/rooms/ABC234/questions',
+      'http://localhost:5281/api/rooms/ABC234/questions',
       expect.objectContaining({
         method: 'POST', keepalive: true, signal: expect.any(AbortSignal),
+        headers: expect.objectContaining({
+          'X-Player-Id': 'player-1', 'X-Reconnect-Token': 'token-1',
+        }),
       }),
     );
   });
@@ -33,7 +37,7 @@ describe('QuestionBotService', () => {
       gameId: 'retro-rush', provider: 'demo', questions: 'not-an-array',
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
-    await expect(roomQuestionsAreReady('ABC234', 'retro-rush')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
+    await expect(roomQuestionsAreReady('ABC234', 'player-1', 'token-1')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
   });
 
   it('treats a failed question endpoint as unavailable even when health can be healthy', async () => {
@@ -41,6 +45,7 @@ describe('QuestionBotService', () => {
 
     await expect(prepareRoomQuestions({
       roomCode: 'ABC234', gameId: 'retro-rush', style: 'dengeli',
+      playerId: 'player-1', reconnectToken: 'token-1',
     })).rejects.toThrow('QUESTION_PREPARATION_FAILED');
   });
 });

@@ -30,18 +30,32 @@ test("rapor metnini konu olmadan kabul eder", () => {
     reportText: "İletişim ve iş bölümü geliştirilebilir.",
     language: "tr",
     style: "düşündürücü",
-    count: 15,
+    count: 20,
   });
   assert.equal(result.success, true);
 });
 
-test("oda oturumu için 15 dışında soru sayısını reddeder", () => {
+test("oda oturumu için 20 dışında soru sayısını reddeder", () => {
   const result = validateRoomQuestionRequest({
     gameId: "retro-rush",
     topic: "iletişim",
     language: "tr",
     style: "dengeli",
-    count: 30,
+    count: 15,
   });
+  assert.equal(result.success, false);
+});
+
+test("oda isteğini oyun bağımsız ortak 20 soruluk profile normalleştirir", () => {
+  const spin = validateRoomQuestionRequest({ gameId: "spin_the_bottle", topic: "retro", language: "tr", style: "dengeli", count: 20 });
+  const rush = validateRoomQuestionRequest({ gameId: "retro_rush", topic: "retro", language: "tr", style: "dengeli", count: 20 });
+  assert.equal(spin.success && spin.data.gameId, "room-retrospective");
+  assert.equal(rush.success && rush.data.gameId, "room-retrospective");
+  assert.equal(spin.success && spin.data.count, 20);
+  assert.equal(rush.success && rush.data.count, 20);
+});
+
+test("desteklenmeyen oyunu reddeder", () => {
+  const result = validateRoomQuestionRequest({ gameId: "unknown", topic: "retro", language: "tr", style: "dengeli", count: 20 });
   assert.equal(result.success, false);
 });
