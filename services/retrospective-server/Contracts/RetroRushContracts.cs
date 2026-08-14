@@ -16,7 +16,8 @@ public sealed record RetroRushPlayerSnapshot(
     string AnimationState,
     long Sequence,
     long ClientTimestamp,
-    int RoundId);
+    int RoundId,
+    IReadOnlyList<string> OwnedAbilityIds);
 
 public sealed record RetroRushQuestionSnapshot(
     string QuestionId,

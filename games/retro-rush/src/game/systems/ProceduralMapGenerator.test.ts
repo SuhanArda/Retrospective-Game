@@ -241,6 +241,17 @@ describe('ProceduralMapGenerator', () => {
     }
   });
 
+  it('uses the tuned authored pickup chances without sacrificing seeded determinism', () => {
+    expect(findChunkTemplate('elevated-optional-route')?.pickups[0]?.chance).toBe(0.8);
+    expect(findChunkTemplate('ability-upper-platform')?.pickups[0]?.chance).toBeUndefined();
+    expect(findChunkTemplate('split-route')?.pickups[0]?.chance).toBe(0.9);
+
+    const first = generate(20260814, 240).activeChunks.flatMap((chunk) => chunk.pickups);
+    const replay = generate(20260814, 240).activeChunks.flatMap((chunk) => chunk.pickups);
+    expect(first.length).toBeGreaterThan(20);
+    expect(first).toEqual(replay);
+  });
+
   it.each(['shrub', 'sign', 'lantern'] as const)('keeps every %s terrain-anchored', (decorationType) => {
     const chunks = generate(125, 500).activeChunks;
     const decorations = chunks.flatMap((chunk) => chunk.decorations.filter((decoration) => decoration.type === decorationType));
