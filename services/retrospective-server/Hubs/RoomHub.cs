@@ -4,7 +4,7 @@ using Retrospective.Server.Rooms;
 
 namespace Retrospective.Server.Hubs;
 
-public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger) : Hub<IRoomClient>
+public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger, AiQuestionGateway ai) : Hub<IRoomClient>
 {
     public static string GroupName(string roomCode) => $"room:{roomCode}";
 
@@ -119,7 +119,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
         }
-        else await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
+        else
+        {
+            await ai.DeleteSilently(player.RoomCode, CancellationToken.None);
+            await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
+        }
     }
 
     public async Task SendReaction(string emoji)

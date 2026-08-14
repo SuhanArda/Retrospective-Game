@@ -73,14 +73,29 @@ describe('GameStarting', () => {
     })
   }
 
-  it('launches Retro Rush without waiting for pending AI preparation', async () => {
+  it('launches Retro Rush after its room questions are prepared', async () => {
+    let finishPreparation
+    mocks.prepareRoomQuestions.mockImplementation(() => new Promise((resolve) => { finishPreparation = resolve }))
     await renderStartingPage('retro-rush')
 
     expect(mocks.prepareRoomQuestions).toHaveBeenCalledOnce()
+    expect(mocks.launchGame).not.toHaveBeenCalled()
+
+    await act(async () => finishPreparation({}))
+
     expect(mocks.launchGame).toHaveBeenCalledWith(expect.objectContaining({
       gameId: 'retro-rush', gameSessionId: 'session-1', roomCode: 'ABC234',
     }))
     expect(container.textContent).not.toContain('Soru servisine')
+  })
+
+  it('still launches with game defaults when question preparation fails', async () => {
+    mocks.prepareRoomQuestions.mockRejectedValue(new Error('QUESTION_PREPARATION_FAILED'))
+
+    await renderStartingPage('retro-rush')
+
+    await act(async () => undefined)
+    expect(mocks.launchGame).toHaveBeenCalledWith(expect.objectContaining({ gameId: 'retro-rush' }))
   })
 
   it('launches Spin for a guest without making AI part of the launch path', async () => {

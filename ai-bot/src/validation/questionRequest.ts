@@ -1,4 +1,5 @@
 import type { GenerateQuestionsRequest } from "../types/questions.js";
+import { getGameProfile, isSupportedRoomGame, normalizeGameId, ROOM_QUESTION_PROFILE_ID } from "../data/gameProfiles.js";
 
 interface ValidationSuccess {
   success: true;
@@ -27,7 +28,8 @@ export function validateGenerateQuestionsRequest(value: unknown): ValidationResu
     return { success: false, errors: ["İstek gövdesi bir JSON nesnesi olmalıdır."] };
   }
 
-  const gameId = cleanString(value.gameId);
+  const rawGameId = cleanString(value.gameId);
+  const gameId = rawGameId ? normalizeGameId(rawGameId) : null;
   const topic = cleanString(value.topic);
   const reportText = cleanString(value.reportText);
   const language = cleanString(value.language);
@@ -36,6 +38,7 @@ export function validateGenerateQuestionsRequest(value: unknown): ValidationResu
   const errors: string[] = [];
 
   if (!gameId || gameId.length > 80) errors.push("gameId 1-80 karakter olmalıdır.");
+  if (gameId && !getGameProfile(gameId)) errors.push("Desteklenmeyen oyun kimliği.");
   if (!topic && !reportText) errors.push("topic veya reportText alanlarından biri gereklidir.");
   if (topic && topic.length > 500) errors.push("topic en fazla 500 karakter olmalıdır.");
   if (reportText && reportText.length > 20_000) errors.push("reportText en fazla 20.000 karakter olmalıdır.");
@@ -65,8 +68,13 @@ export function validateGenerateQuestionsRequest(value: unknown): ValidationResu
 export function validateRoomQuestionRequest(value: unknown): ValidationResult {
   const result = validateGenerateQuestionsRequest(value);
   if (!result.success) return result;
-  if (result.data.count !== 15) {
-    return { success: false, errors: ["Oyun oturumu için count 15 olmalıdır."] };
+  if (!isSupportedRoomGame(result.data.gameId)) {
+    return { success: false, errors: ["Desteklenmeyen oyun kimliği."] };
   }
-  return result;
+  if (result.data.count !== 20) {
+    return { success: false, errors: ["Oda soru paketi için count 20 olmalıdır."] };
+  }
+  const profile = getGameProfile(ROOM_QUESTION_PROFILE_ID);
+  if (!profile) return { success: false, errors: ["Desteklenmeyen oyun kimliği."] };
+  return { success: true, data: { ...result.data, gameId: profile.id, count: profile.questionCount } };
 }

@@ -13,6 +13,7 @@ import type { RoomReaction } from '../domain/reactions';
 import { clearPlatformSession, loadPlatformSession, savePlatformSession } from '../session/platformSession';
 import { normalizeRoomCode } from '../utils/roomCode';
 import type { ReactionListener, RoomConnectionStatus, RoomListener, RoomService } from './RoomService';
+import { deleteRoomQuestionDraft } from './RoomQuestionDraftStore';
 
 const JOIN_ERRORS = new Set<JoinRoomErrorCode>([
   'ROOM_NOT_FOUND', 'ROOM_FULL', 'ROOM_ALREADY_STARTED', 'INVALID_ROOM_CODE',
@@ -130,7 +131,10 @@ export class SignalRRoomService implements RoomService {
     if (!this.client) {
       this.client = new RoomRealtimeClient(this.apiUrl, { roomCode, playerId, reconnectToken });
       this.client.on('roomSnapshot', room => this.publish(room as RetroRoom));
-      this.client.on('roomClosed', () => this.publish(null));
+      this.client.on('roomClosed', () => {
+        deleteRoomQuestionDraft(roomCode);
+        this.publish(null);
+      });
       this.client.on('reaction', reaction => this.publishReaction(reaction as RoomReaction));
       this.client.on('connectionChanged', status => {
         this.connectionStatus = status;

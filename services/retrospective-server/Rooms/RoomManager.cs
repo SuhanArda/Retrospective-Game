@@ -90,6 +90,48 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         lock (room.Gate) return Snapshot(room);
     }
 
+    public RoomAiAccess AuthorizeAiAccess(string rawCode, string playerId, string token, bool hostRequired)
+    {
+        var room = Find(rawCode);
+        lock (room.Gate)
+        {
+            var player = Authenticate(room, playerId, token);
+            if (hostRequired && room.HostPlayerId != player.Id) throw new RoomException("HOST_REQUIRED");
+            var gameId = room.CurrentGameSession?.GameId ?? room.SelectedGameId
+                ?? throw new RoomException("NO_ACTIVE_GAME_SESSION");
+            return new RoomAiAccess(room.Code, gameId, player.Id, room.HostPlayerId == player.Id);
+        }
+    }
+
+    public GenerateRoomQuestionsRequest RememberOrRestoreAiQuestionSource(
+        string rawCode,
+        GenerateRoomQuestionsRequest request)
+    {
+        var room = Find(rawCode);
+        lock (room.Gate)
+        {
+            var topic = string.IsNullOrWhiteSpace(request.Topic) ? null : request.Topic.Trim();
+            var reportText = string.IsNullOrWhiteSpace(request.ReportText) ? null : request.ReportText.Trim();
+            var hasModeratorSource = topic is not null || reportText is not null || request.ReportFile is not null;
+
+            if (hasModeratorSource)
+            {
+                room.AiQuestionSource = new AiQuestionSource(topic, reportText, request.ReportFile, request.Style);
+                return request with { Topic = topic, ReportText = reportText };
+            }
+
+            if (room.AiQuestionSource is not { } source) return request;
+
+            return request with
+            {
+                Topic = source.Topic,
+                ReportText = source.ReportText,
+                ReportFile = source.ReportFile,
+                Style = source.Style,
+            };
+        }
+    }
+
     public RoomSnapshot Attach(string rawCode, string playerId, string token, string connectionId)
     {
         var room = Find(rawCode);
@@ -656,6 +698,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public SpinResult? LastSpinResult { get; set; }
         public SpinBottleState? SpinBottleState { get; set; }
         public RussianRouletteState? RussianRouletteState { get; set; }
+        public AiQuestionSource? AiQuestionSource { get; set; }
     }
 
     private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt)
@@ -680,6 +723,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);
+
+    private sealed record AiQuestionSource(
+        string? Topic,
+        string? ReportText,
+        ReportFilePayload? ReportFile,
+        string Style);
 
     private sealed class SpinBottleState(string spinId, string spinnerPlayerId, string targetPlayerId, int targetIndex,
         string? category, string? questionId, string? questionText, string status, int revision, long updatedAtUtc,

@@ -1,13 +1,23 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadConfig } from "./config.js";
-import { generateDemoQuestions } from "./services/demoQuestionGenerator.js";
-import { generateQuestions } from "./services/questionGenerator.js";
+import { LocalPrivateQuestionGenerator, createAiQuestionGenerationService } from "./services/questionProvider.js";
+import { extractReportText, ReportValidationError } from "./services/reportParser.js";
 import { RoomQuestionStore } from "./services/roomQuestionStore.js";
+import { RoomQuestionProvider } from "./services/roomQuestionProvider.js";
 import { validateGenerateQuestionsRequest, validateRoomQuestionRequest } from "./validation/questionRequest.js";
+import { isSupportedRoomGame } from "./data/gameProfiles.js";
 
 const config = loadConfig();
 const store = new RoomQuestionStore(config.sessionTtlMs);
-const maximumBodySize = 32_768;
+const generator = createAiQuestionGenerationService(config);
+const localFallback = new LocalPrivateQuestionGenerator();
+const roomQuestions = new RoomQuestionProvider(store, generator, localFallback, () => {
+  if (config.questionProvider === "gemini") console.warn("Gemini kullanılamadı; ortak yerel oda soru paketine geçildi.");
+});
+const activeGenerations = new Map<string, AbortController>();
+const lastGenerationAttempts = new Map<string, number>();
+const maximumBodySize = Math.ceil(config.maxReportSizeBytes * 4 / 3) + 65_536;
 const roomRoute = /^\/rooms\/([A-Z0-9]{6})\/questions$/;
 const closeRoomRoute = /^\/rooms\/([A-Z0-9]{6})$/;
 
@@ -30,7 +40,11 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 
 function isAuthorized(request: IncomingMessage): boolean {
   if (!config.internalServiceKey) return true;
-  return request.headers["x-internal-service-key"] === config.internalServiceKey;
+  const supplied = request.headers["x-internal-service-key"];
+  if (typeof supplied !== "string") return false;
+  const expectedBuffer = Buffer.from(config.internalServiceKey);
+  const suppliedBuffer = Buffer.from(supplied);
+  return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -39,22 +53,28 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     totalSize += buffer.length;
-    if (totalSize > maximumBodySize) throw new Error("İstek gövdesi çok büyük.");
+    if (totalSize > maximumBodySize) throw new ReportValidationError("İstek gövdesi çok büyük.");
     chunks.push(buffer);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  catch { throw new ReportValidationError("İstek gövdesi geçerli JSON değil."); }
 }
 
-async function produce(requestData: ReturnType<typeof validateGenerateQuestionsRequest> & { success: true }) {
-  if (config.questionProvider === "gemini" && config.apiKey) {
-    try {
-      return await generateQuestions(requestData.data, config.apiKey, config.model);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Bilinmeyen Gemini hatası";
-      console.warn(`Gemini kullanılamadı; demo havuzuna geçildi: ${message}`);
-    }
+async function resolveReportInput(value: unknown): Promise<unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const { reportFile, ...requestData } = value as Record<string, unknown>;
+  if (reportFile === undefined || reportFile === null) return requestData;
+  return { ...requestData, reportText: await extractReportText(reportFile, config.maxReportSizeBytes) };
+}
+
+async function produce(requestData: ReturnType<typeof validateGenerateQuestionsRequest> & { success: true }, signal?: AbortSignal) {
+  try {
+    return await generator.generate(requestData.data, signal);
+  } catch {
+    if (signal?.aborted) throw new Error("Soru üretimi iptal edildi.");
+    if (config.questionProvider === "gemini") console.warn("Gemini kullanılamadı; yerel soru sağlayıcısına geçildi.");
+    return localFallback.generate(requestData.data, signal);
   }
-  return generateDemoQuestions(requestData.data);
 }
 
 const server = createServer(async (request, response) => {
@@ -80,7 +100,7 @@ const server = createServer(async (request, response) => {
 
   try {
     if (request.method === "POST" && url.pathname === "/questions/generate") {
-      const validation = validateGenerateQuestionsRequest(await readJson(request));
+      const validation = validateGenerateQuestionsRequest(await resolveReportInput(await readJson(request)));
       if (!validation.success) {
         sendJson(response, 400, { error: "Geçersiz istek.", details: validation.errors });
         return;
@@ -90,33 +110,71 @@ const server = createServer(async (request, response) => {
     }
 
     if (roomMatch && request.method === "POST") {
-      const validation = validateRoomQuestionRequest(await readJson(request));
+      const validation = validateRoomQuestionRequest(await resolveReportInput(await readJson(request)));
       if (!validation.success) {
         sendJson(response, 400, { error: "Geçersiz istek.", details: validation.errors });
         return;
       }
       const roomCode = roomMatch[1]!;
-      const questionSet = store.set(roomCode, await produce(validation));
-      sendJson(response, 201, questionSet);
+      const existing = roomQuestions.getQuestionsForRoom(roomCode);
+      if (existing) {
+        sendJson(response, 200, existing);
+        return;
+      }
+      const key = roomCode;
+      if (activeGenerations.has(key)) {
+        sendJson(response, 409, { error: "Bu oda için soru üretimi zaten devam ediyor." });
+        return;
+      }
+      const now = Date.now();
+      const lastAttempt = lastGenerationAttempts.get(key) ?? 0;
+      if (now - lastAttempt < config.roomRateLimitMs) {
+        response.setHeader("Retry-After", Math.ceil((config.roomRateLimitMs - (now - lastAttempt)) / 1000));
+        sendJson(response, 429, { error: "Bu oda için çok sık soru üretim isteği gönderildi." });
+        return;
+      }
+      lastGenerationAttempts.set(key, now);
+      const controller = new AbortController();
+      activeGenerations.set(key, controller);
+      try {
+        const questionSet = await roomQuestions.prepareQuestionsForRoom(roomCode, validation.data, controller.signal);
+        sendJson(response, 201, questionSet);
+      } finally {
+        activeGenerations.delete(key);
+      }
       return;
     }
 
     if (roomMatch && request.method === "GET") {
-      const questionSet = store.get(roomMatch[1]!);
+      if (!isSupportedRoomGame(url.searchParams.get("gameId") ?? "")) {
+        sendJson(response, 400, { error: "Desteklenmeyen veya eksik oyun kimliği." });
+        return;
+      }
+      const questionSet = roomQuestions.getQuestionsForRoom(roomMatch[1]!);
       sendJson(response, questionSet ? 200 : 404, questionSet ?? { error: "Oda için soru paketi bulunamadı." });
       return;
     }
 
     if (closeMatch && request.method === "DELETE") {
-      const deleted = store.delete(closeMatch[1]!);
+      const roomCode = closeMatch[1]!;
+      const controller = activeGenerations.get(roomCode);
+      if (controller) {
+        controller.abort();
+        activeGenerations.delete(roomCode);
+      }
+      lastGenerationAttempts.delete(roomCode);
+      const deleted = roomQuestions.deleteRoom(roomCode);
       sendJson(response, 200, { deleted });
       return;
     }
 
     sendJson(response, 404, { error: "Endpoint bulunamadı." });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Bilinmeyen bir hata oluştu.";
-    console.error(message);
+    if (error instanceof ReportValidationError) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
+    console.error("AI soru isteği güvenli biçimde sonlandırıldı.");
     sendJson(response, 500, { error: "İşlem tamamlanamadı." });
   }
 });

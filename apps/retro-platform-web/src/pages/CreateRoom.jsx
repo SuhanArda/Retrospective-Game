@@ -19,7 +19,6 @@ function CreateRoom() {
   const [votingTime, setVotingTime] = useState(30)
   const [contextPrompt, setContextPrompt] = useState('')
   const [reportFile, setReportFile] = useState(null)
-  const [reportText, setReportText] = useState('')
   const [questionStyle, setQuestionStyle] = useState('dengeli')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
@@ -31,6 +30,7 @@ function CreateRoom() {
     if (!Number.isInteger(max) || max < 2 || max > 50) {
       next.maxParticipants = t('createRoom.maxParticipantsError')
     }
+    if (!contextPrompt.trim() && !reportFile) next.report = 'Kısa bir prompt gir veya TXT, PDF ya da DOCX raporu ekle.'
     return next
   }
 
@@ -51,8 +51,9 @@ function CreateRoom() {
     })
     saveRoomQuestionDraft(room.code, {
       contextPrompt: contextPrompt.trim(),
-      reportText,
+      reportText: '',
       reportFileName: reportFile?.name ?? null,
+      reportFile,
       style: questionStyle,
     })
     setSubmitting(false)
@@ -62,14 +63,19 @@ function CreateRoom() {
   async function handleReportChange(event) {
     const selectedFile = event.target.files?.[0] ?? null
     setReportFile(selectedFile)
-    setReportText('')
     if (!selectedFile) return
-    try {
-      setReportText((await selectedFile.text()).slice(0, 18000))
-    } catch {
-      setReportFile(null)
-      setErrors((current) => ({ ...current, report: 'Rapor okunamadı. Metin tabanlı bir dosya seç.' }))
+    const extension = selectedFile.name.slice(selectedFile.name.lastIndexOf('.')).toLowerCase()
+    const allowedTypes = {
+      '.txt': 'text/plain',
+      '.pdf': 'application/pdf',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     }
+    if (selectedFile.size > 5 * 1024 * 1024 || allowedTypes[extension] !== selectedFile.type) {
+      setReportFile(null)
+      setErrors((current) => ({ ...current, report: 'Yalnızca en fazla 5 MB boyutunda TXT, PDF veya DOCX raporu yüklenebilir.' }))
+      return
+    }
+    setErrors((current) => ({ ...current, report: undefined }))
   }
 
   return (
@@ -136,8 +142,8 @@ function CreateRoom() {
           <div className="field">
             <label htmlFor="roomReport">Rapor (opsiyonel)</label>
             <label className={`file-drop${reportFile ? ' has-file' : ''}`} htmlFor="roomReport">
-              <span className="file-drop-content">{reportFile ? reportFile.name : 'TXT, MD, CSV veya JSON dosyası seç'}</span>
-              <input id="roomReport" type="file" accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" onChange={handleReportChange} />
+              <span className="file-drop-content">{reportFile ? reportFile.name : 'En fazla 5 MB TXT, PDF veya DOCX seç'}</span>
+              <input id="roomReport" type="file" accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleReportChange} />
             </label>
             <span className="helper-text">İçerik oda verisine yazılmaz; yalnızca moderatörün tarayıcı belleğinde geçici tutulur.</span>
             {errors.report && <span className="error-text">{errors.report}</span>}
