@@ -155,6 +155,7 @@ public sealed partial class RoomManager
             RefreshRetroRushPhase(state);
             var owner = RequirePlayer(state, authenticated.Id);
             if (state.Phase != "RUNNING" || !IsActive(owner)) throw new RoomException("PLAYER_NOT_ACTIVE");
+            if (!owner.OwnedAbilityIds.Contains("rocket")) throw new RoomException("ABILITY_NOT_OWNED");
             var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             if (now < owner.RocketReadyAtUtc) throw new RoomException("ROCKET_COOLDOWN");
             var target = state.Players.Values
@@ -204,6 +205,7 @@ public sealed partial class RoomManager
             if (!PickupIdPattern.IsMatch(request.PickupId) || !AbilityIds.Contains(request.AbilityId))
                 throw new RoomException("INVALID_PICKUP");
             if (!state.CollectedPickupIds.Add(request.PickupId)) return new(room.Code, null);
+            player.OwnedAbilityIds.Add(request.AbilityId);
             if (request.AbilityId == "rocket") player.RocketReadyAtUtc = 0;
             else if (request.AbilityId == "speed") player.SpeedReadyAtUtc = 0;
             else if (request.AbilityId == "ask") player.AskReadyAtUtc = 0;
@@ -247,6 +249,8 @@ public sealed partial class RoomManager
             RefreshRetroRushPhase(state);
             var player = RequirePlayer(state, authenticated.Id);
             if (state.Phase != "RUNNING" || !IsActive(player)) throw new RoomException("PLAYER_NOT_ACTIVE");
+            if (!AbilityIds.Contains(request.AbilityId)) throw new RoomException("INVALID_ABILITY");
+            if (!player.OwnedAbilityIds.Contains(request.AbilityId)) throw new RoomException("ABILITY_NOT_OWNED");
             var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             if (request.AbilityId == "speed")
             {
@@ -342,6 +346,7 @@ public sealed partial class RoomManager
             player.SpeedReadyAtUtc = 0;
             player.AskReadyAtUtc = 0;
             player.AskSelectionExpiresAtUtc = 0;
+            player.OwnedAbilityIds.Clear();
         }
     }
 
@@ -410,7 +415,8 @@ public sealed partial class RoomManager
     private static RetroRushPlayerSnapshot Snapshot(RetroRushPlayerState player, int roundId) => new(
         player.PlayerId, player.DisplayName, player.Color, player.Slot, player.SkinIndex, player.Connected,
         player.X, player.Y, player.VelocityX, player.VelocityY, player.Facing, player.MovementState,
-        player.AnimationState, player.Sequence, player.ClientTimestamp, roundId);
+        player.AnimationState, player.Sequence, player.ClientTimestamp, roundId,
+        player.OwnedAbilityIds.Order(StringComparer.Ordinal).ToArray());
 
     private static RetroRushRocketSnapshot Snapshot(RetroRushRocketState rocket) => new(
         rocket.RocketId, rocket.OwnerPlayerId, rocket.TargetPlayerId, rocket.X, rocket.Y,
@@ -464,6 +470,7 @@ public sealed partial class RoomManager
         public long SpeedReadyAtUtc { get; set; }
         public long AskReadyAtUtc { get; set; }
         public long AskSelectionExpiresAtUtc { get; set; }
+        public HashSet<string> OwnedAbilityIds { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed record RetroRushRocketState(
