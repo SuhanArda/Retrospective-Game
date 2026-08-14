@@ -15,8 +15,8 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal(1, snapshot.RoundId);
         Assert.Equal(game.Room.CurrentGameSession!.Seed, snapshot.MapSeed);
         Assert.Collection(snapshot.Players,
-            host => { Assert.Equal(game.Host.PlayerId, host.PlayerId); Assert.Equal(0, host.Slot); Assert.Equal(180, host.X); },
-            guest => { Assert.Equal(game.Guest.PlayerId, guest.PlayerId); Assert.Equal(1, guest.Slot); Assert.Equal(134, guest.X); });
+            host => { Assert.Equal(game.Host.PlayerId, host.PlayerId); Assert.Equal(0, host.Slot); Assert.Equal(180, host.X); Assert.Empty(host.OwnedAbilityIds); },
+            guest => { Assert.Equal(game.Guest.PlayerId, guest.PlayerId); Assert.Equal(1, guest.Slot); Assert.Equal(134, guest.X); Assert.Empty(guest.OwnedAbilityIds); });
     }
 
     [Fact]
@@ -91,6 +91,9 @@ public sealed class RetroRushRoomManagerTests
     public void RocketHasStableIdentitySameTargetOneHitAndFixedLeftKnockback()
     {
         var game = StartGame(running: true);
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushRocketFire("host", new(game.SessionId, 1)));
+        game.Manager.RequestRetroRushPickupCollection(
+            "host", new(game.SessionId, 1, "chunk-1-ability-upper-platform-pickup-0", "rocket"));
         var rocket = game.Manager.RequestRetroRushRocketFire("host", new(game.SessionId, 1)).Event!;
         Assert.NotEmpty(rocket.RocketId);
         Assert.Equal(game.Guest.PlayerId, rocket.TargetPlayerId);
@@ -110,7 +113,11 @@ public sealed class RetroRushRoomManagerTests
         var collected = game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, pickupId, "rocket"));
         Assert.Equal(pickupId, collected.Event!.PickupId);
         Assert.Null(game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, pickupId, "rocket")).Event);
-        Assert.Contains(pickupId, game.Manager.GetRetroRushSnapshot("guest", game.SessionId).CollectedPickupIds);
+        var snapshot = game.Manager.GetRetroRushSnapshot("guest", game.SessionId);
+        Assert.Contains(pickupId, snapshot.CollectedPickupIds);
+        Assert.Contains("rocket", snapshot.Players.Single(player => player.PlayerId == game.Host.PlayerId).OwnedAbilityIds);
+        Assert.Empty(snapshot.Players.Single(player => player.PlayerId == game.Guest.PlayerId).OwnedAbilityIds);
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushRocketFire("guest", new(game.SessionId, 1)));
         Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, "invented", "rocket")));
     }
 
@@ -118,11 +125,15 @@ public sealed class RetroRushRoomManagerTests
     public void SpeedActivationIsServerValidatedAndPickupRefreshesIt()
     {
         var game = StartGame(running: true);
+        Assert.Throws<RoomException>(() => game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "speed")));
+        Assert.Throws<RoomException>(() => game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "ask")));
+        game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, "chunk-2-ability-upper-platform-pickup-0", "speed"));
         game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "speed"));
         Assert.Throws<RoomException>(() => game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "speed")));
         game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, "chunk-3-safe-flat-pickup-0", "speed"));
         game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "speed"));
         Assert.Throws<RoomException>(() => game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "invented")));
+        game.Manager.RequestRetroRushPickupCollection("host", new(game.SessionId, 1, "chunk-4-ability-upper-platform-pickup-0", "ask"));
         game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "ask"));
         var target = game.Manager.RequestRetroRushAskTarget("host", new(game.SessionId, 1, game.Guest.PlayerId)).Event!;
         Assert.Equal(game.Guest.PlayerId, target.TargetPlayerId);
@@ -133,6 +144,8 @@ public sealed class RetroRushRoomManagerTests
     public void EliminationQuestionAndRoundRestartAreOwnerAuthorizedAndExactlyOnce()
     {
         var game = StartGame(running: true);
+        game.Manager.RequestRetroRushPickupCollection(
+            "host", new(game.SessionId, 1, "chunk-1-ability-upper-platform-pickup-0", "rocket"));
         var eliminated = game.Manager.RequestRetroRushPlayerElimination("guest", new(game.SessionId, 1, game.Guest.PlayerId)).Event!;
         Assert.Equal(game.Guest.PlayerId, eliminated.Question.OwnerPlayerId);
         Assert.Equal("ACTIVE", eliminated.Question.Status);
@@ -154,6 +167,7 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal("COUNTDOWN", restarted.Phase);
         Assert.Empty(restarted.CollectedPickupIds);
         Assert.Empty(restarted.ActiveRockets);
+        Assert.All(restarted.Players, player => Assert.Empty(player.OwnedAbilityIds));
         Assert.All(restarted.Players, player => Assert.Equal("ACTIVE", player.MovementState));
         Assert.Equal(2, restarted.Players.Count);
         game.Clock.Advance(TimeSpan.FromMilliseconds(3_501));
@@ -167,6 +181,8 @@ public sealed class RetroRushRoomManagerTests
     public void DisconnectAndReconnectPreservePlayerIdWithoutDuplicatingEntity()
     {
         var game = StartGame(running: true);
+        game.Manager.RequestRetroRushPickupCollection(
+            "guest", new(game.SessionId, 1, "chunk-1-ability-upper-platform-pickup-0", "rocket"));
         game.Manager.Disconnect("guest");
         var disconnected = game.Manager.GetRetroRushSnapshot("host", game.SessionId);
         Assert.False(disconnected.Players.Single(player => player.PlayerId == game.Guest.PlayerId).Connected);
@@ -174,7 +190,9 @@ public sealed class RetroRushRoomManagerTests
         game.Manager.Attach(game.Host.RoomCode, game.Guest.PlayerId, game.Guest.ReconnectToken, "guest-new");
         var reconnected = game.Manager.GetRetroRushSnapshot("guest-new", game.SessionId);
         Assert.Equal(2, reconnected.Players.Count);
-        Assert.True(reconnected.Players.Single(player => player.PlayerId == game.Guest.PlayerId).Connected);
+        var guest = reconnected.Players.Single(player => player.PlayerId == game.Guest.PlayerId);
+        Assert.True(guest.Connected);
+        Assert.Contains("rocket", guest.OwnedAbilityIds);
     }
 
     private static UpdateRetroRushPlayerRequest PlayerUpdate(Game game, string playerId, long sequence, double x, int roundId = 1) =>

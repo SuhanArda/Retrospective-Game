@@ -240,8 +240,9 @@ export class GameScene extends Phaser.Scene {
           platforms: chunk.platforms.map(({ x, y, width, height }) => ({ x, y, width, height })),
         })),
         pickups: this.pickups.map((pickup) => ({
-          id: pickup.id, active: pickup.active, x: pickup.zone.x, y: pickup.zone.y,
+          id: pickup.id, ability: pickup.ability, active: pickup.active, x: pickup.zone.x, y: pickup.zone.y,
         })),
+        ownedAbilities: this.abilityController.ownedAbilities(),
         rockets: this.rockets.getChildren().map((child) => {
           const rocket = child as Phaser.Physics.Arcade.Sprite;
           return { id: String(rocket.getData('rocketId')), ownerId: String(rocket.getData('ownerId')), targetId: String(rocket.getData('targetId')) };
@@ -483,6 +484,8 @@ export class GameScene extends Phaser.Scene {
       if (!incomingIds.has(player.snapshot.id)) this.removeNetworkPlayer(player);
     }
     this.players.sort((left, right) => left.slot - right.slot);
+    const localPlayer = snapshot.players.find((player) => player.playerId === this.transport.localPlayerId);
+    this.abilityController.restore(localPlayer?.ownedAbilityIds ?? []);
 
     this.collectedPickupIds.clear();
     snapshot.collectedPickupIds.forEach((pickupId) => this.collectedPickupIds.add(pickupId));
@@ -878,6 +881,7 @@ export class GameScene extends Phaser.Scene {
 
   private useAbility(id: AbilityId) {
     if (this.matchState !== 'RUNNING' || !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
+    if (!this.abilityController.isOwned(id)) return;
     const now = this.time.now;
     if (!this.abilityController.isReady(id, now)) { this.bridge.emit('announcement', 'Bu yetenek henüz yeniden doluyor'); return; }
     const rocketTarget = id === 'rocket' ? this.findRocketTarget(this.local) : undefined;
@@ -1125,6 +1129,7 @@ export class GameScene extends Phaser.Scene {
       players: this.players.map((player) => ({ ...player.snapshot })),
       checkpointLabel: 'Başlangıç Noktası',
       danger: this.local ? this.local.sprite.x < this.cameraController.dangerX(this.cameras.main) + 220 : false,
+      ownedAbilities: this.abilityController.ownedAbilities(),
       cooldowns: this.abilityController.cooldowns(this.time.now),
     });
   }
@@ -1158,6 +1163,7 @@ export class GameScene extends Phaser.Scene {
       sequence: ++this.networkSequence,
       clientTimestamp: Date.now(),
       roundId: this.networkRoundId,
+      ownedAbilityIds: this.abilityController.ownedAbilities(),
     });
     this.networkSnapshotsSent++;
   }

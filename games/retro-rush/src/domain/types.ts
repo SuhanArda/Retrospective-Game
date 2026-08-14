@@ -74,6 +74,7 @@ export interface MatchSnapshot {
   players: readonly PlayerSnapshot[];
   checkpointLabel: string;
   danger: boolean;
+  ownedAbilities: readonly AbilityId[];
   cooldowns: Readonly<Record<AbilityId, number>>;
 }
 

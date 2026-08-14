@@ -49,6 +49,7 @@ export interface RetroRushPlayerSnapshot {
   sequence: number;
   clientTimestamp: number;
   roundId: number;
+  ownedAbilityIds: readonly AbilityId[];
 }
 
 export interface RetroRushQuestionSnapshot {
