@@ -14,7 +14,7 @@ import { consumeGameHandoff, resolveGameLaunchContext } from '@retro-platform/co
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels';
 import { retroQuestions } from '../data/retroQuestions';
-import { deleteRoomQuestions, loadRoomQuestions } from '../data/roomQuestions';
+import { loadRoomQuestions } from '../data/roomQuestions';
 import { shouldShowStandaloneStart } from './startupMode';
 
 const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, ownedAbilities: [], cooldowns: { speed: 0, rocket: 0, ask: 0 } };
