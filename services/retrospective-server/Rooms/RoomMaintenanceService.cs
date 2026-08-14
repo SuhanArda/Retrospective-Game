@@ -3,7 +3,7 @@ using Retrospective.Server.Hubs;
 
 namespace Retrospective.Server.Rooms;
 
-public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHub, IRoomClient> hub) : BackgroundService
+public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHub, IRoomClient> hub, AiQuestionGateway ai) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -20,7 +20,11 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
             foreach (var change in rooms.SweepDisconnected())
             {
                 var clients = hub.Clients.Group(RoomHub.GroupName(change.RoomCode));
-                if (change.Snapshot is null) await clients.RoomClosed();
+                if (change.Snapshot is null)
+                {
+                    await ai.DeleteSilently(change.RoomCode, stoppingToken);
+                    await clients.RoomClosed();
+                }
                 else
                 {
                     await clients.RoomSnapshot(change.Snapshot);

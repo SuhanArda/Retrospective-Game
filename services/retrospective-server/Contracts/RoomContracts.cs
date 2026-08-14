@@ -95,3 +95,15 @@ public sealed record RoomReaction(
     long SentAt);
 
 public sealed record HubJoinResult(bool Ok, RoomSnapshot? Room = null, string? Error = null);
+
+public sealed record GenerateRoomQuestionsRequest(
+    string? Topic,
+    string? ReportText,
+    string Language,
+    string Style,
+    int Count = 20,
+    ReportFilePayload? ReportFile = null);
+
+public sealed record ReportFilePayload(string Name, string MimeType, string DataBase64);
+
+public sealed record RoomAiAccess(string RoomCode, string GameId, string PlayerId, bool IsHost);

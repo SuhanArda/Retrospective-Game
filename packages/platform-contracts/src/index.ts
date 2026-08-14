@@ -53,6 +53,7 @@ export interface RetroRushPlayerSnapshot {
 
 export interface RetroRushQuestionSnapshot {
   questionId: string;
+  questionIndex?: number;
   ownerPlayerId: string;
   status: 'ACTIVE';
   roundId: number;

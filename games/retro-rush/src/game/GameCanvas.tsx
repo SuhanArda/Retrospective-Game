@@ -11,12 +11,20 @@ interface Props { bridge: GameEventBridge; transport: GameTransport; questions?:
 export function GameCanvas({ bridge, transport, questions = retroQuestions }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const initialQuestionsRef = useRef(questions);
 
   useEffect(() => {
     if (!hostRef.current || gameRef.current) return;
-    gameRef.current = createPhaserGame(hostRef.current, bridge, transport, questions);
+    gameRef.current = createPhaserGame(hostRef.current, bridge, transport, initialQuestionsRef.current);
     return () => { gameRef.current?.destroy(true); gameRef.current = null; };
-  }, [bridge, transport, questions]);
+  }, [bridge, transport]);
+
+  useEffect(() => {
+    const scene = gameRef.current?.scene?.getScene('GameScene') as (Phaser.Scene & {
+      setQuestionPool?: (nextQuestions: readonly RetroQuestion[]) => void;
+    }) | undefined;
+    scene?.setQuestionPool?.(questions);
+  }, [questions]);
 
   return <div ref={hostRef} className="game-canvas" aria-label="Retro Rush oyun dünyası" />;
 }

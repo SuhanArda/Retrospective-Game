@@ -13,6 +13,8 @@ import {
   resolveSpinTheBottleLaunchContext,
   spinTheBottleRuntimeConfig,
 } from "./platformIntegration";
+import { loadRoomQuestions, type BotQuestion } from "./questionBotClient";
+import { adaptSpinTheBottleQuestion } from "./spinTheBottleQuestionAdapter";
 
 type Player = {
   id: string;
@@ -155,6 +157,7 @@ export default function Home() {
   const [phase, setPhase] = useState<FlowPhase>("idle");
   const [category, setCategory] = useState<Category | null>(null);
   const [question, setQuestion] = useState("");
+  const [botQuestions, setBotQuestions] = useState<BotQuestion[]>([]);
   const [round, setRound] = useState(1);
   const [sound, setSound] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
@@ -169,6 +172,41 @@ export default function Home() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reactionId = useRef(0);
+  const botQuestionsRef = useRef<BotQuestion[]>([]);
+  const spinStateRef = useRef<SpinBottleStateSnapshot | null>(null);
+
+  useEffect(() => {
+    botQuestionsRef.current = botQuestions;
+  }, [botQuestions]);
+
+  useEffect(() => {
+    if (!launchContext?.roomCode) return;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const load = () => {
+      loadRoomQuestions(spinTheBottleRuntimeConfig.apiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+        .then((loaded) => {
+          if (cancelled) return;
+          setBotQuestions(loaded);
+          const activeState = spinStateRef.current;
+          if (activeState?.questionId && activeState.category && activeState.status === "QUESTION_ACTIVE") {
+            const resolved = adaptSpinTheBottleQuestion(loaded, activeState.questionId, activeState.category === "Eğlence");
+            if (resolved) setQuestion(resolved);
+          }
+        })
+        .catch(() => {
+          attempt++;
+          if (!cancelled && attempt < 25) retryTimer = setTimeout(load, 2_000);
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [launchContext]);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -251,6 +289,7 @@ export default function Home() {
   }, [launchContext]);
 
   function applyAuthoritativeSpinState(state: SpinBottleStateSnapshot | null) {
+    spinStateRef.current = state;
     setSpinState(state);
     setQuestionActionPending(false);
     if (!state) {
@@ -259,7 +298,7 @@ export default function Home() {
     }
     setSelected(state.targetIndex);
     setCategory(state.category ?? null);
-    setQuestion(state.questionText ?? "");
+    setQuestion(resolveQuestionText(state.questionId, state.category, state.questionText));
     if (state.status === "SPINNING") {
       setSpinning(true);
       setPhase("idle");
@@ -283,6 +322,13 @@ export default function Home() {
       setCategory(null);
       setQuestion("");
     }
+  }
+
+  function resolveQuestionText(questionId: string | undefined, selectedCategory: Category | undefined, fallback: string | undefined): string {
+    const loaded = botQuestionsRef.current;
+    if (!questionId || loaded.length === 0) return fallback ?? "";
+    const wantsFun = selectedCategory === "Eğlence";
+    return adaptSpinTheBottleQuestion(loaded, questionId, wantsFun) ?? fallback ?? "";
   }
 
   function returnToGames() {
@@ -366,14 +412,6 @@ export default function Home() {
     setCategory(null);
     setQuestion("");
     setRound((value) => value + 1);
-  }
-
-  function passQuestion() {
-    if (!launchContext || !canControlSpinQuestion(spinState, launchContext.playerId) ||
-        !roomClientRef.current || !spinState?.questionId) return;
-    setQuestionActionPending(true);
-    void roomClientRef.current.passSpinQuestion(spinState.questionId, spinState.revision)
-      .catch(() => setQuestionActionPending(false));
   }
 
   function sendReaction(kind: ReactionKind, label: string) {
@@ -641,11 +679,6 @@ export default function Home() {
                 <p className="challenge-text">“{question}”</p>
                 {isQuestionOwner ? (
                   <div className="card-actions">
-                    {launchContext && (
-                      <button type="button" className="pass-button" onClick={passQuestion} disabled={questionActionPending}>
-                        PAS
-                      </button>
-                    )}
                     <button type="button" className="done-button" onClick={finishTurn} disabled={questionActionPending}>
                       TAMAMLANDI <span>✓</span>
                     </button>

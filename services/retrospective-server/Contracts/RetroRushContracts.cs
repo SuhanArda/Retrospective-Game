@@ -20,6 +20,7 @@ public sealed record RetroRushPlayerSnapshot(
 
 public sealed record RetroRushQuestionSnapshot(
     string QuestionId,
+    int QuestionIndex,
     string OwnerPlayerId,
     string Status,
     int RoundId,

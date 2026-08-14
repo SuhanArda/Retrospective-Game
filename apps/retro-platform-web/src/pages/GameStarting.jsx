@@ -7,16 +7,18 @@ import { roomService } from '../services/roomServiceInstance'
 import { useRoom } from '../hooks/useRoom'
 import { loadPlatformSession } from '../session/platformSession'
 import { prepareRoomQuestions } from '../services/QuestionBotService'
-import { deleteRoomQuestionDraft, getRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
+import { getRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import '../App.css'
 
 function GameStarting() {
   const { roomCode = '', gameId = '' } = useParams()
   const navigate = useNavigate()
   const { t } = useLanguage()
-  const launchedRef = useRef(false)
+  const launchedGameRef = useRef('')
   const [error, setError] = useState('')
-  const preparationStartedRef = useRef(false)
+  const [preparedGame, setPreparedGame] = useState('')
+  const preparationStartedRef = useRef('')
+  const activeGameRef = useRef('')
   const { room, loading } = useRoom(roomCode)
   const player = roomService.getCurrentPlayer()
   const platformSession = loadPlatformSession(window.sessionStorage)
@@ -24,10 +26,19 @@ function GameStarting() {
 
   const isPlayable = game?.status === 'available'
   const isHost = Boolean(player?.isHost)
+  const activeGame = room?.currentGameSession?.gameSessionId && room.currentGameSession.gameId === game?.id
+    ? `${room.code}:${game.id}:${room.currentGameSession.gameSessionId}`
+    : ''
+  activeGameRef.current = activeGame
 
   useEffect(() => {
-    if (!isHost || !isPlayable || !room || !game || preparationStartedRef.current) return
-    preparationStartedRef.current = true
+    if (!activeGame || !isPlayable || !room || !game || !player || !platformSession?.reconnectToken) return
+    if (!isHost) {
+      setPreparedGame(activeGame)
+      return
+    }
+    if (preparationStartedRef.current === activeGame) return
+    preparationStartedRef.current = activeGame
     const draft = getRoomQuestionDraft(room.code)
     void prepareRoomQuestions({
       roomCode: room.code,
@@ -35,18 +46,22 @@ function GameStarting() {
       style: draft?.style ?? 'dengeli',
       contextPrompt: draft?.contextPrompt,
       reportText: draft?.reportText,
-    }).then(() => {
-      deleteRoomQuestionDraft(room.code)
+      reportFile: draft?.reportFile,
+      playerId: player.id,
+      reconnectToken: platformSession.reconnectToken,
     }).catch((cause) => {
       if (import.meta.env.DEV) console.warn('[AIQuestion] preparation failed; continuing with authoritative defaults', cause)
+    }).finally(() => {
+      if (activeGameRef.current === activeGame) setPreparedGame(activeGame)
     })
-  }, [isHost, isPlayable, room, game])
+  }, [activeGame, isHost, isPlayable, room, game, player, platformSession])
 
   useEffect(() => {
     // A placeholder game can win the vote — say so plainly instead of
     // reporting a launch failure.
-    if (launchedRef.current || !room || !player || !game || !isPlayable || !platformSession?.reconnectToken || !room.currentGameSession) return
-    launchedRef.current = true
+    if (!activeGame || preparedGame !== activeGame || launchedGameRef.current === activeGame
+      || !room || !player || !game || !isPlayable || !platformSession?.reconnectToken || !room.currentGameSession) return
+    launchedGameRef.current = activeGame
     try {
       gameLauncher.launchGame({
         roomCode: room.code,
@@ -60,7 +75,7 @@ function GameStarting() {
     } catch {
       setError(t('starting.launchError'))
     }
-  }, [room, player, game, isPlayable, platformSession, t])
+  }, [activeGame, preparedGame, room, player, game, isPlayable, platformSession, t])
 
   if (loading) {
     return (

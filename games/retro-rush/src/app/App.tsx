@@ -14,7 +14,7 @@ import { consumeGameHandoff, resolveGameLaunchContext } from '@retro-platform/co
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels';
 import { retroQuestions } from '../data/retroQuestions';
-import { deleteRoomQuestions, loadRoomQuestions } from '../data/roomQuestions';
+import { loadRoomQuestions } from '../data/roomQuestions';
 
 const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, cooldowns: { speed: 0, rocket: 0, ask: 0 } };
 
@@ -37,17 +37,37 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(false);
   const [authoritativeMapSeed, setAuthoritativeMapSeed] = useState<number | null>(null);
-  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[]>(retroQuestions);
+  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[]>(launchContext ? [] : retroQuestions);
 
   useEffect(() => {
-    if (!launchContext?.roomCode || !runtimeConfig.aiBotUrl) return;
+    if (!launchContext?.roomCode) {
+      setSessionQuestions(retroQuestions);
+      return;
+    }
     let cancelled = false;
-    loadRoomQuestions(runtimeConfig.aiBotUrl, launchContext.roomCode)
-      .then((questions) => { if (!cancelled) setSessionQuestions(questions.length > 0 ? questions : retroQuestions); })
-      .catch((cause) => {
-        if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
-      });
-    return () => { cancelled = true; };
+    let retryTimer: number | null = null;
+    let attempt = 0;
+    const load = () => {
+      loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+        .then((questions) => {
+          if (cancelled) return;
+          if (questions.length === 0) throw new Error('ROOM_QUESTIONS_NOT_READY');
+          setSessionQuestions(questions);
+        })
+        .catch((cause) => {
+          attempt += 1;
+          if (!cancelled && attempt < 25) retryTimer = window.setTimeout(load, 2_000);
+          else {
+            setSessionQuestions(retroQuestions);
+            if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
+          }
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
   }, [launchContext]);
 
   useEffect(() => {
@@ -82,12 +102,8 @@ export function App() {
   const returnToGames = () => {
     if (!launchContext) return;
     if (roomIsHost && roomClient) {
-      const deleteQuestions = runtimeConfig.aiBotUrl
-        ? deleteRoomQuestions(runtimeConfig.aiBotUrl, roomCode)
-        : Promise.resolve();
-      void deleteQuestions
-        .catch(() => undefined)
-        .finally(() => roomClient.returnToGameSelection().catch(() => setAnnouncement('Oyunlara yalnızca mevcut oda yöneticisi dönebilir.')));
+      void roomClient.returnToGameSelection()
+        .catch(() => setAnnouncement('Oyunlara yalnızca mevcut oda yöneticisi dönebilir.'));
       return;
     }
     window.location.assign(buildPlatformGameSelectionUrl(runtimeConfig.platformUrl, roomCode, window.location.origin));

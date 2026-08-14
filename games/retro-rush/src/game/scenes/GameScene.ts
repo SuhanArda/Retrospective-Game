@@ -94,7 +94,9 @@ export class GameScene extends Phaser.Scene {
   private elapsedMs = 0;
   private lastSnapshotAt = 0;
   private questionIndex = 0;
+  private questionPool: readonly RetroQuestion[];
   private activeQuestionId: string | null = null;
+  private activeOnlineQuestion: NonNullable<RetroRushGameSnapshot['activeQuestion']> | null = null;
   private targetProtectedUntil: Record<string, number> = {};
   private inputSequence = 0;
   private readonly temporaryEffects = new Set<Phaser.GameObjects.GameObject>();
@@ -120,8 +122,14 @@ export class GameScene extends Phaser.Scene {
   private networkSnapshotsSent = 0;
   private networkSnapshotsReceived = 0;
 
-  constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport, private readonly questionPool: readonly RetroQuestion[] = retroQuestions) {
+  constructor(private readonly bridge: GameEventBridge, private readonly transport: GameTransport, questionPool: readonly RetroQuestion[] = retroQuestions) {
     super({ key: 'GameScene' });
+    this.questionPool = questionPool;
+  }
+
+  setQuestionPool(questions: readonly RetroQuestion[]) {
+    this.questionPool = questions;
+    if (questions.length > 0 && this.activeOnlineQuestion) this.presentOnlineQuestion(this.activeOnlineQuestion, false);
   }
 
   create() {
@@ -507,6 +515,7 @@ export class GameScene extends Phaser.Scene {
     this.networkSendAccumulatorMs = 0;
     this.eliminationPending = false;
     this.activeQuestionId = null;
+    this.activeOnlineQuestion = null;
     this.appliedShoveIds.clear();
     this.resolvedRocketIds.clear();
     this.collectedPickupIds.clear();
@@ -631,18 +640,27 @@ export class GameScene extends Phaser.Scene {
   private openOnlineQuestion(question: RetroRushGameSnapshot['activeQuestion']) {
     if (!question || this.activeQuestionId === question.questionId) return;
     this.activeQuestionId = question.questionId;
+    this.activeOnlineQuestion = question;
+    if (this.questionPool.length > 0) this.presentOnlineQuestion(question, true);
+  }
+
+  private presentOnlineQuestion(question: NonNullable<RetroRushGameSnapshot['activeQuestion']>, announce: boolean) {
+    const indexedQuestion = this.questionPool.length > 0 && Number.isInteger(question.questionIndex)
+      ? this.questionPool[question.questionIndex! % this.questionPool.length]
+      : undefined;
+    if (!indexedQuestion) return;
     this.bridge.emit('questionOpened', {
       id: question.questionId,
-      category: question.category as import('../../domain/types').RetroQuestionCategory,
-      type: question.type,
-      prompt: question.prompt,
-      ...(question.options ? { options: question.options } : {}),
-      required: question.required,
+      category: indexedQuestion.category,
+      type: indexedQuestion.type,
+      prompt: indexedQuestion.prompt,
+      ...(indexedQuestion.options ? { options: indexedQuestion.options } : {}),
+      required: indexedQuestion.required,
       ownerPlayerId: question.ownerPlayerId,
       ownerName: this.playersById.get(question.ownerPlayerId)?.snapshot.name ?? 'Oyuncu',
       canConfirm: question.ownerPlayerId === this.transport.localPlayerId,
     });
-    this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');
+    if (announce) this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');
   }
 
   private syncOnlinePhase() {
@@ -831,6 +849,7 @@ export class GameScene extends Phaser.Scene {
     this.elapsedMs = 0;
     this.countdown = 3;
     this.activeQuestionId = null;
+    this.activeOnlineQuestion = null;
     this.targetProtectedUntil = {};
     this.abilityController.reset();
     this.shoveController.reset();

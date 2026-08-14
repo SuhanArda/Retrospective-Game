@@ -31,6 +31,8 @@ export interface CreateRoomQuestionsRequest extends GenerateQuestionsRequest {}
 export interface RoomQuestionSet extends GenerateQuestionsResponse {
   roomCode: string;
   questionSetId: string;
+  status: "ready";
+  currentQuestionIndex: number;
   createdAt: number;
   expiresAt: number;
 }
