@@ -14,7 +14,8 @@ interface Window {
       networkSnapshotsSent: number;
       networkSnapshotsReceived: number;
       chunks: Array<{ id: string; templateId: string; platforms: Array<{ x: number; y: number; width: number; height: number }> }>;
-      pickups: Array<{ id: string; active: boolean; x: number; y: number }>;
+      pickups: Array<{ id: string; ability: 'speed' | 'rocket' | 'ask'; active: boolean; x: number; y: number }>;
+      ownedAbilities: readonly ('speed' | 'rocket' | 'ask')[];
       rockets: Array<{ id: string; ownerId: string; targetId: string }>;
     };
     setLocalPosition(x: number, y: number): void;

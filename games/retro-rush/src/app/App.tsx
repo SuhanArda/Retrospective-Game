@@ -15,8 +15,9 @@ import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels';
 import { retroQuestions } from '../data/retroQuestions';
 import { deleteRoomQuestions, loadRoomQuestions } from '../data/roomQuestions';
+import { shouldShowStandaloneStart } from './startupMode';
 
-const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, cooldowns: { speed: 0, rocket: 0, ask: 0 } };
+const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, ownedAbilities: [], cooldowns: { speed: 0, rocket: 0, ask: 0 } };
 
 export function App() {
   const launchContext = useMemo(() => consumeGameHandoff(window, window.sessionStorage) ?? resolveGameLaunchContext(window.location.search, window.sessionStorage), []);
@@ -98,7 +99,7 @@ export function App() {
     <GameCanvas bridge={bridge} transport={transport} questions={sessionQuestions} />
     <Hud snapshot={snapshot} muted={muted} onMute={toggleMute} onAbility={(abilityId) => bridge.emit('abilityRequested', { abilityId })} />
     {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
-    {snapshot.state === 'WAITING' && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}
+    {shouldShowStandaloneStart(Boolean(launchContext), snapshot.state) && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}
     {snapshot.state === 'COUNTDOWN' && <div className="phase-note">PARKUR BAŞLIYOR · {snapshot.countdown}</div>}
     {question && <QuestionOverlay question={question} mode="verbal" onAnswered={() => bridge.emit('questionAnswered', { questionId: question.id })} />}
     {targeting && <TargetSelection players={snapshot.players} protectedTargets={targeting} onSelect={(playerId) => { bridge.emit('targetSelected', { playerId }); setTargeting(null); }} onCancel={() => setTargeting(null)} />}

@@ -4,8 +4,10 @@ import type { AbilityId } from '../../domain/types';
 
 export class AbilityController {
   private readonly lastUsedAt = new Map<AbilityId, number>();
+  private readonly owned = new Set<AbilityId>();
 
-  isReady(id: AbilityId, now: number) { return canUseAbility(abilityDefinitions[id], this.lastUsedAt.get(id), now); }
+  isOwned(id: AbilityId) { return this.owned.has(id); }
+  isReady(id: AbilityId, now: number) { return this.isOwned(id) && canUseAbility(abilityDefinitions[id], this.lastUsedAt.get(id), now); }
 
   tryUse(id: AbilityId, now: number) {
     if (!this.isReady(id, now)) return false;
@@ -20,6 +22,17 @@ export class AbilityController {
     })) as Record<AbilityId, number>;
   }
 
-  reset() { this.lastUsedAt.clear(); }
-  grant(id: AbilityId) { this.lastUsedAt.delete(id); }
+  ownedAbilities(): readonly AbilityId[] {
+    return Object.values(abilityDefinitions).map(({ id }) => id).filter((id) => this.owned.has(id));
+  }
+
+  restore(ids: readonly AbilityId[]) {
+    const restored = new Set(ids);
+    this.owned.clear();
+    restored.forEach((id) => this.owned.add(id));
+    for (const id of this.lastUsedAt.keys()) if (!this.owned.has(id)) this.lastUsedAt.delete(id);
+  }
+
+  reset() { this.lastUsedAt.clear(); this.owned.clear(); }
+  grant(id: AbilityId) { this.owned.add(id); this.lastUsedAt.delete(id); }
 }
