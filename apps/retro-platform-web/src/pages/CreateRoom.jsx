@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { roomService } from '../services/roomServiceInstance'
-import { saveRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
+import { prepareRoomQuestions } from '../services/QuestionBotService'
 import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
@@ -41,7 +41,7 @@ function CreateRoom() {
     if (Object.keys(validation).length > 0 || !user) return
 
     setSubmitting(true)
-    const { room } = await roomService.createRoom({
+    const { room, player, reconnectToken } = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
       roomName,
@@ -49,12 +49,15 @@ function CreateRoom() {
       questionTimeSeconds: questionTime,
       votingTimeSeconds: votingTime,
     })
-    saveRoomQuestionDraft(room.code, {
-      contextPrompt: contextPrompt.trim(),
-      reportText: '',
-      reportFileName: reportFile?.name ?? null,
-      reportFile,
+    void prepareRoomQuestions({
+      roomCode: room.code,
       style: questionStyle,
+      contextPrompt: contextPrompt.trim(),
+      reportFile,
+      playerId: player.id,
+      reconnectToken,
+    }).catch((cause) => {
+      if (import.meta.env.DEV) console.warn('[AIQuestion] room preparation failed; games will use authoritative defaults', cause)
     })
     setSubmitting(false)
     navigate(`/room/${room.code}`)

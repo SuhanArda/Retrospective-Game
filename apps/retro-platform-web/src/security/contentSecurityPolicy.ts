@@ -7,7 +7,6 @@
  */
 export function buildContentSecurityPolicy(
   apiUrl: string | undefined,
-  questionBotUrl?: string,
 ): string {
   const connectSources = new Set(["'self'"]);
 
@@ -19,14 +18,6 @@ export function buildContentSecurityPolicy(
     } catch {
       // A malformed URL must not silently widen the policy; leave it at 'self'
       // so the failure shows up as a blocked request rather than a hole.
-    }
-  }
-
-  if (questionBotUrl) {
-    try {
-      connectSources.add(new URL(questionBotUrl).origin);
-    } catch {
-      // Keep malformed optional service URLs out of the policy.
     }
   }
 

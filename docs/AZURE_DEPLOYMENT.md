@@ -9,6 +9,7 @@ This runbook prepares the repository for Azure. It does not create resources or 
 | Platform Website | `apps/retro-platform-web` | Azure Static Web Apps | `<PLATFORM_SWA>` |
 | Retro Rush | `games/retro-rush` | Azure Static Web Apps | `<RETRO_RUSH_SWA>` |
 | Spin the Bottle | `games/spin-the-bottle` | Azure App Service, Node.js | `<SPIN_APP_SERVICE>` |
+| Rus Ruleti | `games/rus-ruleti` | Azure Static Web Apps | `<RUS_RULETI_SWA>` |
 | Realtime backend | `services/retrospective-server` | Azure App Service, ASP.NET Core | `<API_APP_SERVICE>` |
 | AI Bot | `ai-bot` | Azure App Service, Node.js | `<AI_BOT_APP_SERVICE>` |
 | Optional realtime fan-out | backend integration | Azure SignalR Service | `<SIGNALR_RESOURCE>` |
@@ -24,26 +25,26 @@ All `VITE_*` values are public build-time browser configuration. Never place key
 | Variable | Used by | Local example | Production purpose | Secret? |
 |---|---|---|---|---|
 | `VITE_API_URL` | Platform, Retro Rush, Spin | `http://localhost:5281` | `https://<api-host>`; base for REST and `/hubs/room` | No |
-| `VITE_AI_BOT_URL` | Platform, Retro Rush, Spin | `http://localhost:3002` | `https://<ai-bot-host>` | No |
 | `VITE_RETRO_RUSH_URL` | Platform | `http://localhost:5174` | `https://<retro-rush-host>` | No |
 | `VITE_SPIN_THE_BOTTLE_URL` | Platform | `http://localhost:5175` | `https://<spin-host>` | No |
+| `VITE_RUS_RULETI_URL` | Platform | `http://localhost:5176` | `https://<rus-ruleti-host>` | No |
 | `VITE_PLATFORM_URL` | Retro Rush, Spin | `http://localhost:5173` | `https://<platform-host>` for Back to Games | No |
 | `VITE_ROOM_SERVICE` | Platform | `real` | Keep `real`; `mock` is isolated UI development only | No |
 | `VITE_TRANSPORT_MODE` | Retro Rush standalone configuration | `mock` | Set `signalr` in its production build | No |
 | `AllowedOrigins__0` | Backend | `http://localhost:5173` from Development JSON | Exact `https://<platform-host>` | No |
 | `AllowedOrigins__1` | Backend | `http://localhost:5174` from Development JSON | Exact `https://<retro-rush-host>` | No |
 | `AllowedOrigins__2` | Backend | `http://localhost:5175` from Development JSON | Exact `https://<spin-host>` | No |
+| `AllowedOrigins__3` | Backend | `http://localhost:5176` from Development JSON | Exact `https://<rus-ruleti-host>` | No |
 | `ASPNETCORE_ENVIRONMENT` | Backend | `Development` from launch profile | `Production` | No |
 | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Backend | not needed | `true` on Linux App Service so forwarded HTTPS is observed | No |
 | `Azure__SignalR__ConnectionString` | Backend, optional later | unset | Azure SignalR SDK configuration after optional integration | Yes |
-| `QUESTION_PROVIDER` | AI Bot | `demo` | `demo` or `gemini` | No |
+| `AI_PROVIDER` | AI Bot | `local` | `local` or `gemini` | No |
 | `GEMINI_API_KEY` | AI Bot | `your-api-key-here` | Required when provider is `gemini` | Yes |
 | `GEMINI_MODEL` | AI Bot | `gemini-2.5-flash-lite` | Provider model name | No |
 | `PORT` | Spin and AI Bot | `3000` / `3002` | Assigned by App Service; do not hardcode it | No |
 | `NODE_ENV` | AI Bot | `development` or unset | `production`, enabling fail-closed CORS validation | No |
 | `ALLOWED_ORIGINS` | AI Bot | comma-separated local origins | Comma-separated exact HTTPS frontend origins | No |
-| `SESSION_TTL_MINUTES` | AI Bot | `180` | In-memory question expiry | No |
-| `INTERNAL_SERVICE_KEY` | AI Bot, optional server-to-server mode | placeholder only | Authenticate a future backend-to-bot proxy | Yes |
+| `INTERNAL_SERVICE_KEY` | AI Bot and backend | placeholder only | Must equal backend `AiQuestions__InternalServiceKey` | Yes |
 
 The Platform does not need a `VITE_PLATFORM_URL`: it derives its own origin from the browser. Existing `VITE_API_BASE_URL` and `VITE_HUB_URL` fields in Retro Rush are legacy standalone configuration; the multiplayer client in this deployment derives `/hubs/room` from `VITE_API_URL`.
 
@@ -75,11 +76,11 @@ For an Azure Static Web Apps workflow that lets Oryx build from the monorepo, us
 - AI Bot, repository deployment: `npm --workspace ai-bot start`. From `ai-bot`: `npm start`. This runs `node dist/server.js`; run the build first. Production startup reads App Service settings and does not require a `.env` file.
 - Backend, published output: `dotnet retrospective-server.dll`. On a compatible Windows App Service, the platform can infer the managed startup from the deployed project; on Linux, configure this explicit command if required. Kestrel uses App Service/ASP.NET hosting configuration rather than port 5281.
 
-The root `npm run dev:all` remains local-only and starts the three frontends, the backend, and the optional demo-mode AI Bot on ports 5173, 5174, 5175, 5281, and 3002. It requires neither Azure credentials nor a local AI `.env` file.
+The root `npm run dev:all` remains local-only and starts the four frontends, the backend, and the optional local-mode AI Bot on ports 5173, 5174, 5175, 5176, 5281, and 3002. It requires neither Azure credentials nor a local AI `.env` file.
 
 ## Backend, CORS, HTTPS, and SignalR
 
-Production startup fails closed when `AllowedOrigins` is empty. Configure only the three exact HTTPS frontend origins. The policy uses `WithOrigins`, allows required headers/methods, and enables credentials; never combine credentialed SignalR with `AllowAnyOrigin`.
+Production startup fails closed when `AllowedOrigins` is empty. Configure only the four exact HTTPS frontend origins. The policy uses `WithOrigins`, allows required headers/methods, and enables credentials; never combine credentialed SignalR with `AllowAnyOrigin`.
 
 Clients pass `https://<api-host>` to the official SignalR client, which negotiates at `https://<api-host>/hubs/room` and derives WSS transport. No client constructs a WebSocket URL manually. App Service terminates TLS. HSTS is enabled outside Development, but HTTPS redirection is intentionally not forced in application code because an unconfigured reverse proxy can redirect to an internal port. On Linux App Service set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`.
 
@@ -113,7 +114,6 @@ Five path-filtered, manually triggerable workflows under `.github/workflows` per
 Before enabling deployment steps, define these non-secret repository/environment variables:
 
 - `PUBLIC_API_URL`
-- `PUBLIC_AI_BOT_URL`
 - `PUBLIC_PLATFORM_URL`
 - `PUBLIC_RETRO_RUSH_URL`
 - `PUBLIC_SPIN_URL`
@@ -137,6 +137,6 @@ After resources exist, prefer GitHub OIDC/federated identity for App Service dep
 ## Pre-deployment gates
 
 - Configure all public build URLs before producing deployable frontend artifacts; production clients fail clearly instead of using localhost.
-- Keep `INTERNAL_SERVICE_KEY` out of browser builds. The current browser-to-bot design cannot securely send it. Before enabling a cost-bearing Gemini provider for an untrusted public audience, add an authenticated backend-to-bot proxy or an equivalent server-side access boundary. Demo mode does not require the Gemini credential.
-- Verify CORS with the final three origins, including `/api/rooms`, `/api/rooms/{code}/join`, SignalR negotiate, WebSocket upgrade, refresh reconnect, and both games.
+- Keep `INTERNAL_SERVICE_KEY` and `GEMINI_API_KEY` out of browser builds. Browsers call only the authenticated ASP.NET room API; the backend-to-bot request carries the internal key.
+- Verify CORS with the final four origins, including `/api/rooms`, `/api/rooms/{code}/join`, SignalR negotiate, WebSocket upgrade, refresh reconnect, and all games.
 - Keep the backend instance count at one and expect active rooms to disappear on recycle/deploy.

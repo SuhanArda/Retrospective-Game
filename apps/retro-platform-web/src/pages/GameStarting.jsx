@@ -6,8 +6,6 @@ import { gameLauncher } from '../games/gameLauncherInstance'
 import { roomService } from '../services/roomServiceInstance'
 import { useRoom } from '../hooks/useRoom'
 import { loadPlatformSession } from '../session/platformSession'
-import { prepareRoomQuestions } from '../services/QuestionBotService'
-import { getRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import '../App.css'
 
 function GameStarting() {
@@ -16,50 +14,19 @@ function GameStarting() {
   const { t } = useLanguage()
   const launchedGameRef = useRef('')
   const [error, setError] = useState('')
-  const [preparedGame, setPreparedGame] = useState('')
-  const preparationStartedRef = useRef('')
-  const activeGameRef = useRef('')
   const { room, loading } = useRoom(roomCode)
   const player = roomService.getCurrentPlayer()
   const platformSession = loadPlatformSession(window.sessionStorage)
   const game = findGame(gameId)
 
   const isPlayable = game?.status === 'available'
-  const isHost = Boolean(player?.isHost)
   const activeGame = room?.currentGameSession?.gameSessionId && room.currentGameSession.gameId === game?.id
     ? `${room.code}:${game.id}:${room.currentGameSession.gameSessionId}`
     : ''
-  activeGameRef.current = activeGame
-
-  useEffect(() => {
-    if (!activeGame || !isPlayable || !room || !game || !player || !platformSession?.reconnectToken) return
-    if (!isHost) {
-      setPreparedGame(activeGame)
-      return
-    }
-    if (preparationStartedRef.current === activeGame) return
-    preparationStartedRef.current = activeGame
-    const draft = getRoomQuestionDraft(room.code)
-    void prepareRoomQuestions({
-      roomCode: room.code,
-      gameId: game.id,
-      style: draft?.style ?? 'dengeli',
-      contextPrompt: draft?.contextPrompt,
-      reportText: draft?.reportText,
-      reportFile: draft?.reportFile,
-      playerId: player.id,
-      reconnectToken: platformSession.reconnectToken,
-    }).catch((cause) => {
-      if (import.meta.env.DEV) console.warn('[AIQuestion] preparation failed; continuing with authoritative defaults', cause)
-    }).finally(() => {
-      if (activeGameRef.current === activeGame) setPreparedGame(activeGame)
-    })
-  }, [activeGame, isHost, isPlayable, room, game, player, platformSession])
-
   useEffect(() => {
     // A placeholder game can win the vote — say so plainly instead of
     // reporting a launch failure.
-    if (!activeGame || preparedGame !== activeGame || launchedGameRef.current === activeGame
+    if (!activeGame || launchedGameRef.current === activeGame
       || !room || !player || !game || !isPlayable || !platformSession?.reconnectToken || !room.currentGameSession) return
     launchedGameRef.current = activeGame
     try {
@@ -75,7 +42,7 @@ function GameStarting() {
     } catch {
       setError(t('starting.launchError'))
     }
-  }, [activeGame, preparedGame, room, player, game, isPlayable, platformSession, t])
+  }, [activeGame, room, player, game, isPlayable, platformSession, t])
 
   if (loading) {
     return (

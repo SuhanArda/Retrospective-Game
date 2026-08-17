@@ -7,35 +7,37 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
 
-    public async Task<IResult> Generate(string roomCode, string gameId, Contracts.GenerateRoomQuestionsRequest request, CancellationToken cancellationToken)
+    public async Task<IResult> Generate(string roomCode, string roomInstanceId, Contracts.GenerateRoomQuestionsRequest request, CancellationToken cancellationToken)
     {
         using var message = new HttpRequestMessage(HttpMethod.Post, $"rooms/{Uri.EscapeDataString(roomCode)}/questions")
         {
             Content = JsonContent.Create(new
             {
-                gameId,
+                roomInstanceId,
                 topic = string.IsNullOrWhiteSpace(request.Topic) ? "genel retrospektif" : request.Topic.Trim(),
                 reportText = string.IsNullOrWhiteSpace(request.ReportText) ? null : request.ReportText.Trim(),
                 reportFile = request.ReportFile,
                 language = request.Language,
                 style = request.Style,
                 count = request.Count,
+                replaceExisting = request.ReplaceExisting,
             }),
         };
         AddServiceKey(message);
         return await Forward(message, cancellationToken);
     }
 
-    public Task<IResult> Get(string roomCode, string gameId, CancellationToken cancellationToken) =>
+    public Task<IResult> Get(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
         Forward(Create(HttpMethod.Get,
-            $"rooms/{Uri.EscapeDataString(roomCode)}/questions?gameId={Uri.EscapeDataString(gameId)}"), cancellationToken);
+            $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"), cancellationToken);
 
-    public Task<IResult> Delete(string roomCode, CancellationToken cancellationToken) =>
-        Forward(Create(HttpMethod.Delete, $"rooms/{Uri.EscapeDataString(roomCode)}"), cancellationToken);
+    public Task<IResult> Delete(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
+        Forward(Create(HttpMethod.Delete,
+            $"rooms/{Uri.EscapeDataString(roomCode)}?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"), cancellationToken);
 
-    public async Task DeleteSilently(string roomCode, CancellationToken cancellationToken)
+    public async Task DeleteSilently(string roomCode, string roomInstanceId, CancellationToken cancellationToken)
     {
-        try { _ = await Delete(roomCode, cancellationToken); }
+        try { _ = await Delete(roomCode, roomInstanceId, cancellationToken); }
         catch { /* Room cleanup must not expose AI provider details or stop maintenance. */ }
     }
 

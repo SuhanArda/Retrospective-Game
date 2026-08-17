@@ -121,7 +121,7 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         }
         else
         {
-            await ai.DeleteSilently(player.RoomCode, CancellationToken.None);
+            await ai.DeleteSilently(player.RoomCode, room.Id, CancellationToken.None);
             await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
         }
     }

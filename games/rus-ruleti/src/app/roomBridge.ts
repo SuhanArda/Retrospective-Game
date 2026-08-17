@@ -1,4 +1,6 @@
 import type { RoomRealtimeClient } from '@retro-platform/realtime-client';
+import { questionForStableKey } from '@retro-platform/realtime-client';
+import type { GeneratedQuestion } from '@retro-platform/contracts';
 import type { RussianRouletteStateSnapshot } from '@retro-platform/contracts';
 
 export interface RouletteBridgeState {
@@ -35,6 +37,8 @@ export class RouletteRoomBridge {
    * says whose turn it is — from being lost.
    */
   private latestState: RouletteBridgeState | null = null;
+  private latestRawState: RussianRouletteStateSnapshot | null = null;
+  private questions: readonly GeneratedQuestion[] = [];
 
   constructor(private readonly client: RoomRealtimeClient, gameSessionId: string) {
     this.disposers.push(
@@ -55,15 +59,22 @@ export class RouletteRoomBridge {
   }
 
   private applyState(state: RussianRouletteStateSnapshot) {
+    this.latestRawState = state;
     this.latestRevision = state.revision;
+    const sharedQuestion = state.questionId ? questionForStableKey(this.questions, state.questionId) : null;
     this.latestState = {
       holderId: state.holderPlayerId,
       status: state.status,
-      questionText: state.questionText,
+      questionText: sharedQuestion?.text ?? state.questionText,
       lastTargetId: state.lastTargetPlayerId,
       revision: state.revision,
     };
     this.stateListeners.forEach((listener) => listener(this.latestState!));
+  }
+
+  setQuestions(questions: readonly GeneratedQuestion[]): void {
+    this.questions = questions;
+    if (this.latestRawState) this.applyState(this.latestRawState);
   }
 
   onStateChanged(listener: (state: RouletteBridgeState) => void): () => void {

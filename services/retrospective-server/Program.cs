@@ -55,7 +55,7 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
     return Results.Created($"/api/rooms/{admission.RoomCode}", admission);
 }));
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
-app.MapPost("/api/rooms/{code}/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
+app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
 {
     try
     {
@@ -64,25 +64,16 @@ app.MapPost("/api/rooms/{code}/questions", async (string code, GenerateRoomQuest
         // The browser immediately navigates to the selected game. Once the
         // request body has arrived, finish generation even if that navigation
         // closes the original HTTP connection.
-        return await ai.Generate(access.RoomCode, access.GameId, roomRequest, CancellationToken.None);
+        return await ai.Generate(access.RoomCode, access.RoomInstanceId, roomRequest, CancellationToken.None);
     }
     catch (RoomException error) { return RoomError(error); }
 });
-app.MapGet("/api/rooms/{code}/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
+app.MapGet("/api/rooms/{code}/ai/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
 {
     try
     {
         var access = AuthorizeAiRequest(request, rooms, code, hostRequired: false);
-        return await ai.Get(access.RoomCode, access.GameId, cancellationToken);
-    }
-    catch (RoomException error) { return RoomError(error); }
-});
-app.MapDelete("/api/rooms/{code}/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
-{
-    try
-    {
-        var access = AuthorizeAiRequest(request, rooms, code, hostRequired: true);
-        return await ai.Delete(access.RoomCode, cancellationToken);
+        return await ai.Get(access.RoomCode, access.RoomInstanceId, cancellationToken);
     }
     catch (RoomException error) { return RoomError(error); }
 });

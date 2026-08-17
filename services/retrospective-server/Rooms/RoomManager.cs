@@ -97,9 +97,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         {
             var player = Authenticate(room, playerId, token);
             if (hostRequired && room.HostPlayerId != player.Id) throw new RoomException("HOST_REQUIRED");
-            var gameId = room.CurrentGameSession?.GameId ?? room.SelectedGameId
-                ?? throw new RoomException("NO_ACTIVE_GAME_SESSION");
-            return new RoomAiAccess(room.Code, gameId, player.Id, room.HostPlayerId == player.Id);
+            return new RoomAiAccess(room.Code, room.Id, player.Id, room.HostPlayerId == player.Id);
         }
     }
 
@@ -341,9 +339,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
             if (hit)
             {
-                var questionIndex = roomRandom.Next(RouletteQuestions.Length);
+                // The index addresses the room-owned 20-question bank. The
+                // local text remains an authoritative fallback when AI is unavailable.
+                var questionIndex = roomRandom.Next(20);
                 state.QuestionId = $"roulette:{questionIndex}";
-                state.QuestionText = RouletteQuestions[questionIndex];
+                state.QuestionText = RouletteQuestions[questionIndex % RouletteQuestions.Length];
                 state.Status = "QUESTION_ACTIVE";
             }
             else
@@ -437,9 +437,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 if (room.Players.Count == 0)
                 {
                     _rooms.TryRemove(room.Code, out _);
-                    changes.Add(new RoomChange(room.Code, null));
+                    changes.Add(new RoomChange(room.Code, room.Id, null));
                 }
-                else changes.Add(new RoomChange(room.Code, Snapshot(room)));
+                else changes.Add(new RoomChange(room.Code, room.Id, Snapshot(room)));
             }
         }
         return changes;
@@ -770,7 +770,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 }
 
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
-public sealed record RoomChange(string RoomCode, RoomSnapshot? Snapshot);
+public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
 public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }

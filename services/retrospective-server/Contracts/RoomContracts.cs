@@ -127,8 +127,9 @@ public sealed record GenerateRoomQuestionsRequest(
     string Language,
     string Style,
     int Count = 20,
-    ReportFilePayload? ReportFile = null);
+    ReportFilePayload? ReportFile = null,
+    bool ReplaceExisting = false);
 
 public sealed record ReportFilePayload(string Name, string MimeType, string DataBase64);
 
-public sealed record RoomAiAccess(string RoomCode, string GameId, string PlayerId, bool IsHost);
+public sealed record RoomAiAccess(string RoomCode, string RoomInstanceId, string PlayerId, bool IsHost);

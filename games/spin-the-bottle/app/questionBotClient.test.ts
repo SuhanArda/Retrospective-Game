@@ -3,8 +3,8 @@ import type { BotQuestion } from "./questionBotClient";
 import { adaptSpinTheBottleQuestion } from "./spinTheBottleQuestionAdapter";
 
 const questions: BotQuestion[] = [
-  { id: "w1", text: "Kedi temalı iş sorusu?", category: "work", gameCategory: "work" },
-  { id: "f1", text: "Kedi temalı eğlence sorusu?", category: "fun", gameCategory: "entertainment" },
+  { id: "w1", text: "Kedi temalı iş sorusu?", answer: "Cevap", category: "reflection", gameCategory: "work" },
+  { id: "f1", text: "Kedi temalı eğlence sorusu?", answer: "Cevap", category: "fun", gameCategory: "entertainment" },
 ];
 
 describe("adaptSpinTheBottleQuestion", () => {

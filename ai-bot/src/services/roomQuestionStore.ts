@@ -1,68 +1,143 @@
 import { randomUUID } from "node:crypto";
-import type { GenerateQuestionsResponse, RoomQuestionSet } from "../types/questions.js";
+import type {
+  GenerateQuestionsResponse,
+  GeneratedQuestion,
+  RoomAIState,
+  RoomQuestionSet,
+} from "../types/questions.js";
 
-interface StoredQuestionSet {
-  value: RoomQuestionSet;
-  timeout: ReturnType<typeof setTimeout>;
-  progressByGame: Map<string, number>;
+export class RoomGenerationInProgressError extends Error {}
+export class StaleRoomGenerationError extends Error {}
+
+interface GenerationLease {
+  roomId: string;
+  roomInstanceId: string;
+  generationToken: string;
 }
 
+function publicValue(state: RoomAIState): RoomQuestionSet {
+  const { generationToken: _token, gameProgress: _progress, ...value } = state;
+  return structuredClone({
+    ...value,
+    generationStatus: value.questions.length > 0 ? "ready" : value.generationStatus,
+  });
+}
+
+/** Process-local, room-owned question storage. No game id is used as a key. */
 export class RoomQuestionStore {
-  private readonly rooms = new Map<string, StoredQuestionSet>();
+  private readonly rooms = new Map<string, RoomAIState>();
 
-  constructor(private readonly ttlMs: number) {}
+  beginGeneration(
+    roomId: string,
+    roomInstanceId: string,
+    sourceType: "prompt" | "file",
+  ): GenerationLease {
+    const existing = this.rooms.get(roomId);
+    if (existing?.roomInstanceId === roomInstanceId && existing.generationStatus === "generating") {
+      throw new RoomGenerationInProgressError("Bu oda için soru üretimi zaten devam ediyor.");
+    }
 
-  set(roomCode: string, generated: GenerateQuestionsResponse): RoomQuestionSet {
-    this.delete(roomCode);
-    const createdAt = Date.now();
-    const value: RoomQuestionSet = {
-      ...generated,
-      roomCode,
+    const now = Date.now();
+    const generationToken = randomUUID();
+    const keepExisting = existing?.roomInstanceId === roomInstanceId ? existing : null;
+    this.rooms.set(roomId, {
+      roomId,
+      roomInstanceId,
+      gameId: "room-retrospective",
+      provider: keepExisting?.provider ?? "demo",
+      questions: keepExisting?.questions ?? [],
+      questionSetId: keepExisting?.questionSetId ?? randomUUID(),
+      generationStatus: "generating",
+      generationToken,
+      currentQuestionIndex: keepExisting?.currentQuestionIndex ?? 0,
+      createdAt: keepExisting?.createdAt ?? now,
+      updatedAt: now,
+      sourceType,
+      gameProgress: keepExisting?.gameProgress ?? {},
+    });
+    return { roomId, roomInstanceId, generationToken };
+  }
+
+  commitGeneration(lease: GenerationLease, generated: GenerateQuestionsResponse): RoomQuestionSet {
+    const state = this.requireCurrentLease(lease);
+    const now = Date.now();
+    const next: RoomAIState = {
+      ...state,
+      provider: generated.provider,
+      questions: structuredClone(generated.questions),
       questionSetId: randomUUID(),
-      status: "ready",
+      generationStatus: "ready",
       currentQuestionIndex: 0,
-      createdAt,
-      expiresAt: createdAt + this.ttlMs,
+      updatedAt: now,
+      gameProgress: {},
     };
-    const timeout = setTimeout(() => this.delete(roomCode), this.ttlMs);
-    timeout.unref();
-    this.rooms.set(roomCode, { value, timeout, progressByGame: new Map() });
-    return value;
+    delete next.generationToken;
+    this.rooms.set(lease.roomId, next);
+    return publicValue(next);
   }
 
-  getQuestionsForRoom(roomCode: string): RoomQuestionSet | null {
-    return this.rooms.get(roomCode)?.value ?? null;
+  failGeneration(lease: GenerationLease): RoomQuestionSet | null {
+    const state = this.requireCurrentLease(lease);
+    const next: RoomAIState = {
+      ...state,
+      generationStatus: state.questions.length > 0 ? "ready" : "failed",
+      updatedAt: Date.now(),
+    };
+    delete next.generationToken;
+    this.rooms.set(lease.roomId, next);
+    return next.questions.length > 0 ? publicValue(next) : null;
   }
 
-  hasAiQuestions(roomCode: string): boolean {
-    return (this.rooms.get(roomCode)?.value.questions.length ?? 0) > 0;
+  getQuestionsForRoom(roomId: string, roomInstanceId?: string): RoomQuestionSet | null {
+    const state = this.rooms.get(roomId);
+    if (!state || (roomInstanceId && state.roomInstanceId !== roomInstanceId) || state.questions.length === 0) return null;
+    return publicValue(state);
   }
 
-  getNextQuestion(roomCode: string, gameType: string) {
-    const stored = this.rooms.get(roomCode);
-    if (!stored || stored.value.questions.length === 0) return null;
-    const index = stored.progressByGame.get(gameType) ?? 0;
-    stored.progressByGame.set(gameType, index + 1);
-    stored.value.currentQuestionIndex = index + 1;
-    return stored.value.questions[index % stored.value.questions.length] ?? null;
+  hasQuestions(roomId: string, roomInstanceId?: string): boolean {
+    return this.getQuestionsForRoom(roomId, roomInstanceId) !== null;
   }
 
-  resetQuestionProgress(roomCode: string, gameType: string): boolean {
-    const stored = this.rooms.get(roomCode);
-    if (!stored) return false;
-    stored.progressByGame.delete(gameType);
-    stored.value.currentQuestionIndex = 0;
+  getNextQuestion(roomId: string, gameType: string): GeneratedQuestion | null {
+    const state = this.rooms.get(roomId);
+    if (!state || state.questions.length === 0) return null;
+    const progress = state.gameProgress[gameType] ?? { currentQuestionIndex: 0 };
+    const question = state.questions[progress.currentQuestionIndex % state.questions.length] ?? null;
+    progress.currentQuestionIndex += 1;
+    state.gameProgress[gameType] = progress;
+    state.currentQuestionIndex = progress.currentQuestionIndex;
+    state.updatedAt = Date.now();
+    return question ? structuredClone(question) : null;
+  }
+
+  resetQuestionProgress(roomId: string, gameType: string): boolean {
+    const state = this.rooms.get(roomId);
+    if (!state) return false;
+    delete state.gameProgress[gameType];
+    state.currentQuestionIndex = 0;
+    state.updatedAt = Date.now();
     return true;
   }
 
-  delete(roomCode: string): boolean {
-    const stored = this.rooms.get(roomCode);
-    if (!stored) return false;
-    clearTimeout(stored.timeout);
-    return this.rooms.delete(roomCode);
+  closeRoom(roomId: string, roomInstanceId?: string): boolean {
+    const state = this.rooms.get(roomId);
+    if (!state || (roomInstanceId && state.roomInstanceId !== roomInstanceId)) return false;
+    return this.rooms.delete(roomId);
+  }
+
+  getStatus(roomId: string): RoomAIState["generationStatus"] | null {
+    return this.rooms.get(roomId)?.generationStatus ?? null;
   }
 
   get size(): number {
     return this.rooms.size;
+  }
+
+  private requireCurrentLease(lease: GenerationLease): RoomAIState {
+    const state = this.rooms.get(lease.roomId);
+    if (!state || state.roomInstanceId !== lease.roomInstanceId || state.generationToken !== lease.generationToken) {
+      throw new StaleRoomGenerationError("Eski soru üretimi artık geçerli değil.");
+    }
+    return state;
   }
 }
