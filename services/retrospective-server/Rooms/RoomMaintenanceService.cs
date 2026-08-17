@@ -22,7 +22,7 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
                 var clients = hub.Clients.Group(RoomHub.GroupName(change.RoomCode));
                 if (change.Snapshot is null)
                 {
-                    await ai.DeleteSilently(change.RoomCode, stoppingToken);
+                    await ai.DeleteSilently(change.RoomCode, change.RoomInstanceId, stoppingToken);
                     await clients.RoomClosed();
                 }
                 else

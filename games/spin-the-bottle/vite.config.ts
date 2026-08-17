@@ -31,7 +31,6 @@ export default defineConfig(({ command, mode }) => {
     ],
     define: {
       "import.meta.env.VITE_API_URL": publicValue("VITE_API_URL", "http://localhost:5281"),
-      "import.meta.env.VITE_AI_BOT_URL": publicValue("VITE_AI_BOT_URL", "http://localhost:3002"),
       "import.meta.env.VITE_PLATFORM_URL": publicValue("VITE_PLATFORM_URL", "http://localhost:5173"),
     },
   };

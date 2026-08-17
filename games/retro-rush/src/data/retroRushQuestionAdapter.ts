@@ -1,11 +1,5 @@
 import type { RetroQuestion, RetroQuestionCategory } from '../domain/types';
-
-export interface RoomQuestion {
-  id: string;
-  text: string;
-  category: string;
-  gameCategory?: 'work' | 'entertainment';
-}
+import type { GeneratedQuestion } from '@retro-platform/contracts';
 
 const categoryMap: Readonly<Record<string, RetroQuestionCategory>> = {
   reflection: 'Went well',
@@ -14,10 +8,10 @@ const categoryMap: Readonly<Record<string, RetroQuestionCategory>> = {
   fun: 'Team mood',
 };
 
-export function adaptRetroRushQuestions(questions: readonly RoomQuestion[]): readonly RetroQuestion[] {
+export function adaptRetroRushQuestions(questions: readonly GeneratedQuestion[]): readonly RetroQuestion[] {
   return questions.map((question) => ({
     id: question.id,
-    category: categoryMap[question.category] ?? 'Challenges',
+    category: question.category ? categoryMap[question.category] ?? 'Challenges' : 'Challenges',
     type: 'text',
     prompt: question.text,
     required: true,

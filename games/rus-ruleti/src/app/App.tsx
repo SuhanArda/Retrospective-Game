@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
+import { RoomQuestionProvider } from '@retro-platform/realtime-client';
 import type { RoomPlayerSnapshot } from '@retro-platform/contracts';
 import { GameCanvas } from '../game/GameCanvas';
 import { buildOpponentSeats, spriteForLocalPlayer } from './seats';
@@ -37,6 +38,19 @@ export function App() {
 
     const client = RoomRealtimeClient.fromLaunchContext(rusRuletiRuntimeConfig.apiUrl, launchContext);
     const roomBridge = new RouletteRoomBridge(client, launchContext.gameSessionId);
+    let questionLoadCancelled = false;
+    let questionRetryTimer: number | null = null;
+    let questionAttempt = 0;
+    const loadQuestions = () => {
+      void new RoomQuestionProvider(rusRuletiRuntimeConfig.apiUrl)
+        .getForRoom(launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+        .then((set) => { if (!questionLoadCancelled) roomBridge.setQuestions(set.questions); })
+        .catch(() => {
+          questionAttempt += 1;
+          if (!questionLoadCancelled && questionAttempt < 25) questionRetryTimer = window.setTimeout(loadQuestions, 2_000);
+        });
+    };
+    loadQuestions();
     const disposeRoom = client.on('roomSnapshot', (room) => {
       window.clearTimeout(deadline);
       settle();
@@ -64,6 +78,8 @@ export function App() {
     );
 
     return () => {
+      questionLoadCancelled = true;
+      if (questionRetryTimer !== null) window.clearTimeout(questionRetryTimer);
       window.clearTimeout(deadline);
       disposeRoom();
       disposeReturn();

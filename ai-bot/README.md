@@ -1,134 +1,78 @@
-# Retro Platform AI Bot
+# Retro Platform AI Question Service
 
-Bu servis chatbot değildir; yalnızca oda bazlı, yapılandırılmış oyun soruları üretir.
+Bu servis chatbot değildir. Moderatörün prompt veya desteklenen rapor dosyasından tam 20 doğrulanmış retrospektif sorusu üretir ve bunları oyun adına değil oda kimliğine göre RAM'de tutar.
 
-## Gizlilik sınırı
+## Mimari ve yaşam döngüsü
 
-`AI_PROVIDER=local` varsayılan ve özel veriler için önerilen moddur. Bu mod ağ üzerinden bir model sağlayıcısına veri göndermez ve yerel demo havuzunu kullanır. `AI_PROVIDER=gemini` seçildiğinde anonimleştirilmiş prompt/rapor metni Google Gemini API'ye gönderilir. Oda kapanınca yerel RAM referanslarının silinmesi, sağlayıcı tarafındaki kopyaların silindiğini garanti etmez. Ücretsiz Gemini kullanımını sıfır veri saklamalı kabul etmeyin; gizli şirket raporları için kurumun onayladığı hesap, sözleşme ve veri işleme koşulları kullanılmalıdır.
+- Tek soru bankası: `Map<roomId, RoomAIState>`.
+- `gameId` üretim endpoint'inin parçası değildir; yeni oyun AI servisinde bir allowlist/case gerektirmez.
+- Oyun değişimi, tur bitişi, component unmount ve geçici socket kopması soru bankasını silmez veya Gemini çağrısı başlatmaz.
+- Oda backend tarafından gerçekten kapatıldığında ASP.NET servisi `DELETE /rooms/{roomId}?roomInstanceId=...` çağrısını yapar.
+- `roomInstanceId`, aynı oda kodunun yeniden kullanılması ve oda kapandıktan sonra geç gelen Gemini sonuçlarına karşı koruma sağlar.
+- Otomatik süre dolumu açık odaları silebileceği için kullanılmaz. Process yeniden başlarsa, tek sunuculu RAM mimarisinin doğal sonucu olarak odalar ve sorular birlikte kaybolur.
+- Yeni üretim başarıyla doğrulanana kadar eski banka hizmet vermeye devam eder; hata olursa eski banka korunur.
+- Hiç geçerli banka yokken Gemini kullanılamazsa mevcut demo havuzlarından ortak 20 soru hazırlanır.
 
-Servis Gemini File API, context caching, grounding, araç veya function calling kullanmaz. Sorular ve kaynak içerik veritabanına ya da dosyaya yazılmaz. Process içi `Map` tek backend instance'ı varsayar; birden fazla instance dağıtımında persistence kapalı ortak bir ephemeral store gerekir.
-
-Birden fazla retrospektif oyunu için soru hazırlayan bağımsız servistir. Soru sayısı ve oyun kuralları `src/data/gameProfiles.ts` içindeki profilden gelir: Retro Rush 20, Spin the Bottle ise mevcut oyun kuralını koruyarak 15 iş + 15 eğlence sorusu kullanır. Gemini kullanılamazsa aynı profile uygun yerel demo havuzuna otomatik geçer.
-
-## Gizlilik modeli
-
-- Prompt veya rapor metni saklanmaz.
-- Üretilen sorular yalnızca RAM'de oda koduyla tutulur.
-- Oda kapatıldığında `DELETE /rooms/{roomCode}` çağrısı veriyi hemen siler.
-- Kapanış çağrısı unutulursa soru paketi `SESSION_TTL_MINUTES` sonunda otomatik silinir.
-- Veritabanı ve dosya tabanlı oturum kaydı yoktur.
-- Gemini isteği yalnızca soru üretimi sırasında yapılır; uygulama prompt veya raporu kalıcı olarak saklamaz.
-- Loglara prompt, rapor veya soru içeriği yazılmaz.
-- Aynı oda için eşzamanlı üretim engellenir ve istekler `AI_ROOM_RATE_LIMIT_MS` ile sınırlandırılır.
-
-TXT, PDF ve DOCX raporları uzantı, MIME, imza ve boyut doğrulamasından sonra yalnızca RAM içinde metne çevrilir. Makro, script, bağlantı veya gömülü executable çalıştırılmaz; geçici dosya oluşturulmaz. DOCX arşivleri sıkıştırma bombasına karşı toplam açılmış boyut sınırından geçirilir.
+Prompt, rapor ve ham Gemini yanıtı loglanmaz veya diske/veritabanına yazılmaz. Ücretsiz bir Gemini hesabının sağlayıcı tarafındaki veri saklama koşullarını sıfır saklama olarak varsaymayın.
 
 ## Ayarlar
 
 ```env
-GEMINI_API_KEY=your-api-key-here
-GEMINI_MODEL=gemini-3.1-flash-lite
 AI_PROVIDER=local
-PORT=3002
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175
-SESSION_TTL_MINUTES=180
-INTERNAL_SERVICE_KEY=your-internal-service-key-here
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.1-flash-lite
 AI_REQUEST_TIMEOUT_MS=30000
 AI_MAX_RETRIES=2
 AI_ROOM_RATE_LIMIT_MS=5000
+MAX_REPORT_SIZE_MB=5
+PORT=3002
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176
+INTERNAL_SERVICE_KEY=your-internal-service-key-here
+NODE_USE_SYSTEM_CA=1
 ```
 
-`INTERNAL_SERVICE_KEY` gerçek bir değer alırsa `/health` dışındaki bütün isteklerde aynı değer şu header ile gönderilmelidir:
+Gemini için resmi `@google/genai` SDK'sı backend içinde kullanılır. API anahtarını hiçbir `VITE_*` değişkenine veya frontend koduna koymayın. Üretimde `INTERNAL_SERVICE_KEY`, ASP.NET tarafındaki `AiQuestions__InternalServiceKey` ile aynı olmalıdır.
 
-```http
-X-Internal-Service-Key: secret-value
-```
+## İç servis API'si
 
-Gerçek `.env` Git tarafından yok sayılır. Hiçbir gerçek anahtarı `.env.example` içine yazmayın. Gemini kullanmak için `.env` içinde `AI_PROVIDER=gemini` yapın ve gerçek `GEMINI_API_KEY` değerini ekleyin. Eski `QUESTION_PROVIDER` adı geriye dönük uyumluluk için desteklenir. Anahtar geçersizse, kota biterse veya ağ hatası oluşursa servis demo havuzuna düşer.
-
-Üretimde `NODE_ENV=production` ve virgülle ayrılmış kesin HTTPS originlerinden oluşan `ALLOWED_ORIGINS` zorunludur. `ALLOWED_ORIGIN` eski tek-origin ayarları için desteklenir. `AI_PROVIDER=gemini` seçildiğinde `GEMINI_API_KEY` zorunludur ve eksikse servis anahtar değerini yazdırmadan durur. `INTERNAL_SERVICE_KEY`, ASP.NET proxy'deki `AiQuestions__InternalServiceKey` ile aynı olmalı ve hiçbir `VITE_*` değişkenine konulmamalıdır.
-
-## Çalıştırma
-
-```powershell
-cd ai-bot
-npm install
-npm run dev
-```
-
-Derlenmiş sürüm:
-
-```powershell
-npm run build
-npm start
-```
-
-## API
-
-### Sağlık kontrolü
-
-```http
-GET /health
-```
-
-### Oda için soru üretme
-
-Kısa prompt ile:
+### Oda bankasını hazırla veya atomik yenile
 
 ```http
 POST /rooms/ABC234/questions
+X-Internal-Service-Key: ...
 Content-Type: application/json
 
 {
-  "gameId": "spin-the-bottle",
-  "topic": "genel retrospektif",
+  "roomInstanceId": "server-room-guid",
+  "topic": "ekip iletişimi",
   "language": "tr",
   "style": "dengeli",
-  "count": 20
+  "count": 20,
+  "replaceExisting": false
 }
 ```
 
-Rapor metni ile:
+`reportText` veya doğrulanan `reportFile` da kullanılabilir. `replaceExisting=false` mevcut bankayı döndürür ve Gemini çağrısı yapmaz. `replaceExisting=true` yeni bankayı arka planda üretir; doğrulama tamamlanınca atomik değişim yapılır.
 
-```json
-{
-  "gameId": "retro-rush",
-  "reportText": "Anonimleştirilmiş rapor içeriği...",
-  "language": "tr",
-  "style": "düşündürücü",
-  "count": 20
-}
-```
-
-`topic` ve `reportText` birlikte de gönderilebilir. `topic` en fazla 500, `reportText` en fazla 20.000 karakterdir. Oda endpoint'i tam 20 soruluk, oyunlardan bağımsız `room-retrospective` profilini uygular. Aynı odaya başka bir oyun için yeniden POST gönderilirse yeni Gemini çağrısı yapılmaz; mevcut oda paketi döndürülür.
-
-### Soruları alma
+### Oda bankasını al
 
 ```http
-GET /rooms/ABC234/questions?gameId=retro-rush
+GET /rooms/ABC234/questions?roomInstanceId=server-room-guid
 ```
 
-Bu endpoint aktif oyunu doğrular fakat oda için tutulan tek ortak soru paketini döndürür. Paket `questionSetId`, `status`, süre bilgileri ve 20 soruyu içerir. Spin the Bottle ve Retro Rush bu ortak biçimi kendi küçük adapter'larıyla oyun biçimine dönüştürür.
-
-### Odayı ve soruları silme
+### Gerçek oda kapanışında temizle
 
 ```http
-DELETE /rooms/ABC234
+DELETE /rooms/ABC234?roomInstanceId=server-room-guid
 ```
 
-ASP.NET backend, moderatör odayı kapattığında veya oyun oturumu sona erdiğinde bu endpoint'i çağırmalıdır.
+Tarayıcılar bu endpoint'lere doğrudan erişmez. Yetkilendirme ve oda açık/host kontrolleri ASP.NET üzerindeki `/api/rooms/{roomId}/ai/questions` endpoint'inde yapılır.
 
-### Stateless üretim
-
-Geliştirme testi için `POST /questions/generate` korunmuştur. Bu endpoint soru üretir fakat RAM'e kaydetmez.
-
-## Yeni oyun ekleme
-
-Yeni oyun kimliğini güvenli oda oyunları listesine ekleyin ve oyunun beklediği veri biçimi için yalnızca bir `GameQuestionAdapter` yazın. Oyun bileşeni yeni soru üretmemeli veya oda için ayrı paket oluşturmamalıdır; ortak `RoomQuestionProvider` paketini tüketmelidir. Tanımlanmayan `gameId` değerleri güvenlik nedeniyle reddedilir.
-
-## Kontroller
+## Çalıştırma ve kontrol
 
 ```powershell
+npm install
+npm run dev
 npm run typecheck
 npm test
 npm run build

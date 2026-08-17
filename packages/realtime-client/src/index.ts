@@ -33,6 +33,8 @@ import type {
   UseRetroRushAbilityRequest,
 } from '@retro-platform/contracts';
 
+export { RoomQuestionProvider, parseRoomQuestionSet, questionForStableKey } from './roomQuestionProvider';
+
 export interface RoomCredentials {
   roomCode: string;
   playerId: string;

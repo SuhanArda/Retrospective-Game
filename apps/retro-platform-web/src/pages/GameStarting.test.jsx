@@ -73,29 +73,21 @@ describe('GameStarting', () => {
     })
   }
 
-  it('launches Retro Rush after its room questions are prepared', async () => {
-    let finishPreparation
-    mocks.prepareRoomQuestions.mockImplementation(() => new Promise((resolve) => { finishPreparation = resolve }))
+  it('launches Retro Rush without starting generation during a game switch', async () => {
     await renderStartingPage('retro-rush')
 
-    expect(mocks.prepareRoomQuestions).toHaveBeenCalledOnce()
-    expect(mocks.launchGame).not.toHaveBeenCalled()
-
-    await act(async () => finishPreparation({}))
-
+    expect(mocks.prepareRoomQuestions).not.toHaveBeenCalled()
     expect(mocks.launchGame).toHaveBeenCalledWith(expect.objectContaining({
       gameId: 'retro-rush', gameSessionId: 'session-1', roomCode: 'ABC234',
     }))
     expect(container.textContent).not.toContain('Soru servisine')
   })
 
-  it('still launches with game defaults when question preparation fails', async () => {
-    mocks.prepareRoomQuestions.mockRejectedValue(new Error('QUESTION_PREPARATION_FAILED'))
-
-    await renderStartingPage('retro-rush')
-
-    await act(async () => undefined)
-    expect(mocks.launchGame).toHaveBeenCalledWith(expect.objectContaining({ gameId: 'retro-rush' }))
+  it('launches a later game from the same room without touching generation', async () => {
+    mocks.gameId = 'rus-ruleti'
+    await renderStartingPage('rus-ruleti')
+    expect(mocks.prepareRoomQuestions).not.toHaveBeenCalled()
+    expect(mocks.launchGame).toHaveBeenCalledWith(expect.objectContaining({ gameId: 'rus-ruleti' }))
   })
 
   it('launches Spin for a guest without making AI part of the launch path', async () => {

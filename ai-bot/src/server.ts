@@ -5,17 +5,17 @@ import { LocalPrivateQuestionGenerator, createAiQuestionGenerationService } from
 import { extractReportText, ReportValidationError } from "./services/reportParser.js";
 import { RoomQuestionStore } from "./services/roomQuestionStore.js";
 import { RoomQuestionProvider } from "./services/roomQuestionProvider.js";
-import { validateGenerateQuestionsRequest, validateRoomQuestionRequest } from "./validation/questionRequest.js";
-import { isSupportedRoomGame } from "./data/gameProfiles.js";
+import { validateGenerateQuestionsRequest, validateRoomEnvelope, validateRoomQuestionRequest } from "./validation/questionRequest.js";
+import { RoomGenerationInProgressError, StaleRoomGenerationError } from "./services/roomQuestionStore.js";
 
 const config = loadConfig();
-const store = new RoomQuestionStore(config.sessionTtlMs);
+const store = new RoomQuestionStore();
 const generator = createAiQuestionGenerationService(config);
 const localFallback = new LocalPrivateQuestionGenerator();
 const roomQuestions = new RoomQuestionProvider(store, generator, localFallback, () => {
   if (config.questionProvider === "gemini") console.warn("Gemini kullanılamadı; ortak yerel oda soru paketine geçildi.");
 });
-const activeGenerations = new Map<string, AbortController>();
+const activeGenerations = new Map<string, { roomInstanceId: string; controller: AbortController }>();
 const lastGenerationAttempts = new Map<string, number>();
 const maximumBodySize = Math.ceil(config.maxReportSizeBytes * 4 / 3) + 65_536;
 const roomRoute = /^\/rooms\/([A-Z0-9]{6})\/questions$/;
@@ -110,14 +110,20 @@ const server = createServer(async (request, response) => {
     }
 
     if (roomMatch && request.method === "POST") {
-      const validation = validateRoomQuestionRequest(await resolveReportInput(await readJson(request)));
+      const input = await resolveReportInput(await readJson(request));
+      const validation = validateRoomQuestionRequest(input);
+      const envelope = validateRoomEnvelope(input);
       if (!validation.success) {
         sendJson(response, 400, { error: "Geçersiz istek.", details: validation.errors });
         return;
       }
+      if (!envelope.success) {
+        sendJson(response, 400, { error: "Geçersiz istek.", details: envelope.errors });
+        return;
+      }
       const roomCode = roomMatch[1]!;
-      const existing = roomQuestions.getQuestionsForRoom(roomCode);
-      if (existing) {
+      const existing = roomQuestions.getQuestionsForRoom(roomCode, envelope.roomInstanceId);
+      if (existing && !envelope.replaceExisting) {
         sendJson(response, 200, existing);
         return;
       }
@@ -135,35 +141,46 @@ const server = createServer(async (request, response) => {
       }
       lastGenerationAttempts.set(key, now);
       const controller = new AbortController();
-      activeGenerations.set(key, controller);
+      activeGenerations.set(key, { roomInstanceId: envelope.roomInstanceId, controller });
       try {
-        const questionSet = await roomQuestions.prepareQuestionsForRoom(roomCode, validation.data, controller.signal);
+        const sourceType = validation.data.reportText ? "file" : "prompt";
+        const questionSet = await roomQuestions.prepareQuestionsForRoom(roomCode, envelope.roomInstanceId, validation.data, {
+          replaceExisting: envelope.replaceExisting,
+          sourceType,
+          signal: controller.signal,
+        });
         sendJson(response, 201, questionSet);
       } finally {
-        activeGenerations.delete(key);
+        if (activeGenerations.get(key)?.controller === controller) activeGenerations.delete(key);
       }
       return;
     }
 
     if (roomMatch && request.method === "GET") {
-      if (!isSupportedRoomGame(url.searchParams.get("gameId") ?? "")) {
-        sendJson(response, 400, { error: "Desteklenmeyen veya eksik oyun kimliği." });
+      const roomInstanceId = url.searchParams.get("roomInstanceId")?.trim();
+      if (!roomInstanceId) {
+        sendJson(response, 400, { error: "roomInstanceId gereklidir." });
         return;
       }
-      const questionSet = roomQuestions.getQuestionsForRoom(roomMatch[1]!);
+      const questionSet = roomQuestions.getQuestionsForRoom(roomMatch[1]!, roomInstanceId);
       sendJson(response, questionSet ? 200 : 404, questionSet ?? { error: "Oda için soru paketi bulunamadı." });
       return;
     }
 
     if (closeMatch && request.method === "DELETE") {
       const roomCode = closeMatch[1]!;
-      const controller = activeGenerations.get(roomCode);
-      if (controller) {
-        controller.abort();
+      const roomInstanceId = url.searchParams.get("roomInstanceId")?.trim();
+      if (!roomInstanceId) {
+        sendJson(response, 400, { error: "roomInstanceId gereklidir." });
+        return;
+      }
+      const active = activeGenerations.get(roomCode);
+      if (active?.roomInstanceId === roomInstanceId) {
+        active.controller.abort();
         activeGenerations.delete(roomCode);
       }
       lastGenerationAttempts.delete(roomCode);
-      const deleted = roomQuestions.deleteRoom(roomCode);
+      const deleted = roomQuestions.closeRoom(roomCode, roomInstanceId);
       sendJson(response, 200, { deleted });
       return;
     }
@@ -172,6 +189,14 @@ const server = createServer(async (request, response) => {
   } catch (error: unknown) {
     if (error instanceof ReportValidationError) {
       sendJson(response, 400, { error: error.message });
+      return;
+    }
+    if (error instanceof RoomGenerationInProgressError) {
+      sendJson(response, 409, { error: error.message });
+      return;
+    }
+    if (error instanceof StaleRoomGenerationError) {
+      sendJson(response, 409, { error: "Oda kapandığı veya yeni üretim başladığı için eski sonuç kullanılmadı." });
       return;
     }
     console.error("AI soru isteği güvenli biçimde sonlandırıldı.");

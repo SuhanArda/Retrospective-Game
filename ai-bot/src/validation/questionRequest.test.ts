@@ -1,61 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateGenerateQuestionsRequest, validateRoomQuestionRequest } from "./questionRequest.js";
+import { validateRoomEnvelope, validateRoomQuestionRequest } from "./questionRequest.js";
 
-test("geçerli soru üretme isteğini kabul eder", () => {
-  const result = validateGenerateQuestionsRequest({
-    gameId: "spin-the-bottle",
-    topic: "takım iletişimi",
-    language: "tr",
-    style: "eğlendirici",
-    count: 5,
-  });
+test("oda üretimi gameId olmadan çalışır", () => {
+  const result = validateRoomQuestionRequest({ topic: "kediler", language: "tr", style: "dengeli", count: 20 });
+  assert.equal(result.success, true);
+  if (result.success) assert.equal(result.data.gameId, "room-retrospective");
+});
+
+test("bilinmeyen yeni oyun adı AI servisini sınırlamaz", () => {
+  const result = validateRoomQuestionRequest({ gameId: "future-game", topic: "ekip", language: "tr", style: "dengeli", count: 20 });
   assert.equal(result.success, true);
 });
 
-test("geçersiz soru sayısını reddeder", () => {
-  const result = validateGenerateQuestionsRequest({
-    gameId: "retro-rush",
-    topic: "sprint",
-    language: "tr",
-    style: "dengeli",
-    count: 31,
-  });
-  assert.equal(result.success, false);
+test("tam 20 soru ve geçerli kaynak ister", () => {
+  assert.equal(validateRoomQuestionRequest({ topic: "ekip", language: "tr", style: "dengeli", count: 19 }).success, false);
+  assert.equal(validateRoomQuestionRequest({ language: "tr", style: "dengeli", count: 20 }).success, false);
 });
 
-test("rapor metnini konu olmadan kabul eder", () => {
-  const result = validateRoomQuestionRequest({
-    gameId: "retro-rush",
-    reportText: "İletişim ve iş bölümü geliştirilebilir.",
-    language: "tr",
-    style: "düşündürücü",
-    count: 20,
-  });
-  assert.equal(result.success, true);
-});
-
-test("oda oturumu için 20 dışında soru sayısını reddeder", () => {
-  const result = validateRoomQuestionRequest({
-    gameId: "retro-rush",
-    topic: "iletişim",
-    language: "tr",
-    style: "dengeli",
-    count: 15,
-  });
-  assert.equal(result.success, false);
-});
-
-test("oda isteğini oyun bağımsız ortak 20 soruluk profile normalleştirir", () => {
-  const spin = validateRoomQuestionRequest({ gameId: "spin_the_bottle", topic: "retro", language: "tr", style: "dengeli", count: 20 });
-  const rush = validateRoomQuestionRequest({ gameId: "retro_rush", topic: "retro", language: "tr", style: "dengeli", count: 20 });
-  assert.equal(spin.success && spin.data.gameId, "room-retrospective");
-  assert.equal(rush.success && rush.data.gameId, "room-retrospective");
-  assert.equal(spin.success && spin.data.count, 20);
-  assert.equal(rush.success && rush.data.count, 20);
-});
-
-test("desteklenmeyen oyunu reddeder", () => {
-  const result = validateRoomQuestionRequest({ gameId: "unknown", topic: "retro", language: "tr", style: "dengeli", count: 20 });
-  assert.equal(result.success, false);
+test("roomInstanceId ve atomik yenileme niyetini doğrular", () => {
+  const result = validateRoomEnvelope({ roomInstanceId: "instance-1", replaceExisting: true });
+  assert.deepEqual(result, { success: true, roomInstanceId: "instance-1", replaceExisting: true });
 });

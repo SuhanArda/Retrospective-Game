@@ -4,8 +4,8 @@ import { adaptRetroRushQuestions } from './retroRushQuestionAdapter';
 describe('adaptRetroRushQuestions', () => {
   it('ortak oda sorularını Retro Rush biçimine dönüştürür', () => {
     const result = adaptRetroRushQuestions([
-      { id: 'cat-1', text: 'Kedilerden hangi ekip davranışını öğrenebiliriz?', category: 'teamwork', gameCategory: 'work' },
-      { id: 'cat-2', text: 'Takımımız bir kedi olsaydı nasıl hareket ederdi?', category: 'fun', gameCategory: 'entertainment' },
+      { id: 'cat-1', text: 'Kedilerden hangi ekip davranışını öğrenebiliriz?', answer: 'Dikkat', category: 'teamwork', gameCategory: 'work' },
+      { id: 'cat-2', text: 'Takımımız bir kedi olsaydı nasıl hareket ederdi?', answer: 'Birlikte', category: 'fun', gameCategory: 'entertainment' },
     ]);
 
     expect(result).toEqual([
