@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/services/">
+    <Project Path="services/retro-platform-api/retro-platform-api.csproj" />
+    <Project Path="services/retrospective-server/retrospective-server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="services/retro-platform-api.Tests/retro-platform-api.Tests.csproj" />
+    <Project Path="services/retrospective-server.Tests/retrospective-server.Tests.csproj" />
+  </Folder>
+</Solution>
