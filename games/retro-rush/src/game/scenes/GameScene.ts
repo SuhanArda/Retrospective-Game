@@ -370,7 +370,7 @@ export class GameScene extends Phaser.Scene {
       { id: 'ece', name: 'Ece', color: 0x8db6ff, icon: '' },
     ];
     this.players = definitions.map((definition, index) => {
-      const spawn = roundSpawnPosition(sampleMap.spawn, index);
+      const spawn = roundSpawnPosition(sampleMap.spawn);
       const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${index}-idle`);
       sprite.setCollideWorldBounds(false).setDepth(4);
       sprite.body?.setSize(27, 39).setOffset(8, 10);

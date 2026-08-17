@@ -7,16 +7,21 @@ namespace Retrospective.Server.Tests;
 public sealed class RetroRushRoomManagerTests
 {
     [Fact]
-    public void SessionOwnsOneSeedRoundAndDeterministicPlayerSlots()
+    public void SessionOwnsOneSeedRoundAndAllPlayersShareTheAuthoritativeSpawn()
     {
-        var game = StartGame();
+        var game = StartGame(extraPlayerCount: 4);
         var snapshot = game.Manager.GetRetroRushSnapshot("host", game.SessionId);
 
         Assert.Equal(1, snapshot.RoundId);
         Assert.Equal(game.Room.CurrentGameSession!.Seed, snapshot.MapSeed);
-        Assert.Collection(snapshot.Players,
-            host => { Assert.Equal(game.Host.PlayerId, host.PlayerId); Assert.Equal(0, host.Slot); Assert.Equal(180, host.X); Assert.Empty(host.OwnedAbilityIds); },
-            guest => { Assert.Equal(game.Guest.PlayerId, guest.PlayerId); Assert.Equal(1, guest.Slot); Assert.Equal(134, guest.X); Assert.Empty(guest.OwnedAbilityIds); });
+        Assert.Equal(6, snapshot.Players.Count);
+        Assert.Equal(Enumerable.Range(0, 6), snapshot.Players.Select(player => player.Slot));
+        Assert.All(snapshot.Players, player =>
+        {
+            Assert.Equal(180, player.X);
+            Assert.Equal(540, player.Y);
+            Assert.Empty(player.OwnedAbilityIds);
+        });
     }
 
     [Fact]
@@ -40,7 +45,8 @@ public sealed class RetroRushRoomManagerTests
         var game = StartGame(running: true);
         var shove = game.Manager.RequestRetroRushShove("host", new(game.SessionId, 1, game.Guest.PlayerId, 1));
         Assert.True(shove.Result.Accepted);
-        Assert.Equal(-300, shove.Applied!.VelocityX);
+        Assert.Equal(300, shove.Applied!.VelocityX);
+        Assert.True(double.IsFinite(shove.Applied.VelocityX));
 
         var duplicate = game.Manager.RequestRetroRushShove("host", new(game.SessionId, 1, game.Guest.PlayerId, 1));
         Assert.False(duplicate.Result.Accepted);
@@ -169,6 +175,11 @@ public sealed class RetroRushRoomManagerTests
         Assert.Empty(restarted.ActiveRockets);
         Assert.All(restarted.Players, player => Assert.Empty(player.OwnedAbilityIds));
         Assert.All(restarted.Players, player => Assert.Equal("ACTIVE", player.MovementState));
+        Assert.All(restarted.Players, player =>
+        {
+            Assert.Equal(180, player.X);
+            Assert.Equal(540, player.Y);
+        });
         Assert.Equal(2, restarted.Players.Count);
         game.Clock.Advance(TimeSpan.FromMilliseconds(3_501));
         var firstRoundTwoUpdate = PlayerUpdate(game, game.Host.PlayerId, sequence: 1, x: 260, roundId: 2);
@@ -181,6 +192,8 @@ public sealed class RetroRushRoomManagerTests
     public void DisconnectAndReconnectPreservePlayerIdWithoutDuplicatingEntity()
     {
         var game = StartGame(running: true);
+        game.Manager.UpdateRetroRushPlayer(
+            "guest", PlayerUpdate(game, game.Guest.PlayerId, sequence: 1, x: 420));
         game.Manager.RequestRetroRushPickupCollection(
             "guest", new(game.SessionId, 1, "chunk-1-ability-upper-platform-pickup-0", "rocket"));
         game.Manager.Disconnect("guest");
@@ -192,13 +205,15 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal(2, reconnected.Players.Count);
         var guest = reconnected.Players.Single(player => player.PlayerId == game.Guest.PlayerId);
         Assert.True(guest.Connected);
+        Assert.Equal(420, guest.X);
+        Assert.Equal(540, guest.Y);
         Assert.Contains("rocket", guest.OwnedAbilityIds);
     }
 
     private static UpdateRetroRushPlayerRequest PlayerUpdate(Game game, string playerId, long sequence, double x, int roundId = 1) =>
         new(game.SessionId, playerId, roundId, x, 540, 10, 0, "right", "ACTIVE", "running", sequence, 1000 + sequence);
 
-    private static Game StartGame(bool running = false)
+    private static Game StartGame(bool running = false, int extraPlayerCount = 0)
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-12T10:00:00Z"));
         var manager = new RoomManager(clock, Options.Create(new RoomOptions
@@ -208,8 +223,13 @@ public sealed class RetroRushRoomManagerTests
         }), new FixedRoomRandom(7));
         var host = manager.Create(new CreateRoomRequest("Arda", "#654321", "Retro", 8, 30, 30));
         var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        var extraPlayers = Enumerable.Range(0, extraPlayerCount)
+            .Select(index => manager.Join(host.RoomCode, new JoinRoomRequest($"Player {index + 3}", "#abcdef")))
+            .ToArray();
         manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
         manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        foreach (var (player, index) in extraPlayers.Select((player, index) => (player, index)))
+            manager.Attach(host.RoomCode, player.PlayerId, player.ReconnectToken, $"extra-{index}");
         manager.BeginGameSelection("host", ["retro-rush"]);
         var room = manager.ResolveVote("host").Snapshot;
         if (running) clock.Advance(TimeSpan.FromMilliseconds(3_501));
