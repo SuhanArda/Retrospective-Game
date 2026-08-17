@@ -1,7 +1,7 @@
 import type { PlayerSnapshot, Point } from '../../domain/types';
 
-export function roundSpawnPosition(spawn: Point, playerIndex: number) {
-  return { x: spawn.x - playerIndex * 46, y: spawn.y };
+export function roundSpawnPosition(spawn: Point) {
+  return { x: spawn.x, y: spawn.y };
 }
 
 export function resetPlayerSnapshotForRound(snapshot: PlayerSnapshot): PlayerSnapshot {

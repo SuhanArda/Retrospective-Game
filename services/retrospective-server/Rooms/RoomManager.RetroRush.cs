@@ -7,7 +7,6 @@ public sealed partial class RoomManager
 {
     private const double RetroRushSpawnX = 180;
     private const double RetroRushSpawnY = 540;
-    private const double RetroRushSpawnSpacing = 46;
     private const double RetroRushShoveRange = 55;
     private const double RetroRushShoveVelocity = 300;
     private const int RetroRushShoveCooldownMs = 600;
@@ -333,7 +332,7 @@ public sealed partial class RoomManager
         state.ActiveRockets.Clear();
         foreach (var player in state.Players.Values)
         {
-            player.X = RetroRushSpawnX - player.Slot * RetroRushSpawnSpacing;
+            player.X = RetroRushSpawnX;
             player.Y = RetroRushSpawnY;
             player.VelocityX = 0;
             player.VelocityY = 0;
@@ -426,7 +425,7 @@ public sealed partial class RoomManager
 
     private static RetroRushPlayerState NewPlayer(RoomPlayer player, int slot) => new(
         player.Id, player.DisplayName, player.Color, slot, slot % 4, player.ConnectionId is not null,
-        RetroRushSpawnX - slot * RetroRushSpawnSpacing, RetroRushSpawnY);
+        RetroRushSpawnX, RetroRushSpawnY);
 
     private sealed record RetroQuestionDefinition(
         string Id, string Category, string Type, string Prompt, IReadOnlyList<string>? Options, bool Required);

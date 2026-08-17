@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.codex
+**/node_modules
+**/bin
+**/obj
+**/dist
+**/coverage
+.env
+.env.*
+!.env.example
+*.log
