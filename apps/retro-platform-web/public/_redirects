@@ -1,0 +1,12 @@
+# Explicit Cloudflare Pages rewrites for every client-side route. Avoid a
+# catch-all rule because Pages applies redirects before matching static assets.
+/games /index.html 200
+/room/create /index.html 200
+/room/join /index.html 200
+/room/:roomCode/games /index.html 200
+/room/:roomCode/game/:gameId /index.html 200
+/room/:roomCode /index.html 200
+/create-room /index.html 200
+/join-room /index.html 200
+/oda/:roomCode/oylama /index.html 200
+/oda/:roomCode /index.html 200

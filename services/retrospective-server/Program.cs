@@ -3,6 +3,17 @@ using Retrospective.Server.Hubs;
 using Retrospective.Server.Rooms;
 
 var builder = WebApplication.CreateBuilder(args);
+var renderPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(renderPort))
+{
+    if (!int.TryParse(renderPort, out var port) || port is < 1 or > 65535)
+    {
+        throw new InvalidOperationException("PORT must be an integer between 1 and 65535.");
+    }
+
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()?
     .Where(origin => !string.IsNullOrWhiteSpace(origin))
     .Distinct(StringComparer.OrdinalIgnoreCase)
