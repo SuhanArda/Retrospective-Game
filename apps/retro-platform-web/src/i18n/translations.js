@@ -199,7 +199,7 @@ export const translations = {
         description:
           'Şişeyi döndür, seçilen takım arkadaşınla İş veya Eğlence kategorisinden bir retro sorusu yanıtla.',
         detail:
-          'Altı kedi şişenin etrafında toplanır. Şişeyi döndürdüğünüzde bir takım arkadaşı seçilir; ardından İş veya Eğlence kategorisinden rastgele bir retrospektif soru gelir. Soruyu birlikte konuşup turu tamamladıktan sonra şişeyi yeniden döndürürsünüz.',
+          'Altı kedi şişenin etrafında toplanır. Döndürünce seçilen kişi İş veya Eğlence kategorisini seçer, o kategoriden bir retro sorusu gelir. Birlikte konuşup turu tamamlar, şişeyi yeniden döndürürsünüz.',
         steps: [
           'Şişeyi döndür ve takım arkadaşlarından birinin seçilmesini bekle.',
           'Seçilen kişi için İş veya Eğlence kategorisini seç.',
@@ -210,7 +210,7 @@ export const translations = {
         description:
           'Hareketli platformlarda yarış, yeteneklerini kullan, retro sorularını birlikte cevapla.',
         detail:
-          'Ormanın içinden geçen bir parkurda birlikte koşarsınız. Yol boyunca hız ve roket gibi yetenekler toplanır; roketi yiyen bir an duraklar, hızı kapan öne geçer. Elendiğinizde ya da bir kontrol noktasına vardığınızda oyun durur ve herkesin ekranına aynı retro sorusu gelir. Cevaplar, konuşur, kaldığınız yerden devam edersiniz.',
+          'Ormanın içinden geçen bir parkurda birlikte koşarsınız, yol boyunca hız ve roket gibi yetenekler toplarsınız. Biri elendiğinde oyun durur, herkesin ekranına aynı retro sorusu gelir; cevaplayıp kaldığınız yerden devam edersiniz.',
         steps: [
           'Sağa doğru koş, boşlukları zıplayarak geç, sisin önünde kal.',
           'Yol üstündeki yetenekleri topla: hız seni öne taşır, roket rakibini yavaşlatır.',
@@ -221,7 +221,7 @@ export const translations = {
         description:
           'Namluda tek mermi var. Silah elden ele geçer; dolu çıkarsa hedef bir retro sorusu cevaplar.',
         detail:
-          'Masanın karşısında oturan takım arkadaşlarını görürsün, kendini değil. Namluda tek mermi var; sıradaki kişi istediği birine ateş eder. Boş çıkarsa silah sessizce vurulan kişiye geçer. Dolu çıkarsa vurulan kişi bir retro sorusu cevaplar, namlu gizlice yeniden doldurulur ve o kişi silahı alıp devam eder. Kimse elenmez — oyun sürekli döner.',
+          'Herkes bir kamp ateşi çevresinde oturur, namluda tek mermi vardır. Sıradaki kişi istediği birine ateş eder; boş çıkarsa silah ona geçer, dolu çıkarsa hedef bir retro sorusu cevaplar ve namlu gizlice yeniden dolar. Kimse elenmez, oyun sürekli döner.',
         steps: [
           'Sıra sendeyse karşındaki bir takım arkadaşını seç ve ateş et.',
           'Boş çıkarsa silah sessizce vurduğun kişiye geçer, sıra ona gelir.',
@@ -445,7 +445,7 @@ export const translations = {
         description:
           'Spin the bottle, pick a teammate, and answer a retrospective question from the Work or Fun category.',
         detail:
-          'Six cats gather around the bottle. Each spin selects a teammate, then deals them a random retrospective question from either the Work or Fun category. Discuss the answer together, complete the turn, and spin again.',
+          'Six cats gather around the bottle. Each spin selects a teammate, who picks Work or Fun, then answers a retrospective question from that category. Discuss it together, complete the turn, and spin again.',
         steps: [
           'Spin the bottle and wait for it to select a teammate.',
           'Choose the Work or Fun category for the selected player.',
@@ -456,7 +456,7 @@ export const translations = {
         description:
           'Race through a moving platform course, use abilities, and answer retrospective questions together.',
         detail:
-          'You run a course through the forest together. Abilities are scattered along the way — a rocket stalls whoever it hits, a speed boost puts you in front. When you are knocked out, or when you reach a checkpoint, the game pauses and the same retrospective question lands on everyone’s screen. You answer, you talk, you pick up where you left off.',
+          'You run a course through the forest together, picking up abilities like speed boosts and rockets along the way. When someone is knocked out, the game pauses and the same retrospective question lands on everyone’s screen — you answer, talk it through, and pick up where you left off.',
         steps: [
           'Run right, jump the gaps, stay ahead of the mist.',
           'Grab the abilities on the route: speed pushes you forward, a rocket slows a rival.',
@@ -467,7 +467,7 @@ export const translations = {
         description:
           'One bullet, one cylinder, passed hand to hand — when it fires, the target answers a question.',
         detail:
-          'You see your teammates seated across the table, never yourself. The cylinder holds a single bullet; whoever holds the gun fires at anyone else. An empty chamber passes the gun silently to whoever was just shot at. A loaded one means they answer a retrospective question, the cylinder is secretly reloaded, and they keep the gun and fire next. Nobody is ever out — the round just keeps going.',
+          'Everyone sits around a campfire, and the cylinder holds a single bullet. Whoever holds the gun fires at anyone else — an empty chamber passes it on silently, a loaded one means they answer a retrospective question while the cylinder quietly reloads. Nobody is ever out; the round just keeps going.',
         steps: [
           'On your turn, pick a teammate across the table and fire.',
           'An empty chamber passes the gun silently to whoever you just shot.',
