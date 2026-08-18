@@ -53,7 +53,6 @@ function Home() {
           typo={heroTypo[lang]}
         />
         <p className="subtitle">{t('home.subtitle')}</p>
-        <img className="home-hero" src="/screenshots/home-hero.jpg" alt="" aria-hidden="true" />
         <div className="button-row">
           <button className="btn btn-primary" onClick={() => navigate('/room/create')}>
             {t('home.createRoom')}
