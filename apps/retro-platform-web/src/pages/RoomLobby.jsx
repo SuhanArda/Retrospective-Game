@@ -96,7 +96,7 @@ function RoomLobby() {
                 : t('lobby.reconnectingStatus')}
         </div>
 
-        <div className="card" style={{ marginTop: 20 }}>
+        <div className="card lobby-card" style={{ marginTop: 20 }}>
           <div className="field">
             <label>{t('lobby.roomCodeLabel')}</label>
             <div className="code-display">
@@ -121,12 +121,12 @@ function RoomLobby() {
             <label>{t('lobby.participantsLabel')}</label>
             <div className="participant-list">
               {room.players.map((player) => (
-                <div className="participant" key={player.id}>
+                <div className="participant" style={{ borderLeft: `4px solid ${player.color}` }} key={player.id}>
                   <span className="participant-name">
                     <Avatar name={player.displayName} color={player.color} size={24} />
                     {player.displayName}
-                    {player.isHost ? ` ${t('lobby.hostSuffix')}` : ''}
                     {player.id === me?.id ? ` ${t('lobby.youSuffix')}` : ''}
+                    {player.isHost && <span className="host-badge">{t('lobby.hostSuffix')}</span>}
                   </span>
                   <span className={`ready-state${player.isReady ? ' is-ready' : ''}`}>
                     {player.isReady ? t('lobby.ready') : t('lobby.notReady')}
