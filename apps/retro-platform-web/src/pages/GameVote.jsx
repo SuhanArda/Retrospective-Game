@@ -148,16 +148,20 @@ function GameVote() {
           {gameRegistry.map((game) => {
             const count = tally[game.id] ?? 0
             const picked = myVote === game.id
+            const hasPhoto = Boolean(game.voteScreenshotUrl)
             return (
               <button
                 type="button"
                 key={game.id}
-                className={`game-card${picked ? ' picked' : ''}`}
+                className={`game-card${picked ? ' picked' : ''}${hasPhoto ? ' has-photo' : ''}`}
+                style={hasPhoto ? {
+                  backgroundImage: `linear-gradient(to bottom, rgba(20,14,30,0.2) 0%, rgba(20,14,30,0.55) 55%, rgba(20,14,30,0.92) 100%), url(${game.voteScreenshotUrl})`,
+                } : undefined}
                 onClick={() => handleVote(game.id)}
                 disabled={game.status !== 'available'}
                 aria-pressed={picked}
               >
-                <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>
+                {!hasPhoto && <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>}
                 <span className="game-card-name">{game.name}</span>
                 <span className="game-card-text">{t(game.descriptionKey)}</span>
                 <span className="game-card-votes">
