@@ -1821,22 +1821,6 @@
   color: #f2bc66;
 }
 
-.art-pixel-arena {
-  background: linear-gradient(165deg, #6c3f7a 0%, #3d2249 55%, #1d1224 100%);
-}
-
-.art-pixel-arena .showcase-art-label {
-  color: #ff9ecb;
-}
-
-.art-sprint-maze {
-  background: linear-gradient(165deg, #3d7a6b 0%, #23503f 55%, #12241f 100%);
-}
-
-.art-sprint-maze .showcase-art-label {
-  color: #7de3c4;
-}
-
 .showcase-body {
   padding: 20px 22px 22px;
 }

@@ -228,26 +228,6 @@ export const translations = {
           'Dolu çıkarsa hedef retro sorusunu cevaplar, namlu yeniden dolar ve oyun devam eder.',
         ],
       },
-      'pixel-arena': {
-        description: 'Daralan arenada ayakta kalan kazanır — her eleme bir soruyu açar.',
-        detail:
-          'Herkes aynı arenada başlar ve arena yavaşça daralır. Alan küçüldükçe kaçacak yer azalır, karşılaşmalar kaçınılmaz olur. Her eleme bir soru açar; yani oyun ilerledikçe konuşma da derinleşir. Kısa turlar hâlinde oynanır, bir tur bitince yenisi başlar.',
-        steps: [
-          'Arenanın içinde kal, daralan sınırın dışında kalma.',
-          'Alan küçüldükçe rakiplerinle aynı köşeye sıkışırsın.',
-          'Her elemede oyun durur ve bir retro sorusu açılır.',
-        ],
-      },
-      'sprint-maze': {
-        description: 'Süre bitmeden çıkışı bul; her çıkmaz sokak bir takım muhasebesine dönüşür.',
-        detail:
-          'Süre dolmadan labirentin çıkışını bulmaya çalışırsınız. Herkes aynı labirentte ama farklı yerlerdedir, o yüzden yol tarifi vermek oyunun parçasıdır. Yanlış dönüş burada ceza değil fırsat: her çıkmaz sokak, takımın o dönem nerede tıkandığını konuşmak için bir soru açar.',
-        steps: [
-          'Labirente dağıl ve çıkışı aramaya başla.',
-          'Çıkmaz sokağa girersen oyun durur.',
-          'Gelen soruyu cevapla, sonra aramaya devam et.',
-        ],
-      },
       platform: {
         name: 'Platform Oyunu',
         text: 'Engelleri aş. Düştüğünde oyun durur, karşına bir soru gelir.',
@@ -492,27 +472,6 @@ export const translations = {
           'On your turn, pick a teammate across the table and fire.',
           'An empty chamber passes the gun silently to whoever you just shot.',
           'A loaded chamber means they answer a question, then the cylinder reloads and play continues.',
-        ],
-      },
-      'pixel-arena': {
-        description: 'Last one standing in a shrinking arena — every knockout opens a question.',
-        detail:
-          'Everyone starts in the same arena and the arena slowly closes in. The less room there is, the harder anyone is to avoid, so meetings become inevitable. Every knockout opens a question, which means the conversation deepens as the round goes on. It plays in short rounds — when one ends, the next begins.',
-        steps: [
-          'Stay inside the arena as its edge closes in.',
-          'The smaller it gets, the more you are pushed into the same corner as everyone else.',
-          'Every knockout pauses the game and opens a retrospective question.',
-        ],
-      },
-      'sprint-maze': {
-        description:
-          'Find the exit before the timer runs out; dead ends turn into team reflections.',
-        detail:
-          'You try to find the way out before the timer runs down. Everyone is in the same maze but in different parts of it, so giving directions is part of the game. A wrong turn is not a penalty here but an opening: every dead end starts a question about where the team got stuck this time round.',
-        steps: [
-          'Spread out into the maze and start looking for the exit.',
-          'Hit a dead end and the game pauses.',
-          'Answer the question that comes up, then get back to searching.',
         ],
       },
       platform: {

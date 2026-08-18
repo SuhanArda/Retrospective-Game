@@ -11,17 +11,5 @@ describe('game registry', () => {
     expect(findGame('rus-ruleti')?.name).toBe('Rus Ruleti');
   });
 
-  it('offers the upcoming games as placeholders that cannot be launched', () => {
-    const comingSoon = gameRegistry.filter((game) => game.status === 'coming-soon');
-    expect(comingSoon.map((game) => game.id)).toEqual(['pixel-arena', 'sprint-maze']);
-    for (const game of comingSoon) {
-      expect(() => game.getLaunchUrl({
-        retroRushUrl: 'http://localhost:5174',
-        spinTheBottleUrl: 'http://localhost:5175',
-        rusRuletiUrl: 'http://localhost:5176',
-      })).toThrow();
-    }
-  });
-
   it('returns null for unknown games', () => expect(findGame('not-a-game')).toBeNull());
 });

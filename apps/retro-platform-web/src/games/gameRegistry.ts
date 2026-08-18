@@ -22,10 +22,6 @@ export interface GameDefinition {
   getLaunchUrl(config: GameRuntimeConfig): string;
 }
 
-function unavailable(): never {
-  throw new Error('This game has no runtime yet');
-}
-
 export const gameRegistry: readonly GameDefinition[] = [
   {
     id: 'retro-rush',
@@ -59,30 +55,6 @@ export const gameRegistry: readonly GameDefinition[] = [
     minPlayers: 2,
     visualLabel: 'RU',
     getLaunchUrl: (config) => config.rusRuletiUrl,
-  },
-  // Placeholders so the vote has real choices while the games are being built.
-  // Flip `status` to 'available' and return a real URL once each one exists.
-  {
-    id: 'pixel-arena',
-    name: 'Pixel Arena',
-    descriptionKey: 'games.pixel-arena.description',
-    detailKey: 'games.pixel-arena.detail',
-    stepsKey: 'games.pixel-arena.steps',
-    status: 'coming-soon',
-    minPlayers: 2,
-    visualLabel: 'PA',
-    getLaunchUrl: unavailable,
-  },
-  {
-    id: 'sprint-maze',
-    name: 'Sprint Maze',
-    descriptionKey: 'games.sprint-maze.description',
-    detailKey: 'games.sprint-maze.detail',
-    stepsKey: 'games.sprint-maze.steps',
-    status: 'coming-soon',
-    minPlayers: 1,
-    visualLabel: 'SM',
-    getLaunchUrl: unavailable,
   },
 ];
 
