@@ -38,7 +38,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(false);
   const [authoritativeMapSeed, setAuthoritativeMapSeed] = useState<number | null>(null);
-  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[]>(launchContext ? [] : retroQuestions);
+  const [sessionQuestions, setSessionQuestions] = useState<readonly RetroQuestion[]>(retroQuestions);
 
   useEffect(() => {
     if (!launchContext?.roomCode) {
@@ -46,28 +46,15 @@ export function App() {
       return;
     }
     let cancelled = false;
-    let retryTimer: number | null = null;
-    let attempt = 0;
-    const load = () => {
-      loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
-        .then((questions) => {
-          if (cancelled) return;
-          if (questions.length === 0) throw new Error('ROOM_QUESTIONS_NOT_READY');
-          setSessionQuestions(questions);
-        })
-        .catch((cause) => {
-          attempt += 1;
-          if (!cancelled && attempt < 25) retryTimer = window.setTimeout(load, 2_000);
-          else {
-            setSessionQuestions(retroQuestions);
-            if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
-          }
-        });
-    };
-    load();
+    loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+      .then((questions) => {
+        if (!cancelled && questions.length > 0) setSessionQuestions(questions);
+      })
+      .catch((cause) => {
+        if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
+      });
     return () => {
       cancelled = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [launchContext]);
 

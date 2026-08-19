@@ -19,6 +19,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@google/genai": "^2.15.0",
     "mammoth": "^1.12.1",
     "pdf-parse": "^2.4.5"
   }

@@ -1,12 +1,7 @@
-export interface RoomQuestion {
-  id: string;
-  text: string;
-  category: string;
-  gameCategory?: "work" | "entertainment";
-}
+import type { GeneratedQuestion } from "@retro-platform/contracts";
 
 export function adaptSpinTheBottleQuestion(
-  questions: readonly RoomQuestion[],
+  questions: readonly GeneratedQuestion[],
   questionId: string,
   wantsEntertainment: boolean,
 ): string | null {

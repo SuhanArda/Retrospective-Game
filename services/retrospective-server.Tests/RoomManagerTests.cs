@@ -9,17 +9,15 @@ public sealed class RoomManagerTests
     private static readonly string[] Games = ["retro-rush", "spin-the-bottle"];
 
     [Fact]
-    public void AiAccessUsesRoomGameAndRequiresHostForGeneration()
+    public void AiAccessUsesRoomIdentityWithoutRequiringAnActiveGame()
     {
         var manager = CreateManager();
         var host = manager.Create(CreateRequest("Host"));
         var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Guest", "#123456"));
         manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
-        manager.BeginGameSelection("host", ["retro-rush"]);
-        manager.ResolveVote("host");
-
         var access = manager.AuthorizeAiAccess(host.RoomCode, host.PlayerId, host.ReconnectToken, hostRequired: true);
-        Assert.Equal("retro-rush", access.GameId);
+        Assert.Equal(host.Room!.Id, access.RoomInstanceId);
+        Assert.Equal(host.RoomCode, access.RoomCode);
         Assert.True(access.IsHost);
         Assert.Throws<RoomException>(() => manager.AuthorizeAiAccess(host.RoomCode, guest.PlayerId, guest.ReconnectToken, hostRequired: true));
         Assert.Throws<RoomException>(() => manager.AuthorizeAiAccess(host.RoomCode, host.PlayerId, "wrong", hostRequired: true));
@@ -51,6 +49,25 @@ public sealed class RoomManagerTests
         Assert.Equal(sourceFile, restored.ReportFile);
         Assert.Equal("düşündürücü", restored.Style);
         Assert.Equal(15, restored.Count);
+    }
+
+    [Fact]
+    public void GameTransitionsAndTemporaryDisconnectKeepRoomAiSource()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest("kediler", null, "tr", "dengeli"));
+
+        manager.BeginGameSelection("host", ["spin-the-bottle"]);
+        manager.ResolveVote("host");
+        manager.ReturnToGameSelection("host");
+        manager.Disconnect("host");
+
+        var restored = manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(null, null, "tr", "dengeli"));
+        Assert.Equal("kediler", restored.Topic);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-export type QuestionStyle = "dengeli" | "eğlendirici" | "düşündürücü";
+import type { QuestionStyle } from "../types/questions.js";
 
 export interface DemoQuestion {
   text: string;

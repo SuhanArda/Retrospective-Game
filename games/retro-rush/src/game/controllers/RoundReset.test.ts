@@ -4,8 +4,8 @@ import { resetPlayerSnapshotForRound, roundSpawnPosition } from './RoundReset';
 
 describe('round reset values', () => {
   it('returns every player to the original map spawn without checkpoint selection', () => {
-    expect(roundSpawnPosition({ x: 180, y: 540 }, 0)).toEqual({ x: 180, y: 540 });
-    expect(roundSpawnPosition({ x: 180, y: 540 }, 2)).toEqual({ x: 88, y: 540 });
+    const positions = Array.from({ length: 6 }, () => roundSpawnPosition({ x: 180, y: 540 }));
+    expect(positions).toEqual(Array.from({ length: 6 }, () => ({ x: 180, y: 540 })));
   });
 
   it('clears round state while preserving player and session identity fields', () => {

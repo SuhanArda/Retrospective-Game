@@ -1,7 +1,8 @@
+import { GoogleGenAI } from "@google/genai";
 import type { AppConfig } from "../config.js";
 import type { GenerateQuestionsRequest, GenerateQuestionsResponse } from "../types/questions.js";
 import { generateDemoQuestions } from "./demoQuestionGenerator.js";
-import { generateQuestions } from "./questionGenerator.js";
+import { generateQuestions, type GeminiContentClient } from "./questionGenerator.js";
 
 export interface AiQuestionGenerationService {
   generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse>;
@@ -14,11 +15,16 @@ export class LocalPrivateQuestionGenerator implements AiQuestionGenerationServic
 }
 
 export class GeminiQuestionGenerator implements AiQuestionGenerationService {
-  constructor(private readonly config: AppConfig) {}
+  private readonly client: GeminiContentClient;
 
-  async generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse> {
-    if (!this.config.apiKey) throw new Error("Gemini sağlayıcısı yapılandırılmadı.");
-    return generateQuestions(request, this.config.apiKey, this.config.model, {
+  constructor(private readonly config: AppConfig) {
+    if (!config.apiKey) throw new Error("Gemini sağlayıcısı yapılandırılmadı.");
+    const sdk = new GoogleGenAI({ apiKey: config.apiKey });
+    this.client = { generateContent: (input) => sdk.models.generateContent(input) };
+  }
+
+  generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse> {
+    return generateQuestions(request, this.client, this.config.model, {
       timeoutMs: this.config.requestTimeoutMs,
       maximumRetries: this.config.maximumRetries,
       ...(signal ? { signal } : {}),
@@ -27,7 +33,5 @@ export class GeminiQuestionGenerator implements AiQuestionGenerationService {
 }
 
 export function createAiQuestionGenerationService(config: AppConfig): AiQuestionGenerationService {
-  return config.questionProvider === "gemini"
-    ? new GeminiQuestionGenerator(config)
-    : new LocalPrivateQuestionGenerator();
+  return config.questionProvider === "gemini" ? new GeminiQuestionGenerator(config) : new LocalPrivateQuestionGenerator();
 }

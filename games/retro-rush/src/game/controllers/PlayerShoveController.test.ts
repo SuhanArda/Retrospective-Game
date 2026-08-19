@@ -33,6 +33,12 @@ describe('player shove targeting', () => {
     expect(shoveVelocityAwayFrom(source, player('right', 120), config.horizontalVelocity)).toBe(300);
     expect(shoveVelocityAwayFrom(source, player('left', 80), config.horizontalVelocity)).toBe(-300);
   });
+
+  it('uses a finite deterministic direction when players exactly overlap', () => {
+    const velocity = shoveVelocityAwayFrom(player('local', 100), player('overlapping', 100), config.horizontalVelocity);
+    expect(velocity).toBe(300);
+    expect(Number.isFinite(velocity)).toBe(true);
+  });
 });
 
 describe('player shove cooldown', () => {

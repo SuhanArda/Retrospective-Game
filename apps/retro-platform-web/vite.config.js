@@ -7,13 +7,13 @@ import { buildContentSecurityPolicy } from './src/security/contentSecurityPolicy
  * than a constant, so it is stamped into index.html at build time instead of
  * being hard-coded there.
  */
-function contentSecurityPolicy(apiUrl, questionBotUrl) {
+function contentSecurityPolicy(apiUrl) {
   return {
     name: 'inject-content-security-policy',
     transformIndexHtml(html) {
       return html.replace(
         '%CONTENT_SECURITY_POLICY%',
-        buildContentSecurityPolicy(apiUrl, questionBotUrl),
+        buildContentSecurityPolicy(apiUrl),
       )
     },
   }
@@ -41,12 +41,10 @@ export default defineConfig(({ mode }) => {
       react(),
       contentSecurityPolicy(
         env.VITE_API_URL || (mode !== 'production' ? 'http://localhost:5281' : undefined),
-        env.VITE_AI_BOT_URL || (mode !== 'production' ? 'http://localhost:3002' : undefined),
       ),
     ],
     define: {
       'import.meta.env.VITE_API_URL': publicValue('VITE_API_URL', 'http://localhost:5281'),
-      'import.meta.env.VITE_AI_BOT_URL': publicValue('VITE_AI_BOT_URL', 'http://localhost:3002'),
       'import.meta.env.VITE_RETRO_RUSH_URL': publicValue('VITE_RETRO_RUSH_URL', 'http://localhost:5174'),
       'import.meta.env.VITE_SPIN_THE_BOTTLE_URL': publicValue('VITE_SPIN_THE_BOTTLE_URL', 'http://localhost:5175'),
       'import.meta.env.VITE_RUS_RULETI_URL': publicValue('VITE_RUS_RULETI_URL', 'http://localhost:5176'),

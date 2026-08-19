@@ -245,6 +245,28 @@ export interface RoomReactionEvent {
   sentAt: number;
 }
 
+export interface GeneratedQuestion {
+  id: string;
+  text: string;
+  answer: string;
+  options?: string[];
+  correctOptionIndex?: number;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  category?: 'reflection' | 'teamwork' | 'improvement' | 'fun';
+  gameCategory?: 'work' | 'entertainment';
+}
+
+export interface RoomQuestionSet {
+  roomId: string;
+  roomInstanceId: string;
+  questionSetId: string;
+  provider: 'demo' | 'gemini';
+  generationStatus: 'idle' | 'generating' | 'ready' | 'failed';
+  questions: GeneratedQuestion[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface GameLaunchContext {
   roomCode: string;
   playerId: string;

@@ -4,7 +4,6 @@ export interface AppConfig {
   questionProvider: "local" | "gemini";
   port: number;
   allowedOrigins: "*" | readonly string[];
-  sessionTtlMs: number;
   internalServiceKey: string | null;
   requestTimeoutMs: number;
   maximumRetries: number;
@@ -28,11 +27,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error("PORT 1 ile 65535 arasında bir tam sayı olmalıdır.");
-  }
-
-  const ttlMinutes = Number(env.SESSION_TTL_MINUTES ?? "180");
-  if (!Number.isInteger(ttlMinutes) || ttlMinutes < 5 || ttlMinutes > 1440) {
-    throw new Error("SESSION_TTL_MINUTES 5 ile 1440 arasında olmalıdır.");
   }
 
   const rawServiceKey = env.INTERNAL_SERVICE_KEY?.trim() ?? "";
@@ -85,7 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     questionProvider,
     port,
     allowedOrigins,
-    sessionTtlMs: ttlMinutes * 60_000,
     internalServiceKey,
     requestTimeoutMs,
     maximumRetries,

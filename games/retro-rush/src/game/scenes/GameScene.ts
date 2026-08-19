@@ -370,7 +370,7 @@ export class GameScene extends Phaser.Scene {
       { id: 'ece', name: 'Ece', color: 0x8db6ff, icon: '' },
     ];
     this.players = definitions.map((definition, index) => {
-      const spawn = roundSpawnPosition(sampleMap.spawn, index);
+      const spawn = roundSpawnPosition(sampleMap.spawn);
       const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${index}-idle`);
       sprite.setCollideWorldBounds(false).setDepth(4);
       sprite.body?.setSize(27, 39).setOffset(8, 10);
@@ -636,6 +636,7 @@ export class GameScene extends Phaser.Scene {
     player.sprite.disableBody(true, true);
     player.label.setVisible(false);
     this.matchState = 'LOADING';
+    this.stopLocalHorizontalMovement();
     this.openOnlineQuestion(elimination.question);
     this.publishSnapshot(true);
   }
@@ -742,6 +743,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateLocal(time: number, delta: number) {
     const player = this.local;
+    if (this.matchState === 'LOADING') { this.stopLocalHorizontalMovement(); return; }
     if (player.snapshot.state !== 'ACTIVE' && player.snapshot.state !== 'INVULNERABLE') { player.sprite.setVelocityX(0); return; }
     const body = player.sprite.body as Phaser.Physics.Arcade.Body;
     // Dynamic player contacts set touching.down; only terrain may grant grounded/jump state.
@@ -780,6 +782,11 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keys.three)) this.useAbility('ask');
     if (this.transport.mode === 'standalone')
       this.transport.sendPlayerInput({ sequence: ++this.inputSequence, left: hitStunned ? false : left, right: hitStunned ? false : right, jump: jumpDown, sentAt: Date.now() });
+  }
+
+  private stopLocalHorizontalMovement() {
+    if (!this.local?.sprite.body) return;
+    this.local.sprite.setAccelerationX(0).setVelocityX(0);
   }
 
   private updateBots(time: number) {
