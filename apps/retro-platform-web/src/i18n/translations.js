@@ -119,7 +119,7 @@ export const translations = {
       linkCopied: 'Kopyalandı ✓',
       participantsLabel: 'Katılımcılar',
       participantsHelper: 'Diğer katılımcılar oda koduyla katıldıkça burada görünecek.',
-      hostSuffix: '(Oda Kurucusu)',
+      hostSuffix: 'Oda Kurucusu',
       youSuffix: '(Sen)',
       toastJoinedSuffix: ' odaya katıldı!',
       toastLeftSuffix: ' odadan ayrıldı.',
@@ -199,7 +199,7 @@ export const translations = {
         description:
           'Şişeyi döndür, seçilen takım arkadaşınla İş veya Eğlence kategorisinden bir retro sorusu yanıtla.',
         detail:
-          'Altı kedi şişenin etrafında toplanır. Şişeyi döndürdüğünüzde bir takım arkadaşı seçilir; ardından İş veya Eğlence kategorisinden rastgele bir retrospektif soru gelir. Soruyu birlikte konuşup turu tamamladıktan sonra şişeyi yeniden döndürürsünüz.',
+          'Altı kedi şişenin etrafında toplanır. Döndürünce seçilen kişi İş veya Eğlence kategorisini seçer, o kategoriden bir retro sorusu gelir. Birlikte konuşup turu tamamlar, şişeyi yeniden döndürürsünüz.',
         steps: [
           'Şişeyi döndür ve takım arkadaşlarından birinin seçilmesini bekle.',
           'Seçilen kişi için İş veya Eğlence kategorisini seç.',
@@ -210,7 +210,7 @@ export const translations = {
         description:
           'Hareketli platformlarda yarış, yeteneklerini kullan, retro sorularını birlikte cevapla.',
         detail:
-          'Ormanın içinden geçen bir parkurda birlikte koşarsınız. Yol boyunca hız ve roket gibi yetenekler toplanır; roketi yiyen bir an duraklar, hızı kapan öne geçer. Elendiğinizde ya da bir kontrol noktasına vardığınızda oyun durur ve herkesin ekranına aynı retro sorusu gelir. Cevaplar, konuşur, kaldığınız yerden devam edersiniz.',
+          'Ormanın içinden geçen bir parkurda birlikte koşarsınız, yol boyunca hız ve roket gibi yetenekler toplarsınız. Biri elendiğinde oyun durur, herkesin ekranına aynı retro sorusu gelir; cevaplayıp kaldığınız yerden devam edersiniz.',
         steps: [
           'Sağa doğru koş, boşlukları zıplayarak geç, sisin önünde kal.',
           'Yol üstündeki yetenekleri topla: hız seni öne taşır, roket rakibini yavaşlatır.',
@@ -221,31 +221,11 @@ export const translations = {
         description:
           'Namluda tek mermi var. Silah elden ele geçer; dolu çıkarsa hedef bir retro sorusu cevaplar.',
         detail:
-          'Masanın karşısında oturan takım arkadaşlarını görürsün, kendini değil. Namluda tek mermi var; sıradaki kişi istediği birine ateş eder. Boş çıkarsa silah sessizce vurulan kişiye geçer. Dolu çıkarsa vurulan kişi bir retro sorusu cevaplar, namlu gizlice yeniden doldurulur ve o kişi silahı alıp devam eder. Kimse elenmez — oyun sürekli döner.',
+          'Herkes bir kamp ateşi çevresinde oturur, namluda tek mermi vardır. Sıradaki kişi istediği birine ateş eder; boş çıkarsa silah ona geçer, dolu çıkarsa hedef bir retro sorusu cevaplar ve namlu gizlice yeniden dolar. Kimse elenmez, oyun sürekli döner.',
         steps: [
           'Sıra sendeyse karşındaki bir takım arkadaşını seç ve ateş et.',
           'Boş çıkarsa silah sessizce vurduğun kişiye geçer, sıra ona gelir.',
           'Dolu çıkarsa hedef retro sorusunu cevaplar, namlu yeniden dolar ve oyun devam eder.',
-        ],
-      },
-      'pixel-arena': {
-        description: 'Daralan arenada ayakta kalan kazanır — her eleme bir soruyu açar.',
-        detail:
-          'Herkes aynı arenada başlar ve arena yavaşça daralır. Alan küçüldükçe kaçacak yer azalır, karşılaşmalar kaçınılmaz olur. Her eleme bir soru açar; yani oyun ilerledikçe konuşma da derinleşir. Kısa turlar hâlinde oynanır, bir tur bitince yenisi başlar.',
-        steps: [
-          'Arenanın içinde kal, daralan sınırın dışında kalma.',
-          'Alan küçüldükçe rakiplerinle aynı köşeye sıkışırsın.',
-          'Her elemede oyun durur ve bir retro sorusu açılır.',
-        ],
-      },
-      'sprint-maze': {
-        description: 'Süre bitmeden çıkışı bul; her çıkmaz sokak bir takım muhasebesine dönüşür.',
-        detail:
-          'Süre dolmadan labirentin çıkışını bulmaya çalışırsınız. Herkes aynı labirentte ama farklı yerlerdedir, o yüzden yol tarifi vermek oyunun parçasıdır. Yanlış dönüş burada ceza değil fırsat: her çıkmaz sokak, takımın o dönem nerede tıkandığını konuşmak için bir soru açar.',
-        steps: [
-          'Labirente dağıl ve çıkışı aramaya başla.',
-          'Çıkmaz sokağa girersen oyun durur.',
-          'Gelen soruyu cevapla, sonra aramaya devam et.',
         ],
       },
       platform: {
@@ -386,7 +366,7 @@ export const translations = {
       linkCopied: 'Copied ✓',
       participantsLabel: 'Participants',
       participantsHelper: "Other participants will show up here as they join with the room code.",
-      hostSuffix: '(Host)',
+      hostSuffix: 'Host',
       youSuffix: '(You)',
       toastJoinedSuffix: ' joined the room!',
       toastLeftSuffix: ' left the room.',
@@ -465,7 +445,7 @@ export const translations = {
         description:
           'Spin the bottle, pick a teammate, and answer a retrospective question from the Work or Fun category.',
         detail:
-          'Six cats gather around the bottle. Each spin selects a teammate, then deals them a random retrospective question from either the Work or Fun category. Discuss the answer together, complete the turn, and spin again.',
+          'Six cats gather around the bottle. Each spin selects a teammate, who picks Work or Fun, then answers a retrospective question from that category. Discuss it together, complete the turn, and spin again.',
         steps: [
           'Spin the bottle and wait for it to select a teammate.',
           'Choose the Work or Fun category for the selected player.',
@@ -476,7 +456,7 @@ export const translations = {
         description:
           'Race through a moving platform course, use abilities, and answer retrospective questions together.',
         detail:
-          'You run a course through the forest together. Abilities are scattered along the way — a rocket stalls whoever it hits, a speed boost puts you in front. When you are knocked out, or when you reach a checkpoint, the game pauses and the same retrospective question lands on everyone’s screen. You answer, you talk, you pick up where you left off.',
+          'You run a course through the forest together, picking up abilities like speed boosts and rockets along the way. When someone is knocked out, the game pauses and the same retrospective question lands on everyone’s screen — you answer, talk it through, and pick up where you left off.',
         steps: [
           'Run right, jump the gaps, stay ahead of the mist.',
           'Grab the abilities on the route: speed pushes you forward, a rocket slows a rival.',
@@ -487,32 +467,11 @@ export const translations = {
         description:
           'One bullet, one cylinder, passed hand to hand — when it fires, the target answers a question.',
         detail:
-          'You see your teammates seated across the table, never yourself. The cylinder holds a single bullet; whoever holds the gun fires at anyone else. An empty chamber passes the gun silently to whoever was just shot at. A loaded one means they answer a retrospective question, the cylinder is secretly reloaded, and they keep the gun and fire next. Nobody is ever out — the round just keeps going.',
+          'Everyone sits around a campfire, and the cylinder holds a single bullet. Whoever holds the gun fires at anyone else — an empty chamber passes it on silently, a loaded one means they answer a retrospective question while the cylinder quietly reloads. Nobody is ever out; the round just keeps going.',
         steps: [
           'On your turn, pick a teammate across the table and fire.',
           'An empty chamber passes the gun silently to whoever you just shot.',
           'A loaded chamber means they answer a question, then the cylinder reloads and play continues.',
-        ],
-      },
-      'pixel-arena': {
-        description: 'Last one standing in a shrinking arena — every knockout opens a question.',
-        detail:
-          'Everyone starts in the same arena and the arena slowly closes in. The less room there is, the harder anyone is to avoid, so meetings become inevitable. Every knockout opens a question, which means the conversation deepens as the round goes on. It plays in short rounds — when one ends, the next begins.',
-        steps: [
-          'Stay inside the arena as its edge closes in.',
-          'The smaller it gets, the more you are pushed into the same corner as everyone else.',
-          'Every knockout pauses the game and opens a retrospective question.',
-        ],
-      },
-      'sprint-maze': {
-        description:
-          'Find the exit before the timer runs out; dead ends turn into team reflections.',
-        detail:
-          'You try to find the way out before the timer runs down. Everyone is in the same maze but in different parts of it, so giving directions is part of the game. A wrong turn is not a penalty here but an opening: every dead end starts a question about where the team got stuck this time round.',
-        steps: [
-          'Spread out into the maze and start looking for the exit.',
-          'Hit a dead end and the game pauses.',
-          'Answer the question that comes up, then get back to searching.',
         ],
       },
       platform: {

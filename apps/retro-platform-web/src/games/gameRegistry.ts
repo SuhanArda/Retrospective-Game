@@ -19,11 +19,21 @@ export interface GameDefinition {
    */
   minPlayers: number;
   visualLabel: string;
+  /**
+   * Real screenshot for the games page's showcase card, e.g. `/screenshots/retro-rush.jpg`.
+   * Drop the file into `public/screenshots/` and point this at it — no import
+   * needed. Left unset until a game has one; the card then falls back to the
+   * gradient + visualLabel placeholder.
+   */
+  screenshotUrl?: string;
+  /**
+   * Wide (~3:2) cover for the in-room vote screen's full-bleed card, e.g.
+   * `/screenshots/retro-rush-wide.jpg`. Same drop-in-`public/screenshots/`
+   * rule as `screenshotUrl`. Left unset until a game has one; the card then
+   * falls back to the gradient + visualLabel placeholder.
+   */
+  voteScreenshotUrl?: string;
   getLaunchUrl(config: GameRuntimeConfig): string;
-}
-
-function unavailable(): never {
-  throw new Error('This game has no runtime yet');
 }
 
 export const gameRegistry: readonly GameDefinition[] = [
@@ -36,6 +46,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 1,
     visualLabel: 'RR',
+    screenshotUrl: '/screenshots/retro-rush.jpg',
+    voteScreenshotUrl: '/screenshots/retro-rush-wide.jpg',
     getLaunchUrl: (config) => config.retroRushUrl,
   },
   {
@@ -47,6 +59,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 2,
     visualLabel: 'SB',
+    screenshotUrl: '/screenshots/spin-the-bottle.jpg',
+    voteScreenshotUrl: '/screenshots/spin-the-bottle-wide.jpg',
     getLaunchUrl: (config) => config.spinTheBottleUrl,
   },
   {
@@ -58,31 +72,9 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 2,
     visualLabel: 'RU',
+    screenshotUrl: '/screenshots/rus-ruleti.jpg',
+    voteScreenshotUrl: '/screenshots/rus-ruleti-wide.jpg',
     getLaunchUrl: (config) => config.rusRuletiUrl,
-  },
-  // Placeholders so the vote has real choices while the games are being built.
-  // Flip `status` to 'available' and return a real URL once each one exists.
-  {
-    id: 'pixel-arena',
-    name: 'Pixel Arena',
-    descriptionKey: 'games.pixel-arena.description',
-    detailKey: 'games.pixel-arena.detail',
-    stepsKey: 'games.pixel-arena.steps',
-    status: 'coming-soon',
-    minPlayers: 2,
-    visualLabel: 'PA',
-    getLaunchUrl: unavailable,
-  },
-  {
-    id: 'sprint-maze',
-    name: 'Sprint Maze',
-    descriptionKey: 'games.sprint-maze.description',
-    detailKey: 'games.sprint-maze.detail',
-    stepsKey: 'games.sprint-maze.steps',
-    status: 'coming-soon',
-    minPlayers: 1,
-    visualLabel: 'SM',
-    getLaunchUrl: unavailable,
   },
 ];
 

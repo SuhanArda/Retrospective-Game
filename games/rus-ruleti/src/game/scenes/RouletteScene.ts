@@ -119,6 +119,7 @@ export class RouletteScene extends Phaser.Scene {
   private seatVisuals = new Map<string, SeatVisual>();
   private gun!: Phaser.GameObjects.Image;
   private turnBanner!: Phaser.GameObjects.Text;
+  private turnBannerBackdrop!: Phaser.GameObjects.Graphics;
   private questionPanel!: Phaser.GameObjects.Container;
   private questionText!: Phaser.GameObjects.Text;
   private completeButton!: Phaser.GameObjects.Text;
@@ -185,7 +186,7 @@ export class RouletteScene extends Phaser.Scene {
     this.buildQuestionPanel();
 
     if (this.isOnline) {
-      this.turnBanner.setText('Bağlanıyor...');
+      this.setTurnBannerText('Bağlanıyor...');
       this.disposers.push(
         this.bridge!.onStateChanged((state) => this.applyBridgeState(state)),
         this.bridge!.onFireResult((event) => this.applyFireResult(event)),
@@ -310,12 +311,30 @@ export class RouletteScene extends Phaser.Scene {
     // the player's actual window size both push it around), and it's
     // covered rather than letterboxed — so whichever edge ends up tighter
     // gets cropped. 64px clears that in any reasonable window; 40px didn't.
+    this.turnBannerBackdrop = this.add.graphics().setDepth(19);
+    // Same pixel font as the sidebar chrome (see global.css), so the banner
+    // reads as part of the same UI language instead of a plain system font
+    // pasted over the scene. Sized well below the sidebar's 18px heading —
+    // Press Start 2P's glyphs are wide enough that a full sentence at that
+    // size would blow past the panel.
     this.turnBanner = this.add
       .text(this.centerX, 64, '', {
-        fontFamily: 'monospace', fontSize: '24px', fontStyle: 'bold', color: '#fff0ce', stroke: '#2c2227', strokeThickness: 5,
+        fontFamily: '"Press Start 2P", monospace', fontSize: '13px', color: '#fff0ce',
       })
       .setOrigin(0.5)
       .setDepth(20);
+  }
+
+  /** Sets the banner text and resizes its backdrop panel to fit — same dark-fill, gold-border language as the question panel, instead of bare text floating over the scene. */
+  private setTurnBannerText(text: string) {
+    this.turnBanner.setText(text);
+    const paddingX = 22;
+    const paddingY = 14;
+    const w = this.turnBanner.width + paddingX * 2;
+    const h = this.turnBanner.height + paddingY * 2;
+    this.turnBannerBackdrop.clear();
+    this.turnBannerBackdrop.fillStyle(0x241014, 0.88).fillRoundedRect(this.centerX - w / 2, 64 - h / 2, w, h, 14);
+    this.turnBannerBackdrop.lineStyle(3, 0xd9a441, 1).strokeRoundedRect(this.centerX - w / 2, 64 - h / 2, w, h, 14);
   }
 
   private buildGun() {
@@ -401,10 +420,6 @@ export class RouletteScene extends Phaser.Scene {
     this.holderId = id;
     for (const visual of this.seatVisuals.values()) {
       visual.ring.clear();
-      if (visual.seat.id === id) {
-        visual.ring.lineStyle(4, 0xffe08a, 1);
-        visual.ring.strokeRoundedRect(-visual.displayWidth / 2 - 10, -visual.displayHeight - 10, visual.displayWidth + 20, visual.displayHeight + 20, 16);
-      }
       visual.container.setAlpha(visual.seat.isYou || visual.seat.id === id || this.canTarget(visual.seat.id) ? 1 : 0.75);
     }
 
@@ -416,14 +431,14 @@ export class RouletteScene extends Phaser.Scene {
     this.tweens.add({
       targets: this.gun,
       x: holderVisual.x + holderVisual.displayWidth / 2 + 6,
-      y: holderVisual.y - holderVisual.displayHeight * 0.42,
+      y: holderVisual.y - holderVisual.displayHeight * 0.28,
       rotation: 0, // resting pose, until animateFire aims it at whoever gets shot at
       scaleX: GUN_SCALE, // un-mirror, in case the last shot was fired to the left
       duration: initial ? 0 : 420,
       ease: 'Cubic.easeOut',
     });
 
-    this.turnBanner.setText(id === this.localPlayerId ? 'SIRA SENDE — birini seç' : `SIRA: ${holderVisual.seat.name} nişan alıyor...`);
+    this.setTurnBannerText(id === this.localPlayerId ? 'SIRA SENDE — birini seç' : `SIRA: ${holderVisual.seat.name} nişan alıyor...`);
 
     if (!this.isOnline && id !== this.localPlayerId) this.time.delayedCall(NPC_THINK_MS, () => this.npcFires());
   }
@@ -497,7 +512,7 @@ export class RouletteScene extends Phaser.Scene {
     const target = this.seatVisuals.get(targetId)!;
     const aimAngle = Phaser.Math.Angle.Between(this.gun.x, this.gun.y, target.x, target.y - 40);
     this.aimGun(aimAngle);
-    this.turnBanner.setText(`${shooter.seat.name} → ${target.seat.name}`);
+    this.setTurnBannerText(`${shooter.seat.name} → ${target.seat.name}`);
 
     if (!hit) {
       this.time.delayedCall(REVEAL_TRAVEL_MS, () => {

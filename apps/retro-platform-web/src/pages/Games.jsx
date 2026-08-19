@@ -35,8 +35,16 @@ function Games() {
             const steps = t(game.stepsKey)
             return (
               <article className="showcase-card" key={game.id}>
-                <div className={`showcase-art art-${game.id}`} aria-hidden="true">
-                  <span className="showcase-art-label">{game.visualLabel}</span>
+                <div className={`showcase-art art-${game.id}`}>
+                  {game.screenshotUrl ? (
+                    <img
+                      className="showcase-art-image"
+                      src={game.screenshotUrl}
+                      alt={game.name}
+                    />
+                  ) : (
+                    <span className="showcase-art-label" aria-hidden="true">{game.visualLabel}</span>
+                  )}
                 </div>
 
                 <div className="showcase-body">
