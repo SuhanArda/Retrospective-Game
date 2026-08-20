@@ -99,6 +99,104 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void OneConnectionCannotReplaceAnotherPlayersMembershipMapping()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Guest", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "shared");
+
+        var error = Assert.Throws<RoomException>(() =>
+            manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "shared"));
+
+        Assert.Equal("CONNECTION_ALREADY_ATTACHED", error.Code);
+        Assert.Equal(host.PlayerId, manager.AuthenticateConnection("shared").PlayerId);
+    }
+
+    [Fact]
+    public void DisconnectFromReplacedConnectionCannotMarkOrRemoveReconnectedPlayer()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "old");
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "new");
+
+        Assert.Null(manager.Disconnect("old"));
+        clock.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.Empty(manager.SweepDisconnected());
+        var player = Assert.Single(manager.Get(host.RoomCode)!.Players);
+        Assert.True(player.IsConnected);
+        Assert.Equal(host.PlayerId, manager.AuthenticateConnection("new").PlayerId);
+    }
+
+    [Fact]
+    public void ReconnectBeforeExpiryCancelsPendingRemovalAndKeepsPlayerIdentity()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Guest", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest-old");
+
+        var disconnected = manager.Disconnect("guest-old")!;
+        Assert.False(disconnected.Players.Single(player => player.Id == guest.PlayerId).IsConnected);
+        clock.Advance(TimeSpan.FromSeconds(24));
+
+        var reconnected = manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest-new");
+        Assert.True(reconnected.Players.Single(player => player.Id == guest.PlayerId).IsConnected);
+        Assert.Equal(guest.PlayerId, manager.AuthenticateConnection("guest-new").PlayerId);
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Empty(manager.SweepDisconnected());
+        Assert.Equal(guest.PlayerId, manager.Get(host.RoomCode)!.Players.Single(player => player.DisplayName == "Guest").Id);
+    }
+
+    [Fact]
+    public void ExpiredDisconnectRemovesGuestButExplicitLeaveRemovesImmediately()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+        var disconnectedGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Disconnected", "#123456"));
+        var leavingGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Leaving", "#abcdef"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, disconnectedGuest.PlayerId, disconnectedGuest.ReconnectToken, "disconnected");
+        manager.Attach(host.RoomCode, leavingGuest.PlayerId, leavingGuest.ReconnectToken, "leaving");
+
+        var afterLeave = manager.Leave("leaving");
+        Assert.DoesNotContain(afterLeave.Players, player => player.Id == leavingGuest.PlayerId);
+        Assert.Throws<RoomException>(() => manager.AuthenticateConnection("leaving"));
+
+        manager.Disconnect("disconnected");
+        clock.Advance(TimeSpan.FromSeconds(25));
+        var change = Assert.Single(manager.SweepDisconnected());
+
+        Assert.DoesNotContain(change.Snapshot!.Players, player => player.Id == disconnectedGuest.PlayerId);
+        Assert.Equal([host.PlayerId], change.Snapshot.Players.Select(player => player.Id));
+        Assert.Throws<RoomException>(() => manager.AuthenticateConnection("disconnected"));
+    }
+
+    [Fact]
+    public void AdmissionThatNeverAttachesDoesNotLeaveAnImmortalRoomMembership()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+
+        clock.Advance(TimeSpan.FromSeconds(24));
+        Assert.Empty(manager.SweepDisconnected());
+        Assert.NotNull(manager.Get(host.RoomCode));
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var change = Assert.Single(manager.SweepDisconnected());
+        Assert.Null(change.Snapshot);
+        Assert.Null(manager.Get(host.RoomCode));
+    }
+
+    [Fact]
     public void HostSelectedDurationStartsOneSharedDeadlineWhenSelectionOpens()
     {
         var startedAt = DateTimeOffset.Parse("2026-08-11T12:00:00Z");
@@ -396,7 +494,10 @@ public sealed class RoomManagerTests
 
         clock.Advance(TimeSpan.FromSeconds(2));
         Assert.Single(manager.SweepDisconnected());
-        Assert.Equal(guest.PlayerId, manager.Get(host.RoomCode)!.HostPlayerId);
+        var transferred = manager.Get(host.RoomCode)!;
+        Assert.Equal(guest.PlayerId, transferred.HostPlayerId);
+        Assert.Single(transferred.Players, player => player.IsHost);
+        Assert.Empty(manager.SweepDisconnected());
         Assert.Equal("GAME_SELECTION", manager.ReturnToGameSelection("guest").Status);
     }
 
