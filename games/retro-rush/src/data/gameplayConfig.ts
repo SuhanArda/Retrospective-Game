@@ -1,4 +1,5 @@
 export interface GameplayConfig {
+  roundStart: { countdownDisplaySeconds: number };
   world: { width: number; height: number; floorY: number; matchDurationMs: number };
   player: {
     gravity: number;
@@ -43,6 +44,7 @@ export interface ProceduralMapConfig {
 }
 
 export const gameplayConfig: GameplayConfig = {
+  roundStart: { countdownDisplaySeconds: 3 },
   world: { width: 6800, height: 720, floorY: 620, matchDurationMs: 180_000 },
   player: {
     gravity: 1_400,

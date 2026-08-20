@@ -36,6 +36,7 @@ import type {
 } from '@retro-platform/contracts';
 import { RemotePlayerInterpolator } from '../../networking/RemotePlayerInterpolator';
 import type { ServerEvent } from '../../networking/transportMessages';
+import { isRoundStartLocked, remainingRoundStartSeconds } from '../../networking/roundStartDeadline';
 
 interface PlayerRuntime {
   snapshot: PlayerSnapshot;
@@ -90,7 +91,7 @@ export class GameScene extends Phaser.Scene {
   private readonly chunkDebugRenderer = new ChunkDebugRenderer();
   private readonly characterVisuals = new CharacterVisualController();
   private matchState: MatchSnapshot['state'] = 'WAITING';
-  private countdown = 3;
+  private countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
   private elapsedMs = 0;
   private lastSnapshotAt = 0;
   private questionIndex = 0;
@@ -112,7 +113,7 @@ export class GameScene extends Phaser.Scene {
   private networkMapSeed: number | null = null;
   private networkSequence = 0;
   private networkSendAccumulatorMs = 0;
-  private roundStartsAtUtc = 0;
+  private roundStartAtUnixMs = 0;
   private eliminationPending = false;
   private readonly collectedPickupIds = new Set<string>();
   private readonly appliedShoveIds = new Set<string>();
@@ -134,7 +135,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.matchState = 'WAITING';
-    this.countdown = 3;
+    this.countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
     this.elapsedMs = 0;
     this.targetProtectedUntil = {};
     this.inputSequence = 0;
@@ -159,9 +160,13 @@ export class GameScene extends Phaser.Scene {
     this.background.update(this.cameras.main.scrollX);
     if (this.transport.mode === 'online') {
       this.syncOnlinePhase();
-      this.updateRemotePlayers();
+      if (this.isGameplayRunning()) this.updateRemotePlayers();
     }
-    if (this.matchState === 'COUNTDOWN') { this.updateLabels(); return; }
+    if (this.matchState === 'COUNTDOWN') {
+      this.lockLocalPlayerForRoundStart();
+      this.updateLabels();
+      return;
+    }
     if (this.matchState !== 'RUNNING') { this.updateLabels(); return; }
     this.elapsedMs += delta;
     this.maintainProceduralMap();
@@ -231,6 +236,8 @@ export class GameScene extends Phaser.Scene {
         gameSessionId: this.transport.gameSessionId,
         roundId: this.networkRoundId,
         mapSeed: this.networkMapSeed,
+        roundStartAtUnixMs: this.roundStartAtUnixMs,
+        gameplayLocked: !this.isGameplayRunning(),
         matchState: this.matchState,
         cameraScrollX: this.cameras.main.scrollX,
         players: this.players.map((player) => {
@@ -257,13 +264,14 @@ export class GameScene extends Phaser.Scene {
         }),
       }),
       setLocalPosition: (x, y) => {
-        if (this.local && Number.isFinite(x) && Number.isFinite(y)) this.local.sprite.setPosition(x, y).setVelocity(0, 0);
+        if (!this.isGameplayRunning() || !this.local || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        this.local.sprite.setPosition(x, y).setVelocity(0, 0);
       },
       shove: () => this.attemptPlayerShove(),
       useAbility: (abilityId) => this.useAbility(abilityId),
       setMoveDirection: (direction) => { this.developmentMoveDirection = direction; },
       jump: () => {
-        if (this.local?.sprite.body) this.local.sprite.setVelocityY(-gameplayConfig.player.jumpVelocity);
+        if (this.isGameplayRunning() && this.local?.sprite.body) this.local.sprite.setVelocityY(-gameplayConfig.player.jumpVelocity);
       },
       generateThrough: (x) => {
         if (!Number.isFinite(x) || !this.mapGenerator) return;
@@ -462,7 +470,7 @@ export class GameScene extends Phaser.Scene {
     const newRound = snapshot.roundId !== this.networkRoundId || snapshot.mapSeed !== this.networkMapSeed;
     this.networkRoundId = snapshot.roundId;
     this.networkMapSeed = snapshot.mapSeed;
-    this.roundStartsAtUtc = snapshot.roundStartsAtUtc;
+    this.roundStartAtUnixMs = snapshot.roundStartAtUnixMs;
     if (newRound) this.prepareOnlineRound(snapshot.mapSeed);
 
     const incomingIds = new Set(snapshot.players.map((player) => player.playerId));
@@ -502,9 +510,10 @@ export class GameScene extends Phaser.Scene {
     });
     for (const rocket of snapshot.activeRockets) this.spawnOnlineRocket(rocket);
 
-    if (snapshot.phase === 'RUNNING') this.beginOnlineRunning();
-    else if (snapshot.phase === 'COUNTDOWN') {
+    if (!this.isOnlineRoundStartLocked() && snapshot.phase === 'RUNNING') this.beginOnlineRunning();
+    else if (snapshot.phase === 'COUNTDOWN' || this.isOnlineRoundStartLocked()) {
       this.matchState = 'COUNTDOWN';
+      this.lockLocalPlayerForRoundStart();
       this.updateOnlineCountdown();
     } else this.matchState = 'LOADING';
 
@@ -574,7 +583,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyRemotePlayerSnapshot(snapshot: RetroRushPlayerSnapshot) {
-    if (snapshot.roundId !== this.networkRoundId || snapshot.playerId === this.transport.localPlayerId) return;
+    if (!this.isGameplayRunning() || snapshot.roundId !== this.networkRoundId || snapshot.playerId === this.transport.localPlayerId) return;
     const player = this.ensureNetworkPlayer(snapshot);
     if (!player.interpolation?.push(snapshot, performance.now())) return;
     this.networkSnapshotsReceived++;
@@ -596,7 +605,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyOnlineShove(shove: RetroRushShoveApplied) {
-    if (shove.roundId !== this.networkRoundId || this.appliedShoveIds.has(shove.actionId)) return;
+    if (!this.isGameplayRunning() || shove.roundId !== this.networkRoundId || this.appliedShoveIds.has(shove.actionId)) return;
     this.appliedShoveIds.add(shove.actionId);
     const target = this.playersById.get(shove.targetPlayerId);
     if (!target || !target.snapshot.isLocal) return;
@@ -607,7 +616,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyOnlinePickup(pickup: RetroRushPickupCollected) {
-    if (pickup.roundId !== this.networkRoundId) return;
+    if (!this.isGameplayRunning() || pickup.roundId !== this.networkRoundId) return;
     this.collectedPickupIds.add(pickup.pickupId);
     const runtime = this.pickups.find((candidate) => candidate.id === pickup.pickupId);
     if (runtime) this.disablePickup(runtime);
@@ -628,7 +637,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyOnlineElimination(elimination: RetroRushPlayerEliminated) {
-    if (elimination.roundId !== this.networkRoundId) return;
+    if (!this.isGameplayRunning() || elimination.roundId !== this.networkRoundId) return;
     const player = this.playersById.get(elimination.playerId);
     if (!player || player.snapshot.state === 'ANSWERING_QUESTION') return;
     resetHitStun(player.hitState);
@@ -669,17 +678,23 @@ export class GameScene extends Phaser.Scene {
 
   private syncOnlinePhase() {
     if (this.networkRoundId === 0 || this.matchState !== 'COUNTDOWN') return;
-    if (Date.now() >= this.roundStartsAtUtc) this.beginOnlineRunning();
+    if (!this.isOnlineRoundStartLocked()) this.beginOnlineRunning();
     else this.updateOnlineCountdown();
   }
 
   private updateOnlineCountdown() {
-    this.countdown = Math.max(1, Math.ceil((this.roundStartsAtUtc - Date.now()) / 1_000));
+    const nextCountdown = Math.max(1, Math.min(
+      gameplayConfig.roundStart.countdownDisplaySeconds,
+      remainingRoundStartSeconds(this.roundStartAtUnixMs),
+    ));
+    const countdownChanged = nextCountdown !== this.countdown;
+    this.countdown = nextCountdown;
     if (!this.countdownText) {
       this.countdownText = this.add.text(this.cameras.main.centerX, 250, String(this.countdown), {
         fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
     } else this.countdownText.setText(String(this.countdown));
+    if (countdownChanged) this.publishSnapshot(true);
   }
 
   private beginOnlineRunning() {
@@ -688,8 +703,36 @@ export class GameScene extends Phaser.Scene {
     this.countdownText?.destroy();
     this.countdownText = undefined;
     this.matchState = 'RUNNING';
+    this.unlockLocalPlayerAfterRoundStart();
     this.cameraController.start();
     this.publishSnapshot(true);
+  }
+
+  private isOnlineRoundStartLocked(nowUnixMs = Date.now()) {
+    return this.transport.mode === 'online' &&
+      isRoundStartLocked(this.networkRoundId, this.roundStartAtUnixMs, nowUnixMs);
+  }
+
+  private isGameplayRunning() {
+    return this.matchState === 'RUNNING' && !this.isOnlineRoundStartLocked();
+  }
+
+  private lockLocalPlayerForRoundStart() {
+    if (this.transport.mode !== 'online' || !this.local?.sprite.body) return;
+    const body = this.local.sprite.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    this.local.sprite
+      .setPosition(this.local.spawn.x, this.local.spawn.y)
+      .setAcceleration(0, 0)
+      .setVelocity(0, 0);
+    resetJumpState(this.local.jumpState);
+  }
+
+  private unlockLocalPlayerAfterRoundStart() {
+    if (this.transport.mode !== 'online' || !this.local?.sprite.body) return;
+    const body = this.local.sprite.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(true);
+    this.local.sprite.setAcceleration(0, 0).setVelocity(0, 0);
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
@@ -703,6 +746,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private attemptPlayerShove() {
+    if (!this.isGameplayRunning() || !this.local) return;
     if (!this.shoveController.isReady(this.time.now)) return;
     const source = this.positionedShovePlayer(this.local);
     const targetPosition = findShoveTarget(source, this.players.map((player) => this.positionedShovePlayer(player)), this.local.facing, gameplayConfig.shove);
@@ -727,9 +771,9 @@ export class GameScene extends Phaser.Scene {
   private startCountdown() {
     if (this.matchState !== 'WAITING') return;
     this.matchState = 'COUNTDOWN';
-    this.countdown = 3;
+    this.countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
     this.publishSnapshot(true);
-    this.countdownText = this.add.text(this.cameras.main.centerX, 250, '3', { fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    this.countdownText = this.add.text(this.cameras.main.centerX, 250, String(this.countdown), { fontFamily: 'monospace', fontSize: '96px', color: '#ffd166', stroke: '#100d25', strokeThickness: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
     this.time.addEvent({ delay: 1000, repeat: 2, callback: () => {
       this.countdown -= 1;
       this.countdownText?.setText(this.countdown > 0 ? String(this.countdown) : 'BAŞLA!');
@@ -857,7 +901,7 @@ export class GameScene extends Phaser.Scene {
     this.countdownText?.destroy();
     this.countdownText = undefined;
     this.elapsedMs = 0;
-    this.countdown = 3;
+    this.countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
     this.activeQuestionId = null;
     this.activeOnlineQuestion = null;
     this.targetProtectedUntil = {};
@@ -906,7 +950,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private useAbility(id: AbilityId) {
-    if (this.matchState !== 'RUNNING' || !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
+    if (!this.isGameplayRunning() || !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
     if (!this.abilityController.isOwned(id)) return;
     const now = this.time.now;
     if (!this.abilityController.isReady(id, now)) { this.bridge.emit('announcement', 'Bu yetenek henüz yeniden doluyor'); return; }
@@ -929,7 +973,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnOnlineRocket(networkRocket: RetroRushRocketSnapshot) {
-    if (networkRocket.roundId !== this.networkRoundId || this.findRocket(networkRocket.rocketId)) return;
+    if (this.isOnlineRoundStartLocked() || networkRocket.roundId !== this.networkRoundId || this.findRocket(networkRocket.rocketId)) return;
     const owner = this.playersById.get(networkRocket.ownerPlayerId);
     const target = this.playersById.get(networkRocket.targetPlayerId);
     if (!owner || !target) return;
@@ -1002,7 +1046,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryCollectPickup(player: PlayerRuntime, pickup: PickupRuntime) {
-    if (!player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !pickup.active) return;
+    if (!this.isGameplayRunning() || !player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !pickup.active) return;
     if (this.transport.mode === 'online') {
       if (pickup.pending || this.collectedPickupIds.has(pickup.id)) return;
       pickup.pending = true;
@@ -1022,6 +1066,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hitByRocket(rocket: Phaser.Physics.Arcade.Sprite, target: PlayerRuntime) {
+    if (!this.isGameplayRunning()) return;
     const ownerId = String(rocket.getData('ownerId'));
     if (this.transport.mode === 'online') {
       if (ownerId !== this.transport.localPlayerId || rocket.getData('targetId') !== target.snapshot.id || rocket.getData('hitPending')) return;
@@ -1046,7 +1091,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyOnlineRocketHit(hit: RetroRushRocketHitApplied) {
-    if (hit.roundId !== this.networkRoundId || this.resolvedRocketIds.has(hit.rocketId)) return;
+    if (!this.isGameplayRunning() || hit.roundId !== this.networkRoundId || this.resolvedRocketIds.has(hit.rocketId)) return;
     this.resolvedRocketIds.add(hit.rocketId);
     const rocket = this.findRocket(hit.rocketId);
     if (rocket) {
@@ -1104,6 +1149,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private chooseTarget(playerId: string) {
+    if (!this.isGameplayRunning()) return;
     const target = this.players.find((player) => player.snapshot.id === playerId);
     if (!target || !isEligibleTarget(target.snapshot, this.local.snapshot.id, this.targetProtectedUntil[playerId], Date.now())) {
       this.bridge.emit('announcement', 'Bu ekip arkadaşı şu anda kullanılamıyor'); return;
@@ -1115,7 +1161,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyOnlineTargetQuestion(roundId: number, sourcePlayerId: string, targetPlayerId: string) {
-    if (roundId !== this.networkRoundId || !this.playersById.has(sourcePlayerId)) return;
+    if (!this.isGameplayRunning() || roundId !== this.networkRoundId || !this.playersById.has(sourcePlayerId)) return;
     this.showTargetQuestion(targetPlayerId);
   }
 
@@ -1161,7 +1207,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private sendNetworkSnapshot(deltaMs: number) {
-    if (!this.local || this.networkRoundId === 0 || this.local.snapshot.state === 'DISCONNECTED') return;
+    if (!this.isGameplayRunning() || !this.local || this.networkRoundId === 0 || this.local.snapshot.state === 'DISCONNECTED') return;
     this.networkSendAccumulatorMs += deltaMs;
     const intervalMs = 1_000 / gameplayConfig.network.sendRateHz;
     if (this.networkSendAccumulatorMs < intervalMs) return;

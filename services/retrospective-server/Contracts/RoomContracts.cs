@@ -35,6 +35,7 @@ public sealed record GameSessionSnapshot(
     string GameId,
     string RoundId,
     int Seed,
+    long? RoundStartAtUnixMs,
     string State);
 
 public sealed record TieBreakSnapshot(

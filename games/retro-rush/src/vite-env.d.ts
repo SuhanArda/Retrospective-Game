@@ -8,6 +8,8 @@ interface Window {
       gameSessionId?: string;
       roundId: number;
       mapSeed: number | null;
+      roundStartAtUnixMs: number;
+      gameplayLocked: boolean;
       matchState: string;
       cameraScrollX: number;
       players: Array<{ id: string; isLocal: boolean; state: string; x: number; y: number; velocityX: number; velocityY: number; visible: boolean; active: boolean; bodyEnabled: boolean }>;
