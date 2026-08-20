@@ -33,6 +33,7 @@
     "test:server": "dotnet test services/retrospective-server.Tests",
     "test:ai-bot": "npm --workspace ai-bot run test",
     "smoke:multiplayer": "node scripts/multiplayer-browser-smoke.mjs",
+    "smoke:disconnect": "node scripts/disconnect-cleanup-smoke.mjs",
     "lint": "npm run lint:web && npm run lint:retro-rush && npm run lint:spin-the-bottle",
     "lint:web": "npm --workspace apps/retro-platform-web run lint",
     "lint:retro-rush": "npm --workspace games/retro-rush run lint",
