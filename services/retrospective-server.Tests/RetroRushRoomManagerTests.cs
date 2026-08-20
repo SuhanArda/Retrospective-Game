@@ -14,6 +14,8 @@ public sealed class RetroRushRoomManagerTests
 
         Assert.Equal(1, snapshot.RoundId);
         Assert.Equal(game.Room.CurrentGameSession!.Seed, snapshot.MapSeed);
+        Assert.Equal(game.Clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_500, snapshot.RoundStartAtUnixMs);
+        Assert.Equal(snapshot.RoundStartAtUnixMs, game.Room.CurrentGameSession.RoundStartAtUnixMs);
         Assert.Equal(6, snapshot.Players.Count);
         Assert.Equal(Enumerable.Range(0, 6), snapshot.Players.Select(player => player.Slot));
         Assert.All(snapshot.Players, player =>
@@ -22,6 +24,60 @@ public sealed class RetroRushRoomManagerTests
             Assert.Equal(540, player.Y);
             Assert.Empty(player.OwnedAbilityIds);
         });
+    }
+
+    [Fact]
+    public void CountdownDeadlineRejectsAllGameplayAndDoesNotPublishMovementBeforeStart()
+    {
+        var game = StartGame();
+        var initial = game.Manager.GetRetroRushSnapshot("host", game.SessionId);
+        var moved = PlayerUpdate(game, game.Host.PlayerId, sequence: 1, x: 420);
+
+        Assert.Throws<RoomException>(() => game.Manager.UpdateRetroRushPlayer("host", moved));
+        Assert.Equal("ROUND_NOT_STARTED", game.Manager.RequestRetroRushShove(
+            "host", new(game.SessionId, 1, game.Guest.PlayerId, 1)).Result.Rejection);
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushRocketFire("host", new(game.SessionId, 1)));
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushRocketHit("host", new(game.SessionId, 1, "invented")));
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushPickupCollection(
+            "host", new(game.SessionId, 1, "chunk-1-safe-flat-pickup-0", "speed")));
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushPlayerElimination(
+            "host", new(game.SessionId, 1, game.Host.PlayerId)));
+        Assert.Throws<RoomException>(() => game.Manager.UseRetroRushAbility("host", new(game.SessionId, 1, "speed")));
+        Assert.Throws<RoomException>(() => game.Manager.RequestRetroRushAskTarget(
+            "host", new(game.SessionId, 1, game.Guest.PlayerId)));
+
+        var stillLocked = game.Manager.GetRetroRushSnapshot("guest", game.SessionId);
+        Assert.Equal("COUNTDOWN", stillLocked.Phase);
+        Assert.Equal(initial.RoundStartAtUnixMs, stillLocked.RoundStartAtUnixMs);
+        Assert.All(stillLocked.Players, player =>
+        {
+            Assert.Equal(180, player.X);
+            Assert.Equal(540, player.Y);
+            Assert.Equal(0, player.Sequence);
+            Assert.Empty(player.OwnedAbilityIds);
+        });
+
+        game.Clock.Advance(TimeSpan.FromMilliseconds(3_499));
+        Assert.Throws<RoomException>(() => game.Manager.UpdateRetroRushPlayer("host", moved));
+        game.Clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.NotNull(game.Manager.UpdateRetroRushPlayer("host", moved).Event);
+        Assert.Equal("RUNNING", game.Manager.GetRetroRushSnapshot("guest", game.SessionId).Phase);
+    }
+
+    [Fact]
+    public void ReconnectDuringCountdownKeepsTheExistingRoundAndDeadline()
+    {
+        var game = StartGame();
+        var initial = game.Manager.GetRetroRushSnapshot("guest", game.SessionId);
+        game.Clock.Advance(TimeSpan.FromMilliseconds(1_200));
+        game.Manager.Disconnect("guest");
+        game.Manager.Attach(game.Host.RoomCode, game.Guest.PlayerId, game.Guest.ReconnectToken, "guest-reconnected");
+
+        var reconnected = game.Manager.GetRetroRushSnapshot("guest-reconnected", game.SessionId);
+        Assert.Equal(initial.RoundId, reconnected.RoundId);
+        Assert.Equal(initial.RoundStartAtUnixMs, reconnected.RoundStartAtUnixMs);
+        Assert.Equal("COUNTDOWN", reconnected.Phase);
+        Assert.True(reconnected.RoundStartAtUnixMs > game.Clock.GetUtcNow().ToUnixTimeMilliseconds());
     }
 
     [Fact]
@@ -171,6 +227,10 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal(2, restarted.RoundId);
         Assert.NotEqual(game.InitialSeed, restarted.MapSeed);
         Assert.Equal("COUNTDOWN", restarted.Phase);
+        Assert.NotEqual(game.Room.CurrentGameSession!.RoundStartAtUnixMs, restarted.RoundStartAtUnixMs);
+        Assert.Equal(game.Clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_500, restarted.RoundStartAtUnixMs);
+        Assert.Equal(restarted.RoundStartAtUnixMs,
+            game.Manager.Get(game.Host.RoomCode)!.CurrentGameSession!.RoundStartAtUnixMs);
         Assert.Empty(restarted.CollectedPickupIds);
         Assert.Empty(restarted.ActiveRockets);
         Assert.All(restarted.Players, player => Assert.Empty(player.OwnedAbilityIds));

@@ -16,8 +16,9 @@ import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels
 import { retroQuestions } from '../data/retroQuestions';
 import { loadRoomQuestions } from '../data/roomQuestions';
 import { shouldShowStandaloneStart } from './startupMode';
+import { gameplayConfig } from '../data/gameplayConfig';
 
-const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: 3, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, ownedAbilities: [], cooldowns: { speed: 0, rocket: 0, ask: 0 } };
+const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: gameplayConfig.roundStart.countdownDisplaySeconds, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, ownedAbilities: [], cooldowns: { speed: 0, rocket: 0, ask: 0 } };
 
 export function App() {
   const launchContext = useMemo(() => consumeGameHandoff(window, window.sessionStorage) ?? resolveGameLaunchContext(window.location.search, window.sessionStorage), []);
