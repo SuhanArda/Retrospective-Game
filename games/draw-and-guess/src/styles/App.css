@@ -149,15 +149,74 @@
   flex-wrap: wrap;
 }
 
+.game-area-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 280px;
+}
+
 .guess-chat {
   display: flex;
   flex-direction: column;
-  width: 280px;
-  height: 500px;
+  width: 100%;
+  height: 380px;
   background: #ffffff;
   border: 2px solid #e4dbf2;
   border-radius: 12px;
   overflow: hidden;
+}
+
+.score-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #ffffff;
+  border: 2px solid #e4dbf2;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.score-board-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #6f6480;
+}
+
+.score-board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.score-board-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.score-board-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.score-board-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.score-board-points {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #5b2a86;
 }
 
 .guess-chat-list {

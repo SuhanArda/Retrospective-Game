@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DrawingCanvas } from '../components/DrawingCanvas';
 import { PlayerList } from '../components/PlayerList';
 import { GuessChat, type ChatMessage } from '../components/GuessChat';
+import { ScoreBoard } from '../components/ScoreBoard';
 import { pickRandomWord } from '../data/words';
 import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
 import '../styles/App.css';
@@ -11,6 +12,12 @@ const YOU_ID = 'you';
 const BOT_MIN_DELAY_MS = 1500;
 const BOT_MAX_DELAY_MS = 5000;
 const BOT_CORRECT_CHANCE = 0.55;
+
+/** 1., 2., 3. bilen bu kadar puan alır; sonrakiler sabit 3 puanla yetinir. */
+const GUESS_RANK_POINTS = [10, 7, 5];
+const GUESS_FALLBACK_POINTS = 3;
+/** Çizen kişi, o turu doğru bilen herkes için bu kadar puan kazanır. */
+const DRAWER_POINTS_PER_CORRECT_GUESSER = 2;
 
 function normalize(text: string) {
   return text.trim().toLocaleLowerCase('tr');
@@ -29,6 +36,7 @@ export function App() {
   const [drawerId, setDrawerId] = useState(() => pickRandomDrawer(MOCK_PLAYERS).id);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
+  const [scores, setScores] = useState<Record<string, number>>({});
 
   const isYouDrawing = drawerId === YOU_ID;
   const youAlreadyCorrect = correctGuesserIds.includes(YOU_ID);
@@ -47,6 +55,8 @@ export function App() {
       correctGuesserIdsRef.current = [...correctGuesserIdsRef.current, playerId];
       setCorrectGuesserIds(correctGuesserIdsRef.current);
       setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'correct', correctRank: rank }]);
+      const points = GUESS_RANK_POINTS[rank - 1] ?? GUESS_FALLBACK_POINTS;
+      setScores((current) => ({ ...current, [playerId]: (current[playerId] ?? 0) + points }));
     } else {
       setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'guess', text: rawText }]);
     }
@@ -79,6 +89,14 @@ export function App() {
   }, [roundKey]);
 
   function handleNextTurn() {
+    // Tur biterken çizen, o turu doğru bilen herkes için bonus alır — kimse
+    // bilemediyse çizen de puansız kalır, iyi çizmeye teşvik eder.
+    const correctCount = correctGuesserIdsRef.current.length;
+    if (correctCount > 0) {
+      const bonus = correctCount * DRAWER_POINTS_PER_CORRECT_GUESSER;
+      setScores((current) => ({ ...current, [drawerId]: (current[drawerId] ?? 0) + bonus }));
+    }
+
     const nextWord = pickRandomWord(recentWords);
     setWord(nextWord);
     setRecentWords((current) => [nextWord, ...current].slice(0, RECENT_WORD_MEMORY));
@@ -109,11 +127,14 @@ export function App() {
 
         <div className="game-area">
           <DrawingCanvas canDraw={isYouDrawing} />
-          <GuessChat
-            messages={messages}
-            canGuess={!isYouDrawing && !youAlreadyCorrect}
-            onSubmit={(text) => submitGuess(YOU_ID, 'Sen', text)}
-          />
+          <div className="game-area-side">
+            <GuessChat
+              messages={messages}
+              canGuess={!isYouDrawing && !youAlreadyCorrect}
+              onSubmit={(text) => submitGuess(YOU_ID, 'Sen', text)}
+            />
+            <ScoreBoard players={MOCK_PLAYERS} scores={scores} />
+          </div>
         </div>
       </div>
     </div>
