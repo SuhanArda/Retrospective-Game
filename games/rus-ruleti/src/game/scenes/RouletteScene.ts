@@ -53,6 +53,22 @@ const QUESTION_REVEAL_DELAY_MS = 300;
 const CAMPFIRE_FRAME_MS = 180;
 const CAMPFIRE_DISPLAY_WIDTH = 100;
 
+/**
+ * Both ambient beds loop for the whole scene, quiet enough to stay in the
+ * background rather than compete with dialogue. Each one's volume drifts up
+ * and down on its own cycle (different duration, offset start) so the two
+ * never swell together — sometimes the fire reads louder, sometimes the
+ * birds do, the way an outdoor ambience actually shifts instead of sitting
+ * at a fixed mix.
+ */
+const AMBIENT_FIRE_VOLUME_RANGE: readonly [number, number] = [0.06, 0.18];
+const AMBIENT_FIRE_CYCLE_MS = 14000;
+const AMBIENT_BIRDS_VOLUME_RANGE: readonly [number, number] = [0.09, 0.26];
+const AMBIENT_BIRDS_CYCLE_MS = 19000;
+const AMBIENT_BIRDS_START_DELAY_MS = 4000;
+const GUNSHOT_VOLUME = 0.5;
+const MISS_CLICK_VOLUME = 0.4;
+
 /** Only used standalone — an online room's questions come from the server, never invented here. */
 const SAMPLE_QUESTIONS = [
   'Bu sprintte seni en çok ne yordu?',
@@ -120,6 +136,8 @@ export class RouletteScene extends Phaser.Scene {
   private gun!: Phaser.GameObjects.Image;
   private turnBanner!: Phaser.GameObjects.Text;
   private turnBannerBackdrop!: Phaser.GameObjects.Graphics;
+  private ambientFire!: Phaser.Sound.BaseSound;
+  private ambientBirds!: Phaser.Sound.BaseSound;
   private questionPanel!: Phaser.GameObjects.Container;
   private questionText!: Phaser.GameObjects.Text;
   private completeButton!: Phaser.GameObjects.Text;
@@ -166,6 +184,10 @@ export class RouletteScene extends Phaser.Scene {
     this.load.image('gun-fire', '/sprites/gun/gun-fire.png');
     this.load.image('gun-smoke', '/sprites/gun/gun-smoke.png');
     for (let i = 1; i <= 6; i++) this.load.image(`fire${i}`, `/sprites/fire/fire${i}.png`);
+    this.load.audio('ambient-fire', '/sounds/fireLoop.wav');
+    this.load.audio('ambient-birds', '/sounds/bacgroundBirds.wav');
+    this.load.audio('gun-shoot', '/sounds/gunShoot.wav');
+    this.load.audio('gun-miss', '/sounds/playMissPuff.ogg');
   }
 
   create() {
@@ -184,6 +206,7 @@ export class RouletteScene extends Phaser.Scene {
     this.buildTurnBanner();
     this.buildGun();
     this.buildQuestionPanel();
+    this.buildAmbientAudio();
 
     if (this.isOnline) {
       this.setTurnBannerText('Bağlanıyor...');
@@ -394,6 +417,57 @@ export class RouletteScene extends Phaser.Scene {
     this.questionPanel.add(this.completeButton);
   }
 
+  /**
+   * Two looping ambience beds, each drifting between a quiet and a slightly-
+   * less-quiet volume on its own independent cycle. Different durations
+   * (14s vs 19s) and a delayed start for the birds keep the two from ever
+   * swelling in lockstep, so which one reads louder keeps shifting instead
+   * of settling into a fixed mix.
+   */
+  private buildAmbientAudio() {
+    const [fireMin, fireMax] = AMBIENT_FIRE_VOLUME_RANGE;
+    this.ambientFire = this.sound.add('ambient-fire', { loop: true, volume: fireMin });
+    this.ambientFire.play();
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: AMBIENT_FIRE_CYCLE_MS,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        (this.ambientFire as Phaser.Sound.WebAudioSound).setVolume(Phaser.Math.Linear(fireMin, fireMax, t));
+      },
+    });
+
+    const [birdsMin, birdsMax] = AMBIENT_BIRDS_VOLUME_RANGE;
+    this.ambientBirds = this.sound.add('ambient-birds', { loop: true, volume: birdsMin });
+    this.time.delayedCall(AMBIENT_BIRDS_START_DELAY_MS, () => {
+      this.ambientBirds.play();
+      this.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: AMBIENT_BIRDS_CYCLE_MS,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        onUpdate: (tween) => {
+          const t = tween.getValue() ?? 0;
+          (this.ambientBirds as Phaser.Sound.WebAudioSound).setVolume(Phaser.Math.Linear(birdsMin, birdsMax, t));
+        },
+      });
+    });
+
+    // Browsers block audio until a user gesture; the scene loads before any
+    // click happens, so the first play() call above can silently no-op.
+    // Resuming (or retrying play) on the sound unlock event catches that.
+    this.sound.once(Phaser.Sound.Events.UNLOCKED, () => {
+      if (!this.ambientFire.isPlaying) this.ambientFire.play();
+      if (!this.ambientBirds.isPlaying && this.time.now >= AMBIENT_BIRDS_START_DELAY_MS) this.ambientBirds.play();
+    });
+  }
+
   // ---- standalone-only cylinder state ----
 
   private resetCylinder() {
@@ -549,6 +623,7 @@ export class RouletteScene extends Phaser.Scene {
   /** Fire, then smoke, then back to idle — the gun's own three-frame animation, played the instant the shot goes off. */
   private playGunFireSequence() {
     this.setGunFrame('gun-fire');
+    this.sound.play('gun-shoot', { volume: GUNSHOT_VOLUME });
     this.time.delayedCall(FIRE_FLASH_MS, () => {
       this.setGunFrame('gun-smoke');
       this.time.delayedCall(GUN_SMOKE_MS, () => this.setGunFrame('gun-idle'));
@@ -563,6 +638,7 @@ export class RouletteScene extends Phaser.Scene {
   }
 
   private playMissPuff(targetId: string) {
+    this.sound.play('gun-miss', { volume: MISS_CLICK_VOLUME });
     const target = this.seatVisuals.get(targetId)!;
     const puff = this.add.text(target.x, target.y - target.displayHeight - 10, 'klik...', { fontFamily: 'monospace', fontSize: '16px', color: '#cbb9a8' }).setOrigin(0.5).setDepth(16);
     this.tweens.add({ targets: puff, y: puff.y - 30, alpha: 0, duration: MISS_PAUSE_MS, onComplete: () => puff.destroy() });
