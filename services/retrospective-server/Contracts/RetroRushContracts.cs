@@ -47,6 +47,8 @@ public sealed record RetroRushGameSnapshot(
     string Phase,
     long PhaseStartedAtUtc,
     long RoundStartAtUnixMs,
+    double SpawnX,
+    double SpawnY,
     IReadOnlyList<RetroRushPlayerSnapshot> Players,
     IReadOnlyList<string> CollectedPickupIds,
     IReadOnlyList<RetroRushRocketSnapshot> ActiveRockets,

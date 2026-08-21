@@ -16,6 +16,8 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal(game.Room.CurrentGameSession!.Seed, snapshot.MapSeed);
         Assert.Equal(game.Clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_500, snapshot.RoundStartAtUnixMs);
         Assert.Equal(snapshot.RoundStartAtUnixMs, game.Room.CurrentGameSession.RoundStartAtUnixMs);
+        Assert.Equal(180, snapshot.SpawnX);
+        Assert.Equal(540, snapshot.SpawnY);
         Assert.Equal(6, snapshot.Players.Count);
         Assert.Equal(Enumerable.Range(0, 6), snapshot.Players.Select(player => player.Slot));
         Assert.All(snapshot.Players, player =>
@@ -78,6 +80,8 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal(initial.RoundStartAtUnixMs, reconnected.RoundStartAtUnixMs);
         Assert.Equal("COUNTDOWN", reconnected.Phase);
         Assert.True(reconnected.RoundStartAtUnixMs > game.Clock.GetUtcNow().ToUnixTimeMilliseconds());
+        Assert.Equal(initial.SpawnX, reconnected.SpawnX);
+        Assert.Equal(initial.SpawnY, reconnected.SpawnY);
     }
 
     [Fact]
@@ -229,6 +233,8 @@ public sealed class RetroRushRoomManagerTests
         Assert.Equal("COUNTDOWN", restarted.Phase);
         Assert.NotEqual(game.Room.CurrentGameSession!.RoundStartAtUnixMs, restarted.RoundStartAtUnixMs);
         Assert.Equal(game.Clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_500, restarted.RoundStartAtUnixMs);
+        Assert.Equal(180, restarted.SpawnX);
+        Assert.Equal(540, restarted.SpawnY);
         Assert.Equal(restarted.RoundStartAtUnixMs,
             game.Manager.Get(game.Host.RoomCode)!.CurrentGameSession!.RoundStartAtUnixMs);
         Assert.Empty(restarted.CollectedPickupIds);

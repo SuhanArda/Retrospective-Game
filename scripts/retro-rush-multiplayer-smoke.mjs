@@ -6,6 +6,12 @@ import { join } from 'node:path';
 
 const platformUrl = process.env.RETRO_PLATFORM_URL ?? 'http://localhost:5173';
 const retroRushUrl = process.env.RETRO_RUSH_URL ?? 'http://localhost:5174';
+// Warm Vite before the server creates the short round-start deadline. Otherwise
+// first-request compilation can consume most of the countdown being tested.
+await Promise.all([platformUrl, retroRushUrl].map(async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Smoke dependency ${url} returned ${response.status}`);
+}));
 const chromePath = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
@@ -100,9 +106,21 @@ async function click(context, expression, label) {
   await waitFor(context, expression, label);
   await evaluate(context, `(${expression}).click()`);
 }
+async function dispatchKey(context, type, key, code, keyCode) {
+  await send('Input.dispatchKeyEvent', {
+    type, key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode,
+  }, context.sessionId);
+}
+async function setCountdownTestKeys(context, type) {
+  await dispatchKey(context, type, 'ArrowRight', 'ArrowRight', 39);
+  await dispatchKey(context, type, ' ', 'Space', 32);
+  await dispatchKey(context, type, '1', 'Digit1', 49);
+  await dispatchKey(context, type, '2', 'Digit2', 50);
+  await dispatchKey(context, type, '3', 'Digit3', 51);
+}
 async function debug(context) { return evaluate(context, `window.__RETRO_RUSH_DEBUG__.state()`); }
 async function localPlayer(context) { return (await debug(context)).players.find((player) => player.isLocal); }
-async function assertCountdownLocked(host, guest, label, expectedDeadline) {
+async function assertCountdownLocked(host, guest, label, expectedDeadline, throughDeadline = false) {
   const before = { host: await debug(host), guest: await debug(guest) };
   if (before.host.matchState !== 'COUNTDOWN' || before.guest.matchState !== 'COUNTDOWN' ||
       !before.host.gameplayLocked || !before.guest.gameplayLocked)
@@ -119,10 +137,8 @@ async function assertCountdownLocked(host, guest, label, expectedDeadline) {
   const observationMs = Math.min(500, before.host.roundStartAtUnixMs - Date.now() - 100);
   if (observationMs < 100) throw new Error(`${label}: insufficient countdown time remained for lock verification`);
 
-  await Promise.all([
-    evaluate(host, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(1); window.__RETRO_RUSH_DEBUG__.jump(); window.__RETRO_RUSH_DEBUG__.shove(); window.__RETRO_RUSH_DEBUG__.setLocalPosition(600, 400)`),
-    evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(1); window.__RETRO_RUSH_DEBUG__.jump(); window.__RETRO_RUSH_DEBUG__.shove(); window.__RETRO_RUSH_DEBUG__.setLocalPosition(600, 400)`),
-  ]);
+  await setCountdownTestKeys(guest, 'keyDown');
+  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(1); window.__RETRO_RUSH_DEBUG__.shove(); window.__RETRO_RUSH_DEBUG__.useAbility('speed'); window.__RETRO_RUSH_DEBUG__.useAbility('rocket'); window.__RETRO_RUSH_DEBUG__.useAbility('ask')`);
   await delay(observationMs);
   const after = { host: await debug(host), guest: await debug(guest) };
   for (const clientName of ['host', 'guest']) {
@@ -132,6 +148,34 @@ async function assertCountdownLocked(host, guest, label, expectedDeadline) {
       throw new Error(`${label}: ${clientName} observed movement during countdown: ${JSON.stringify({ beforePlayers, afterPlayers })}`);
     if (after[clientName].networkSnapshotsSent !== before[clientName].networkSnapshotsSent)
       throw new Error(`${label}: ${clientName} sent a pre-start movement snapshot`);
+  }
+  if (throughDeadline) {
+    await delay(Math.max(0, before.guest.roundStartAtUnixMs - Date.now() + 300));
+    const held = { host: await debug(host), guest: await debug(guest) };
+    const guestLocal = held.guest.players.find((player) => player.isLocal);
+    const hostGuest = held.host.players.find((player) => player.id === before.guest.localPlayerId);
+    for (const player of [guestLocal, hostGuest]) {
+      if (!player || player.x !== before.guest.roundSpawn.x || player.y !== before.guest.roundSpawn.y ||
+          player.velocityX !== 0 || player.velocityY !== 0)
+        throw new Error(`${label}: held pre-start input moved the guest after unlock: ${JSON.stringify({ guestLocal, hostGuest })}`);
+    }
+    if (held.guest.rockets.length !== before.guest.rockets.length ||
+        JSON.stringify(held.guest.ownedAbilities) !== JSON.stringify(before.guest.ownedAbilities))
+      throw new Error(`${label}: a countdown ability was queued and executed after unlock`);
+
+    await setCountdownTestKeys(guest, 'keyUp');
+    await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`);
+    await delay(200);
+    const neutralPosition = await localPlayer(guest);
+    if (neutralPosition.x !== before.guest.roundSpawn.x || neutralPosition.velocityX !== 0)
+      throw new Error(`${label}: guest did not remain at spawn while countdown input rearmed`);
+
+    await dispatchKey(guest, 'keyDown', 'ArrowRight', 'ArrowRight', 39);
+    await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal).x > ${before.guest.roundSpawn.x + 20}`, 'fresh post-deadline guest movement');
+    await dispatchKey(guest, 'keyUp', 'ArrowRight', 'ArrowRight', 39);
+  } else {
+    await setCountdownTestKeys(guest, 'keyUp');
+    await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`);
   }
   return { deadline: before.host.roundStartAtUnixMs, overlays };
 }
@@ -164,16 +208,9 @@ try {
   await waitFor(guest, `location.origin === ${JSON.stringify(new URL(retroRushUrl).origin)} && window.__RETRO_RUSH_DEBUG__`, 'guest Retro Rush launch', 30_000);
   await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'host shared countdown');
   await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'guest shared countdown');
-  const initialCountdown = await assertCountdownLocked(host, guest, 'Round 1 countdown');
+  const initialCountdown = await assertCountdownLocked(host, guest, 'Round 1 countdown', undefined, true);
   await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 2`, 'host shared round');
   await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 2`, 'guest shared round');
-  const countdownPositions = { host: await localPlayer(host), guest: await localPlayer(guest) };
-  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal).x > ${countdownPositions.host.x + 20}`, 'host unlocks at shared deadline');
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal).x > ${countdownPositions.guest.x + 20}`, 'guest unlocks at shared deadline');
-  await Promise.all([
-    evaluate(host, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`),
-    evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`),
-  ]);
 
   const initialHost = await debug(host);
   const initialGuest = await debug(guest);
