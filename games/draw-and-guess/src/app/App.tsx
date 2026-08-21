@@ -1,26 +1,82 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DrawingCanvas } from '../components/DrawingCanvas';
 import { PlayerList } from '../components/PlayerList';
+import { GuessChat, type ChatMessage } from '../components/GuessChat';
 import { pickRandomWord } from '../data/words';
 import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
 import '../styles/App.css';
 
 const RECENT_WORD_MEMORY = 8;
 const YOU_ID = 'you';
+const BOT_MIN_DELAY_MS = 1500;
+const BOT_MAX_DELAY_MS = 5000;
+const BOT_CORRECT_CHANCE = 0.55;
+
+function normalize(text: string) {
+  return text.trim().toLocaleLowerCase('tr');
+}
 
 /**
- * Standalone prototip — henüz gerçek oda/skor/sohbet yok. Bu adımda eklenen:
- * her turda rastgele bir çizen seçilir ve öne çıkar, kelime sadece o "sen"
- * isen görünür — diğer türlü "birisi çiziyor" mesajı görünür, gerçek oyunun
- * gizlilik kuralını (herkes kelimeyi göremez) burada da test edebilelim diye.
+ * Standalone prototip. Bu adımda eklenen: sohbet/tahmin kutusu. Doğru
+ * tahmin sohbete kelimeyi hiç taşımıyor, sadece "kim kaçıncı oldu"
+ * bilgisini gösteriyor — hâlâ bilemeyenler için kelime gizli kalsın diye.
+ * Gerçek oyuncular henüz yok; botlar (Ada/Mert/Ece) rastgele gecikmeyle
+ * kâh doğru kâh yanlış tahminler atarak sohbeti test edilebilir kılıyor.
  */
 export function App() {
   const [word, setWord] = useState(() => pickRandomWord());
   const [recentWords, setRecentWords] = useState<string[]>([word]);
   const [drawerId, setDrawerId] = useState(() => pickRandomDrawer(MOCK_PLAYERS).id);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
 
   const isYouDrawing = drawerId === YOU_ID;
+  const youAlreadyCorrect = correctGuesserIds.includes(YOU_ID);
   const drawerName = MOCK_PLAYERS.find((player) => player.id === drawerId)?.name ?? '';
+
+  // State setter'ları setState updater'ının içinden zincirlemek yerine
+  // (StrictMode'da updater'lar iki kez çalışır, mesajlar ikiye katlanırdı)
+  // "kim doğru bildi" listesini bir ref'te de tutup senkron okuyoruz.
+  const correctGuesserIdsRef = useRef<string[]>([]);
+
+  function submitGuess(playerId: string, playerName: string, rawText: string) {
+    if (correctGuesserIdsRef.current.includes(playerId)) return; // zaten bildi
+    const isCorrect = normalize(rawText) === normalize(word);
+    if (isCorrect) {
+      const rank = correctGuesserIdsRef.current.length + 1;
+      correctGuesserIdsRef.current = [...correctGuesserIdsRef.current, playerId];
+      setCorrectGuesserIds(correctGuesserIdsRef.current);
+      setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'correct', correctRank: rank }]);
+    } else {
+      setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'guess', text: rawText }]);
+    }
+  }
+
+  // Her yeni tur botların zamanlayıcılarını sıfırlıyor; tur değişmeden önce
+  // kurulmuş bir setTimeout yeni tura mesaj atmasın diye temizleniyor.
+  const roundKey = `${drawerId}:${word}`;
+  const roundKeyRef = useRef(roundKey);
+  roundKeyRef.current = roundKey;
+
+  useEffect(() => {
+    setMessages([]);
+    correctGuesserIdsRef.current = [];
+    setCorrectGuesserIds([]);
+
+    const guessers = MOCK_PLAYERS.filter((player) => player.id !== drawerId && player.id !== YOU_ID);
+    const timers = guessers.map((bot) => {
+      const delay = BOT_MIN_DELAY_MS + Math.random() * (BOT_MAX_DELAY_MS - BOT_MIN_DELAY_MS);
+      return window.setTimeout(() => {
+        if (roundKeyRef.current !== roundKey) return; // tur bu arada değişmiş
+        const guessesCorrectly = Math.random() < BOT_CORRECT_CHANCE;
+        const text = guessesCorrectly ? word : pickRandomWord([word]);
+        submitGuess(bot.id, bot.name, text);
+      }, delay);
+    });
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundKey]);
 
   function handleNextTurn() {
     const nextWord = pickRandomWord(recentWords);
@@ -51,7 +107,14 @@ export function App() {
           </button>
         </div>
 
-        <DrawingCanvas canDraw={isYouDrawing} />
+        <div className="game-area">
+          <DrawingCanvas canDraw={isYouDrawing} />
+          <GuessChat
+            messages={messages}
+            canGuess={!isYouDrawing && !youAlreadyCorrect}
+            onSubmit={(text) => submitGuess(YOU_ID, 'Sen', text)}
+          />
+        </div>
       </div>
     </div>
   );
