@@ -1,4 +1,4 @@
-import type { GameLaunchContext, RetroRushPlayerSnapshot } from '@retro-platform/contracts';
+import type { GameLaunchContext, RetroRushGameSnapshot, RetroRushPlayerSnapshot } from '@retro-platform/contracts';
 import type { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import type { AbilityId } from '../domain/types';
 import type { GameTransport } from './GameTransport';
@@ -22,6 +22,7 @@ export class SignalRGameTransport implements GameTransport {
   private lifecycleGeneration = 0;
   private currentRoundId = 0;
   private roundStartAtUnixMs = 0;
+  private latestSnapshot: RetroRushGameSnapshot | null = null;
 
   constructor(
     private readonly roomClient: RoomRealtimeClient,
@@ -42,8 +43,7 @@ export class SignalRGameTransport implements GameTransport {
         throw new Error('WRONG_GAME_SESSION');
       }
       const snapshot = await this.roomClient.getRetroRushSnapshot(this.gameSessionId);
-      this.applyRoundAuthority(snapshot.roundId, snapshot.roundStartAtUnixMs);
-      this.emit({ type: 'retroSnapshot', snapshot });
+      this.acceptSnapshot(snapshot, 'retroSnapshot');
     } catch (error) {
       this.emitError(error);
     }
@@ -131,6 +131,10 @@ export class SignalRGameTransport implements GameTransport {
 
   subscribe(listener: GameTransportListener) {
     this.listeners.add(listener);
+    // Phaser boots asynchronously. A fast SignalR connection can deliver the
+    // initial round snapshot before GameScene subscribes, so replay the latest
+    // authoritative state instead of leaving that client in a host-local view.
+    if (this.latestSnapshot) listener({ type: 'retroSnapshot', snapshot: this.latestSnapshot });
     return () => this.listeners.delete(listener);
   }
 
@@ -139,14 +143,14 @@ export class SignalRGameTransport implements GameTransport {
     this.subscribed = true;
     this.roomDisposers.push(
       this.roomClient.on('connectionChanged', (status) => this.emit({ type: 'connection', status })),
-      this.roomClient.on('retroRushSnapshot', (snapshot) => { this.applyRoundAuthority(snapshot.roundId, snapshot.roundStartAtUnixMs); this.emit({ type: 'retroSnapshot', snapshot }); }),
+      this.roomClient.on('retroRushSnapshot', (snapshot) => this.acceptSnapshot(snapshot, 'retroSnapshot')),
       this.roomClient.on('retroRushPlayerUpdated', (player) => this.emit({ type: 'retroPlayerUpdated', player })),
       this.roomClient.on('retroRushShoveApplied', (shove) => this.emit({ type: 'retroShoveApplied', shove })),
       this.roomClient.on('retroRushRocketSpawned', (rocket) => this.emit({ type: 'retroRocketSpawned', rocket })),
       this.roomClient.on('retroRushRocketHit', (hit) => this.emit({ type: 'retroRocketHit', hit })),
       this.roomClient.on('retroRushPickupCollected', (pickup) => this.emit({ type: 'retroPickupCollected', pickup })),
       this.roomClient.on('retroRushPlayerEliminated', (elimination) => this.emit({ type: 'retroPlayerEliminated', elimination })),
-      this.roomClient.on('retroRushRoundStarted', (snapshot) => { this.applyRoundAuthority(snapshot.roundId, snapshot.roundStartAtUnixMs); this.emit({ type: 'retroRoundStarted', snapshot }); }),
+      this.roomClient.on('retroRushRoundStarted', (snapshot) => this.acceptSnapshot(snapshot, 'retroRoundStarted')),
       this.roomClient.on('retroRushTargetQuestioned', (question) => this.emit({ type: 'retroTargetQuestioned', question })),
     );
   }
@@ -155,6 +159,13 @@ export class SignalRGameTransport implements GameTransport {
     if (roundId < this.currentRoundId) return;
     this.currentRoundId = roundId;
     this.roundStartAtUnixMs = roundStartAtUnixMs;
+  }
+
+  private acceptSnapshot(snapshot: RetroRushGameSnapshot, type: 'retroSnapshot' | 'retroRoundStarted') {
+    if (snapshot.roundId < this.currentRoundId) return;
+    this.applyRoundAuthority(snapshot.roundId, snapshot.roundStartAtUnixMs);
+    this.latestSnapshot = snapshot;
+    this.emit({ type, snapshot });
   }
 
   private canSendGameplay(roundId: number) {

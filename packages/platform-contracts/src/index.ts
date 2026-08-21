@@ -83,6 +83,8 @@ export interface RetroRushGameSnapshot {
   phase: RetroRushPhase;
   phaseStartedAtUtc: number;
   roundStartAtUnixMs: number;
+  spawnX: number;
+  spawnY: number;
   players: readonly RetroRushPlayerSnapshot[];
   collectedPickupIds: readonly string[];
   activeRockets: readonly RetroRushRocketSnapshot[];

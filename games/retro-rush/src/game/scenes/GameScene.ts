@@ -24,6 +24,7 @@ import { forestPalette } from '../visuals/visualConfig';
 import { beginHitStun, createPlayerHitState, fixedLeftKnockbackVelocity, isInHitStun, resetHitStun, updateHitStun, type PlayerHitState } from '../controllers/PlayerHitState';
 import { canAttemptPlayerShove, findShoveTarget, PlayerShoveController, shoveVelocityAwayFrom, type PositionedShovePlayer } from '../controllers/PlayerShoveController';
 import { resetPlayerSnapshotForRound, roundSpawnPosition } from '../controllers/RoundReset';
+import { RoundStartInputGate, type RoundStartGameplayInput } from '../controllers/RoundStartInputGate';
 import { ProceduralMapGenerator, RoundSeedSequence, type GeneratedChunk } from '../systems/ProceduralMapGenerator';
 import type {
   RetroRushGameSnapshot,
@@ -83,6 +84,7 @@ export class GameScene extends Phaser.Scene {
   private readonly cameraController = new CameraController();
   private readonly abilityController = new AbilityController();
   private readonly shoveController = new PlayerShoveController(gameplayConfig.shove);
+  private readonly roundStartInputGate = new RoundStartInputGate();
   private readonly random = new SeededRandom(20260806);
   private readonly audio = new AudioManager();
   private readonly background = new ParallaxBackgroundSystem();
@@ -114,6 +116,7 @@ export class GameScene extends Phaser.Scene {
   private networkSequence = 0;
   private networkSendAccumulatorMs = 0;
   private roundStartAtUnixMs = 0;
+  private authoritativeRoundSpawn: Point = roundSpawnPosition(sampleMap.spawn);
   private eliminationPending = false;
   private readonly collectedPickupIds = new Set<string>();
   private readonly appliedShoveIds = new Set<string>();
@@ -237,6 +240,7 @@ export class GameScene extends Phaser.Scene {
         roundId: this.networkRoundId,
         mapSeed: this.networkMapSeed,
         roundStartAtUnixMs: this.roundStartAtUnixMs,
+        roundSpawn: { ...this.authoritativeRoundSpawn },
         gameplayLocked: !this.isGameplayRunning(),
         matchState: this.matchState,
         cameraScrollX: this.cameras.main.scrollX,
@@ -403,7 +407,7 @@ export class GameScene extends Phaser.Scene {
     const existing = this.playersById.get(networkPlayer.playerId);
     if (existing) return existing;
     const skinIndex = networkPlayer.skinIndex % 4;
-    const spawn = { x: networkPlayer.x, y: networkPlayer.y };
+    const spawn = { ...this.authoritativeRoundSpawn };
     const sprite = this.physics.add.sprite(spawn.x, spawn.y, `runner-${skinIndex}-idle`);
     sprite.setCollideWorldBounds(false).setDepth(4);
     sprite.body?.setSize(27, 39).setOffset(8, 10);
@@ -471,6 +475,7 @@ export class GameScene extends Phaser.Scene {
     this.networkRoundId = snapshot.roundId;
     this.networkMapSeed = snapshot.mapSeed;
     this.roundStartAtUnixMs = snapshot.roundStartAtUnixMs;
+    this.authoritativeRoundSpawn = { x: snapshot.spawnX, y: snapshot.spawnY };
     if (newRound) this.prepareOnlineRound(snapshot.mapSeed);
 
     const incomingIds = new Set(snapshot.players.map((player) => player.playerId));
@@ -533,6 +538,7 @@ export class GameScene extends Phaser.Scene {
     this.collectedPickupIds.clear();
     this.abilityController.reset();
     this.shoveController.reset();
+    this.roundStartInputGate.lock();
     this.cameraController.reset(this.cameras.main);
     this.countdownText?.destroy();
     this.countdownText = undefined;
@@ -541,6 +547,7 @@ export class GameScene extends Phaser.Scene {
     this.destroyProceduralMap();
     this.createProceduralMap(mapSeed);
     for (const player of this.players) {
+      player.spawn = { ...this.authoritativeRoundSpawn };
       player.snapshot = resetPlayerSnapshotForRound(player.snapshot);
       player.facing = 1;
       resetJumpState(player.jumpState);
@@ -551,12 +558,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resetNetworkPlayerEntity(player: PlayerRuntime, networkPlayer: RetroRushPlayerSnapshot) {
-    player.spawn = { x: networkPlayer.x, y: networkPlayer.y };
+    player.spawn = { ...this.authoritativeRoundSpawn };
     player.interpolation?.reset(networkPlayer.roundId);
     player.invulnerableUntil = 0;
     player.speedUntil = 0;
     player.sprite
-      .enableBody(true, networkPlayer.x, networkPlayer.y, true, true)
+      .enableBody(true, player.spawn.x, player.spawn.y, true, true)
       .setAcceleration(0, 0)
       .setVelocity(networkPlayer.velocityX, networkPlayer.velocityY)
       .setMaxVelocity(gameplayConfig.player.maxRunSpeed, gameplayConfig.player.maximumFallSpeed)
@@ -571,7 +578,7 @@ export class GameScene extends Phaser.Scene {
       body.moves = false;
       body.immovable = true;
     }
-    player.label.setVisible(true).setPosition(networkPlayer.x, networkPlayer.y - 44);
+    player.label.setVisible(true).setPosition(player.spawn.x, player.spawn.y - 44);
   }
 
   private removeNetworkPlayer(player: PlayerRuntime) {
@@ -722,10 +729,12 @@ export class GameScene extends Phaser.Scene {
     const body = this.local.sprite.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     this.local.sprite
-      .setPosition(this.local.spawn.x, this.local.spawn.y)
+      .setPosition(this.authoritativeRoundSpawn.x, this.authoritativeRoundSpawn.y)
       .setAcceleration(0, 0)
       .setVelocity(0, 0);
+    this.local.spawn = { ...this.authoritativeRoundSpawn };
     resetJumpState(this.local.jumpState);
+    this.clearPendingGameplayInput();
   }
 
   private unlockLocalPlayerAfterRoundStart() {
@@ -790,6 +799,17 @@ export class GameScene extends Phaser.Scene {
     if (this.matchState === 'LOADING') { this.stopLocalHorizontalMovement(); return; }
     if (player.snapshot.state !== 'ACTIVE' && player.snapshot.state !== 'INVULNERABLE') { player.sprite.setVelocityX(0); return; }
     const body = player.sprite.body as Phaser.Physics.Arcade.Body;
+    if (this.roundStartInputGate.shouldSuppress(this.roundStartGameplayInput())) {
+      body.setAllowGravity(false);
+      player.sprite
+        .setPosition(this.authoritativeRoundSpawn.x, this.authoritativeRoundSpawn.y)
+        .setAcceleration(0, 0)
+        .setVelocity(0, 0);
+      resetJumpState(player.jumpState);
+      this.clearPendingGameplayInput();
+      return;
+    }
+    body.setAllowGravity(true);
     // Dynamic player contacts set touching.down; only terrain may grant grounded/jump state.
     const grounded = updateGroundedState(player.jumpState, time, body.blocked.down, false);
     const left = this.cursors.left.isDown || this.keys.a.isDown;
@@ -831,6 +851,29 @@ export class GameScene extends Phaser.Scene {
   private stopLocalHorizontalMovement() {
     if (!this.local?.sprite.body) return;
     this.local.sprite.setAccelerationX(0).setVelocityX(0);
+  }
+
+  private roundStartGameplayInput(): RoundStartGameplayInput {
+    return {
+      left: this.cursors.left.isDown || this.keys.a.isDown,
+      right: this.cursors.right.isDown || this.keys.d.isDown,
+      jump: this.cursors.up.isDown || this.cursors.space.isDown || this.keys.w.isDown,
+      speedAbility: this.keys.one.isDown,
+      rocketAbility: this.keys.two.isDown,
+      askAbility: this.keys.three.isDown,
+      developmentMovement: this.developmentMoveDirection !== 0,
+    };
+  }
+
+  private clearPendingGameplayInput() {
+    const actionKeys = [
+      this.cursors.up, this.cursors.space, this.keys.w,
+      this.keys.one, this.keys.two, this.keys.three,
+    ];
+    for (const key of actionKeys) {
+      Phaser.Input.Keyboard.JustDown(key);
+      Phaser.Input.Keyboard.JustUp(key);
+    }
   }
 
   private updateBots(time: number) {
