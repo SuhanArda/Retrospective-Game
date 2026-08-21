@@ -18,6 +18,7 @@ export interface GameSessionSnapshot {
   gameId: string;
   roundId: string;
   seed: number;
+  roundStartAtUnixMs: number | null;
   state: 'ACTIVE' | 'ENDED';
 }
 
@@ -81,7 +82,7 @@ export interface RetroRushGameSnapshot {
   mapSeed: number;
   phase: RetroRushPhase;
   phaseStartedAtUtc: number;
-  roundStartsAtUtc: number;
+  roundStartAtUnixMs: number;
   players: readonly RetroRushPlayerSnapshot[];
   collectedPickupIds: readonly string[];
   activeRockets: readonly RetroRushRocketSnapshot[];
@@ -105,7 +106,7 @@ export interface UpdateRetroRushPlayerRequest {
 
 export interface RequestRetroRushShoveRequest { gameSessionId: string; roundId: number; targetPlayerId: string; sequence: number }
 export interface RetroRushShoveApplied { actionId: string; roundId: number; attackerPlayerId: string; targetPlayerId: string; velocityX: number; hitStunMs: number }
-export type RetroRushShoveRejection = 'DUPLICATE_SHOVE' | 'SELF_SHOVE' | 'PLAYER_NOT_ACTIVE' | 'SHOVE_COOLDOWN' | 'SHOVE_OUT_OF_RANGE' | 'INVALID_SHOVE_TARGET' | 'STALE_ROUND' | 'WRONG_GAME_SESSION';
+export type RetroRushShoveRejection = 'DUPLICATE_SHOVE' | 'SELF_SHOVE' | 'PLAYER_NOT_ACTIVE' | 'ROUND_NOT_STARTED' | 'SHOVE_COOLDOWN' | 'SHOVE_OUT_OF_RANGE' | 'INVALID_SHOVE_TARGET' | 'STALE_ROUND' | 'WRONG_GAME_SESSION';
 export interface RetroRushShoveCommandResult { accepted: boolean; rejection?: RetroRushShoveRejection }
 export interface RequestRetroRushRocketFireRequest { gameSessionId: string; roundId: number }
 export interface RequestRetroRushRocketHitRequest { gameSessionId: string; roundId: number; rocketId: string }

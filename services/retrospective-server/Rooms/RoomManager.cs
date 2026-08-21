@@ -42,6 +42,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         ],
     };
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
     private readonly TimeSpan _disconnectGrace = TimeSpan.FromSeconds(options.Value.DisconnectGraceSeconds);
     private readonly TimeSpan _questionLoadingTime = TimeSpan.FromMilliseconds(options.Value.QuestionLoadingMilliseconds);
 
@@ -136,8 +137,17 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         lock (room.Gate)
         {
             var player = Authenticate(room, playerId, token);
+            if (_connections.TryGetValue(connectionId, out var attached) &&
+                (attached.RoomCode != room.Code || attached.PlayerId != player.Id))
+            {
+                throw new RoomException("CONNECTION_ALREADY_ATTACHED");
+            }
+            RemoveConnectionMapping(player);
+            player.ConnectionGeneration++;
             player.ConnectionId = connectionId;
             player.DisconnectedAt = null;
+            player.DisconnectExpiresAt = null;
+            _connections[connectionId] = new PlayerConnection(room.Code, player.Id, player.ConnectionGeneration);
             SetRetroRushPlayerConnected(room, player.Id, true);
             return Snapshot(room);
         }
@@ -145,12 +155,16 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
     public AuthenticatedPlayer AuthenticateConnection(string connectionId)
     {
-        foreach (var room in _rooms.Values)
+        if (_connections.TryGetValue(connectionId, out var connection) &&
+            _rooms.TryGetValue(connection.RoomCode, out var room))
         {
             lock (room.Gate)
             {
-                var player = room.Players.Values.FirstOrDefault(candidate => candidate.ConnectionId == connectionId);
-                if (player is not null) return new AuthenticatedPlayer(room.Code, player.Id, player.DisplayName, player.Color);
+                if (room.Players.TryGetValue(connection.PlayerId, out var player) &&
+                    IsCurrentConnection(player, connectionId, connection))
+                {
+                    return new AuthenticatedPlayer(room.Code, player.Id, player.DisplayName, player.Color);
+                }
             }
         }
         throw new RoomException("NOT_ATTACHED");
@@ -391,6 +405,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         var (room, player) = Authorize(connectionId, hostRequired: false);
         lock (room.Gate)
         {
+            RemoveConnectionMapping(player);
             room.Players.Remove(player.Id);
             RemoveRetroRushPlayer(room, player.Id);
             ElectHost(room);
@@ -401,35 +416,47 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
     public RoomSnapshot? Disconnect(string connectionId)
     {
-        foreach (var room in _rooms.Values)
+        if (!_connections.TryRemove(connectionId, out var connection) ||
+            !_rooms.TryGetValue(connection.RoomCode, out var room))
         {
-            lock (room.Gate)
-            {
-                var player = room.Players.Values.FirstOrDefault(candidate => candidate.ConnectionId == connectionId);
-                if (player is null) continue;
-                player.ConnectionId = null;
-                player.DisconnectedAt = timeProvider.GetUtcNow();
-                SetRetroRushPlayerConnected(room, player.Id, false);
-                return Snapshot(room);
-            }
+            return null;
         }
-        return null;
+
+        lock (room.Gate)
+        {
+            if (!room.Players.TryGetValue(connection.PlayerId, out var player) ||
+                !IsCurrentConnection(player, connectionId, connection))
+            {
+                return null;
+            }
+
+            var disconnectedAt = timeProvider.GetUtcNow();
+            player.ConnectionId = null;
+            player.DisconnectedAt = disconnectedAt;
+            player.DisconnectExpiresAt = disconnectedAt + _disconnectGrace;
+            SetRetroRushPlayerConnected(room, player.Id, false);
+            return Snapshot(room);
+        }
     }
 
     public IReadOnlyList<RoomChange> SweepDisconnected()
     {
         var changes = new List<RoomChange>();
-        var cutoff = timeProvider.GetUtcNow() - _disconnectGrace;
+        var now = timeProvider.GetUtcNow();
         foreach (var room in _rooms.Values)
         {
             lock (room.Gate)
             {
                 var expired = room.Players.Values
-                    .Where(player => player.DisconnectedAt is not null && player.DisconnectedAt <= cutoff)
+                    .Where(player => player.ConnectionId is null &&
+                                     player.DisconnectedAt is not null &&
+                                     player.DisconnectExpiresAt is not null &&
+                                     player.DisconnectExpiresAt <= now)
                     .Select(player => player.Id).ToArray();
                 if (expired.Length == 0) continue;
                 foreach (var playerId in expired)
                 {
+                    RemoveConnectionMapping(room.Players[playerId]);
                     room.Players.Remove(playerId);
                     RemoveRetroRushPlayer(room, playerId);
                 }
@@ -553,8 +580,16 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var admittedAt = timeProvider.GetUtcNow();
         var player = new RoomPlayer(Guid.NewGuid().ToString("N"), displayName.Trim(), NormalizeColor(color), HashToken(token),
-            timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
+            admittedAt.ToUnixTimeMilliseconds())
+        {
+            // HTTP admission happens just before SignalR attachment. If the tab
+            // disappears between those two steps, this membership still gets
+            // the same reconnect grace instead of living in the room forever.
+            DisconnectedAt = admittedAt,
+            DisconnectExpiresAt = admittedAt + _disconnectGrace,
+        };
         room.Players[player.Id] = player;
         var snapshot = Snapshot(room);
         return new RoomAdmission(room.Code, player.Id, player.DisplayName, player.Id == room.HostPlayerId, token,
@@ -563,18 +598,39 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
     private (GameRoom Room, RoomPlayer Player) Authorize(string connectionId, bool hostRequired)
     {
-        foreach (var room in _rooms.Values)
+        if (_connections.TryGetValue(connectionId, out var connection) &&
+            _rooms.TryGetValue(connection.RoomCode, out var room))
         {
             lock (room.Gate)
             {
-                var player = room.Players.Values.FirstOrDefault(candidate => candidate.ConnectionId == connectionId);
-                if (player is null) continue;
-                if (hostRequired && room.HostPlayerId != player.Id) throw new RoomException("HOST_REQUIRED");
-                return (room, player);
+                if (room.Players.TryGetValue(connection.PlayerId, out var player) &&
+                    IsCurrentConnection(player, connectionId, connection))
+                {
+                    if (hostRequired && room.HostPlayerId != player.Id) throw new RoomException("HOST_REQUIRED");
+                    return (room, player);
+                }
             }
         }
         throw new RoomException("NOT_ATTACHED");
     }
+
+    private void RemoveConnectionMapping(RoomPlayer player)
+    {
+        if (player.ConnectionId is not { } connectionId ||
+            !_connections.TryGetValue(connectionId, out var connection) ||
+            connection.PlayerId != player.Id ||
+            connection.Generation != player.ConnectionGeneration)
+        {
+            return;
+        }
+
+        _connections.TryRemove(connectionId, out _);
+    }
+
+    private static bool IsCurrentConnection(RoomPlayer player, string connectionId, PlayerConnection connection) =>
+        player.ConnectionId == connectionId &&
+        player.Id == connection.PlayerId &&
+        player.ConnectionGeneration == connection.Generation;
 
     private static RoomPlayer Authenticate(GameRoom room, string playerId, string token)
     {
@@ -655,7 +711,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.TieBreak is null ? null : new TieBreakSnapshot(room.TieBreak.Candidates, room.TieBreak.Winner),
         room.FileName, room.Description, room.CreatedAt,
         room.CurrentGameSession is null ? null : new GameSessionSnapshot(room.CurrentGameSession.Id, room.CurrentGameSession.GameId,
-            room.CurrentGameSession.RoundId, room.CurrentGameSession.Seed, room.CurrentGameSession.State),
+            room.CurrentGameSession.RoundId, room.CurrentGameSession.Seed,
+            room.CurrentGameSession.RetroRush?.RoundStartAtUnixMs, room.CurrentGameSession.State),
         room.SpinBottleState is null ? null : new SpinBottleStateSnapshot(room.SpinBottleState.SpinId,
             room.SpinBottleState.SpinnerPlayerId, room.SpinBottleState.TargetPlayerId, room.SpinBottleState.TargetIndex,
             room.SpinBottleState.Category, room.SpinBottleState.QuestionId, room.SpinBottleState.QuestionText,
@@ -709,7 +766,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public byte[] TokenHash { get; } = tokenHash;
         public long JoinedAt { get; } = joinedAt;
         public string? ConnectionId { get; set; }
+        public long ConnectionGeneration { get; set; }
         public DateTimeOffset? DisconnectedAt { get; set; }
+        public DateTimeOffset? DisconnectExpiresAt { get; set; }
     }
 
     private sealed class GameSession(string id, string gameId, string roundId, int seed, string state)
@@ -729,6 +788,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         string? ReportText,
         ReportFilePayload? ReportFile,
         string Style);
+
+    private sealed record PlayerConnection(string RoomCode, string PlayerId, long Generation);
 
     private sealed class SpinBottleState(string spinId, string spinnerPlayerId, string targetPlayerId, int targetIndex,
         string? category, string? questionId, string? questionText, string status, int revision, long updatedAtUtc,

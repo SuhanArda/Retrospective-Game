@@ -44,6 +44,7 @@ export interface RetroRoom {
     gameId: string;
     roundId: string;
     seed: number;
+    roundStartAtUnixMs: number | null;
     state: 'ACTIVE' | 'ENDED';
   };
 }
