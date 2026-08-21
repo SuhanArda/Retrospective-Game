@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { DrawingCanvas } from '../components/DrawingCanvas';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { RoomRealtimeClient } from '@retro-platform/realtime-client';
+import type { RoomPlayerSnapshot } from '@retro-platform/contracts';
+import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { PlayerList } from '../components/PlayerList';
 import { GuessChat, type ChatMessage } from '../components/GuessChat';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { pickRandomWord } from '../data/words';
 import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
+import type { DisplayPlayer } from '../domain/displayPlayer';
+import { DrawAndGuessRoomBridge, type DrawAndGuessBridgeState } from './roomBridge';
+import {
+  buildPlatformGameSelectionUrl,
+  drawAndGuessRuntimeConfig,
+  resolveDrawAndGuessLaunchContext,
+} from './platformIntegration';
 import '../styles/App.css';
 
 const RECENT_WORD_MEMORY = 8;
@@ -12,8 +21,10 @@ const YOU_ID = 'you';
 const BOT_MIN_DELAY_MS = 1500;
 const BOT_MAX_DELAY_MS = 5000;
 const BOT_CORRECT_CHANCE = 0.55;
+/** How long the room connection gets before the game opens standalone — mirrors rus-ruleti. */
+const ROOM_DEADLINE_MS = 5_000;
 
-/** 1., 2., 3. bilen bu kadar puan alır; sonrakiler sabit 3 puanla yetinir. */
+/** 1., 2., 3. bilen bu kadar puan alır; sonrakiler sabit 3 puanla yetinir. Sunucudaki DrawAndGuessRankPoints ile aynı. */
 const GUESS_RANK_POINTS = [10, 7, 5];
 const GUESS_FALLBACK_POINTS = 3;
 /** Çizen kişi, o turu doğru bilen herkes için bu kadar puan kazanır. */
@@ -24,13 +35,211 @@ function normalize(text: string) {
 }
 
 /**
- * Standalone prototip. Bu adımda eklenen: sohbet/tahmin kutusu. Doğru
- * tahmin sohbete kelimeyi hiç taşımıyor, sadece "kim kaçıncı oldu"
- * bilgisini gösteriyor — hâlâ bilemeyenler için kelime gizli kalsın diye.
- * Gerçek oyuncular henüz yok; botlar (Ada/Mert/Ece) rastgele gecikmeyle
- * kâh doğru kâh yanlış tahminler atarak sohbeti test edilebilir kılıyor.
+ * Oda bağlamı varsa (platformdan gerçek bir oda üzerinden açıldıysa) gerçek
+ * oyuncularla, sunucu üzerinden senkronize oynanır. Yoksa (bağımsız test)
+ * sahte oyuncular ve yerel botlarla eski standalone davranış aynen çalışır.
  */
 export function App() {
+  const launchContext = useMemo(
+    () => resolveDrawAndGuessLaunchContext(window.location.search, window.sessionStorage, window),
+    [],
+  );
+  return launchContext ? <OnlineGame launchContext={launchContext} /> : <StandaloneGame />;
+}
+
+interface OnlineGameProps {
+  launchContext: NonNullable<ReturnType<typeof resolveDrawAndGuessLaunchContext>>;
+}
+
+function OnlineGame({ launchContext }: OnlineGameProps) {
+  const [roster, setRoster] = useState<readonly RoomPlayerSnapshot[] | null>(null);
+  const [roomIsHost, setRoomIsHost] = useState(launchContext.isHost);
+  const [roomSettled, setRoomSettled] = useState(false);
+  const [bridgeState, setBridgeState] = useState<DrawAndGuessBridgeState | null>(null);
+  const [word, setWord] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [announcement, setAnnouncement] = useState('');
+  const bridgeRef = useRef<DrawAndGuessRoomBridge | null>(null);
+  const roomClientRef = useRef<RoomRealtimeClient | null>(null);
+  const canvasRef = useRef<DrawingCanvasHandle | null>(null);
+
+  const localPlayerId = launchContext.playerId;
+
+  useEffect(() => {
+    let settled = false;
+    const settle = () => { if (settled) return; settled = true; setRoomSettled(true); };
+    const deadline = window.setTimeout(settle, ROOM_DEADLINE_MS);
+
+    const client = RoomRealtimeClient.fromLaunchContext(drawAndGuessRuntimeConfig.apiUrl, launchContext);
+    roomClientRef.current = client;
+    const bridge = new DrawAndGuessRoomBridge(client, launchContext.gameSessionId);
+    bridgeRef.current = bridge;
+
+    const disposers = [
+      client.on('roomSnapshot', (room) => {
+        setRoster(room.players);
+        setRoomIsHost(room.hostPlayerId === launchContext.playerId);
+      }),
+      client.on('returnedToGameSelection', () => {
+        window.location.assign(
+          buildPlatformGameSelectionUrl(drawAndGuessRuntimeConfig.platformUrl, launchContext.roomCode, window.location.origin),
+        );
+      }),
+      bridge.onStateChanged((state) => setBridgeState(state)),
+      bridge.onGuess((event) => {
+        setMessages((msgs) => [
+          ...msgs,
+          event.correct
+            ? { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'correct', correctRank: event.rank }
+            : { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'guess', text: event.text },
+        ]);
+      }),
+      bridge.onStroke((event) => {
+        const [x, y] = event.points;
+        if (x === undefined || y === undefined) return;
+        canvasRef.current?.applyRemotePoint(x, y, event.newStroke);
+      }),
+      bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
+    ];
+
+    void client.connect().then(
+      () => { window.clearTimeout(deadline); settle(); setAnnouncement(''); },
+      (error: unknown) => {
+        // A cancelled connect is this effect tearing down its own client —
+        // React re-runs effects once on mount in development.
+        if (error instanceof Error && error.message === 'ROOM_CONNECTION_CANCELLED') return;
+        window.clearTimeout(deadline);
+        settle();
+        setAnnouncement('Oda bağlantısı kurulamadı');
+      },
+    );
+
+    return () => {
+      window.clearTimeout(deadline);
+      disposers.forEach((dispose) => dispose());
+      bridge.dispose();
+      bridgeRef.current = null;
+      roomClientRef.current = null;
+      void client.disconnect();
+    };
+  }, [launchContext]);
+
+  // Yeni tur başladığında (roundNumber değişince) çizen kişi kelimeyi ister.
+  // Diğer herkes için sunucu bu isteği zaten reddeder (NOT_DRAWER).
+  const isYouDrawing = bridgeState?.drawerId === localPlayerId;
+  useEffect(() => {
+    if (!isYouDrawing || !bridgeRef.current) { setWord(null); return; }
+    let cancelled = false;
+    void bridgeRef.current.requestWord().then((value) => { if (!cancelled) setWord(value); }).catch(() => undefined);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isYouDrawing, bridgeState?.roundNumber]);
+
+  const displayPlayers: DisplayPlayer[] = useMemo(
+    () => (roster ?? []).map((player) => ({
+      id: player.id,
+      name: player.displayName,
+      color: player.color,
+      isYou: player.id === localPlayerId,
+    })),
+    [roster, localPlayerId],
+  );
+
+  const drawerName = displayPlayers.find((player) => player.id === bridgeState?.drawerId)?.name ?? '';
+  const youAlreadyCorrect = Boolean(bridgeState?.correctGuesserIds.includes(localPlayerId));
+  const scores = bridgeState?.scores ?? {};
+
+  function handleGuessSubmit(text: string) {
+    void bridgeRef.current?.submitGuess(text).catch(() => undefined);
+  }
+
+  function handleStroke(x: number, y: number, newStroke: boolean) {
+    bridgeRef.current?.sendStroke([x, y], newStroke);
+  }
+
+  function handleClear() {
+    bridgeRef.current?.clearCanvas();
+  }
+
+  function handleNextRound() {
+    bridgeRef.current?.nextRound();
+  }
+
+  function returnToGames() {
+    void roomClientRef.current?.returnToGameSelection().catch(() => setAnnouncement('Oda bağlantısı kurulamadı'));
+  }
+
+  if (!roomSettled) {
+    return (
+      <div className="page">
+        <div className="page-content">
+          <div className="brand">Draw & Guess</div>
+          <p className="word-panel-hidden">Odaya bağlanılıyor…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <div className="page-content">
+        <div className="brand">Draw & Guess</div>
+        <h1 className="title">Çiz, tahmin et</h1>
+
+        {roster === null ? (
+          <p className="word-panel-hidden">Oyuncular yükleniyor…</p>
+        ) : (
+          <>
+            <PlayerList players={displayPlayers} drawerId={bridgeState?.drawerId ?? ''} />
+
+            <div className="word-panel">
+              {isYouDrawing ? (
+                <>
+                  <span className="word-panel-label">Çizilecek kelime</span>
+                  <span className="word-panel-word">{word ?? '…'}</span>
+                </>
+              ) : (
+                <span className="word-panel-hidden">{drawerName} çiziyor — tahmin etmeye çalış</span>
+              )}
+              {roomIsHost && (
+                <button type="button" className="btn-secondary" onClick={handleNextRound}>
+                  Sıradaki tur
+                </button>
+              )}
+            </div>
+
+            <div className="game-area">
+              <DrawingCanvas ref={canvasRef} canDraw={isYouDrawing} onStroke={handleStroke} onClear={handleClear} />
+              <div className="game-area-side">
+                <GuessChat
+                  messages={messages}
+                  canGuess={!isYouDrawing && !youAlreadyCorrect}
+                  onSubmit={handleGuessSubmit}
+                />
+                <ScoreBoard players={displayPlayers} scores={scores} />
+              </div>
+            </div>
+
+            {roomIsHost && (
+              <button type="button" className="clear-button" onClick={returnToGames}>
+                Oyunlara Dön
+              </button>
+            )}
+          </>
+        )}
+
+        {announcement && <p className="word-panel-hidden" role="status">{announcement}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Oda bağlamı yokken (bağımsız test) çalışan eski davranış — sahte
+ * oyuncular (Sen, Ada, Mert, Ece) ve yerel botlarla tek başına test
+ * edilebilir bir prototip.
+ */
+function StandaloneGame() {
   const [word, setWord] = useState(() => pickRandomWord());
   const [recentWords, setRecentWords] = useState<string[]>([word]);
   const [drawerId, setDrawerId] = useState(() => pickRandomDrawer(MOCK_PLAYERS).id);

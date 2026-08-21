@@ -12,6 +12,10 @@ public interface IRoomClient
     Task SpinBottleStateChanged(SpinBottleStateSnapshot state);
     Task FireResult(FireResult result);
     Task RussianRouletteStateChanged(RussianRouletteStateSnapshot state);
+    Task DrawAndGuessStateChanged(DrawAndGuessStateSnapshot state);
+    Task DrawAndGuessGuessSubmitted(DrawAndGuessGuessResult result);
+    Task DrawAndGuessStrokeReceived(DrawAndGuessStrokeEvent stroke);
+    Task DrawAndGuessCanvasCleared();
     Task ReactionReceived(RoomReaction reaction);
     Task RetroRushSnapshot(RetroRushGameSnapshot snapshot);
     Task RetroRushPlayerUpdated(RetroRushPlayerSnapshot player);

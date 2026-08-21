@@ -71,6 +71,46 @@ public sealed record RussianRouletteStateSnapshot(
     int Revision,
     long UpdatedAtUtc);
 
+/// <summary>
+/// The secret word is deliberately absent — the server hands it out only to
+/// the current drawer, via <c>RequestDrawAndGuessWord</c>'s return value,
+/// which SignalR delivers only to whoever called it. Scores accumulate
+/// across the whole game (not just the current round), the same way a
+/// scoreboard should.
+/// </summary>
+public sealed record DrawAndGuessStateSnapshot(
+    string DrawerPlayerId,
+    int RoundNumber,
+    IReadOnlyList<string> CorrectGuesserIds,
+    IReadOnlyDictionary<string, int> Scores,
+    int Revision,
+    long UpdatedAtUtc);
+
+/// <summary>
+/// A correct guess never carries the word back to the room — only who got
+/// it and in what order. A wrong guess carries the guessed text as-is,
+/// since it was never the answer.
+/// </summary>
+public sealed record DrawAndGuessGuessResult(
+    string PlayerId,
+    string DisplayName,
+    bool Correct,
+    int? Rank,
+    string? Text);
+
+public sealed record DrawAndGuessWordReveal(string Word, int Revision);
+
+/// <summary>
+/// A drawing stroke point batch, relayed verbatim to everyone else in the
+/// room. The server never inspects or stores this — it is not part of any
+/// player's score or the room's authoritative state, just a pass-through so
+/// the canvas stays live for spectators.
+/// </summary>
+public sealed record DrawAndGuessStrokeEvent(
+    string PlayerId,
+    IReadOnlyList<double> Points,
+    bool NewStroke);
+
 public sealed record FireResult(
     string GameSessionId,
     string RoundId,
@@ -100,7 +140,8 @@ public sealed record RoomSnapshot(
     long CreatedAt,
     GameSessionSnapshot? CurrentGameSession,
     SpinBottleStateSnapshot? SpinBottleState,
-    RussianRouletteStateSnapshot? RussianRouletteState);
+    RussianRouletteStateSnapshot? RussianRouletteState,
+    DrawAndGuessStateSnapshot? DrawAndGuessState);
 
 public sealed record SpinResult(
     string SpinId,

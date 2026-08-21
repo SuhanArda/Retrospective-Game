@@ -5,6 +5,9 @@ import {
   LogLevel,
 } from '@microsoft/signalr';
 import type {
+  DrawAndGuessGuessResult,
+  DrawAndGuessStateSnapshot,
+  DrawAndGuessStrokeEvent,
   FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
@@ -56,6 +59,10 @@ type EventMap = {
   spinBottleStateChanged: SpinBottleStateSnapshot;
   fireResult: FireResult;
   russianRouletteStateChanged: RussianRouletteStateSnapshot;
+  drawAndGuessStateChanged: DrawAndGuessStateSnapshot;
+  drawAndGuessGuessSubmitted: DrawAndGuessGuessResult;
+  drawAndGuessStrokeReceived: DrawAndGuessStrokeEvent;
+  drawAndGuessCanvasCleared: undefined;
   reaction: RoomReactionEvent;
   connectionChanged: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   retroRushSnapshot: RetroRushGameSnapshot;
@@ -137,6 +144,16 @@ export class RoomRealtimeClient {
   completeFireQuestion(expectedRevision: number): Promise<RoomSnapshot> {
     return this.invoke('CompleteFireQuestion', expectedRevision);
   }
+  /** Resolves only for the caller — SignalR never broadcasts a method's return value. */
+  requestDrawAndGuessWord(): Promise<string> { return this.invoke('RequestDrawAndGuessWord'); }
+  submitDrawAndGuessGuess(text: string): Promise<DrawAndGuessGuessResult> {
+    return this.invoke('SubmitDrawAndGuessGuess', text);
+  }
+  nextDrawAndGuessRound(): Promise<RoomSnapshot> { return this.invoke('NextDrawAndGuessRound'); }
+  sendDrawAndGuessStroke(points: readonly number[], newStroke: boolean): Promise<void> {
+    return this.invoke('SendDrawAndGuessStroke', points, newStroke);
+  }
+  clearDrawAndGuessCanvas(): Promise<void> { return this.invoke('ClearDrawAndGuessCanvas'); }
   leaveRoom(): Promise<void> { return this.invoke('LeaveRoom'); }
   sendReaction(emoji: string): Promise<void> { return this.invoke('SendReaction', emoji); }
   getRetroRushSnapshot(gameSessionId: string): Promise<RetroRushGameSnapshot> {
@@ -185,6 +202,10 @@ export class RoomRealtimeClient {
     connection.on('SpinBottleStateChanged', (state: SpinBottleStateSnapshot) => this.emit('spinBottleStateChanged', state));
     connection.on('FireResult', (result: FireResult) => this.emit('fireResult', result));
     connection.on('RussianRouletteStateChanged', (state: RussianRouletteStateSnapshot) => this.emit('russianRouletteStateChanged', state));
+    connection.on('DrawAndGuessStateChanged', (state: DrawAndGuessStateSnapshot) => this.emit('drawAndGuessStateChanged', state));
+    connection.on('DrawAndGuessGuessSubmitted', (result: DrawAndGuessGuessResult) => this.emit('drawAndGuessGuessSubmitted', result));
+    connection.on('DrawAndGuessStrokeReceived', (stroke: DrawAndGuessStrokeEvent) => this.emit('drawAndGuessStrokeReceived', stroke));
+    connection.on('DrawAndGuessCanvasCleared', () => this.emit('drawAndGuessCanvasCleared', undefined));
     connection.on('ReactionReceived', (reaction: RoomReactionEvent) => this.emit('reaction', reaction));
     connection.on('RetroRushSnapshot', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushSnapshot', snapshot));
     connection.on('RetroRushPlayerUpdated', (player: RetroRushPlayerSnapshot) => this.emit('retroRushPlayerUpdated', player));

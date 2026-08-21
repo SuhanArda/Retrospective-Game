@@ -478,6 +478,76 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void DrawAndGuessStateIsAuthoritativeHiddenAndScoresRankedGuesses()
+    {
+        // FixedRoomRandom(0) picks index 0 everywhere: the first-joined
+        // player (host) draws first, and the word is always the list's
+        // first entry ("kedi").
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        manager.BeginGameSelection("host", ["draw-and-guess"]);
+        manager.CastVote("host", "draw-and-guess");
+        manager.ResolveVote("host");
+
+        var state = manager.Get(host.RoomCode)!.DrawAndGuessState!;
+        Assert.Equal(host.PlayerId, state.DrawerPlayerId);
+        Assert.Empty(state.CorrectGuesserIds);
+
+        Assert.Equal("kedi", manager.RequestDrawAndGuessWord("host"));
+        Assert.Throws<RoomException>(() => manager.RequestDrawAndGuessWord("guest"));
+        Assert.Throws<RoomException>(() => manager.SubmitDrawAndGuessGuess("host", "kedi"));
+
+        var wrong = manager.SubmitDrawAndGuessGuess("guest", "köpek");
+        Assert.False(wrong.Correct);
+        Assert.Equal("köpek", wrong.Text);
+        Assert.Null(wrong.Rank);
+
+        // Case/whitespace shouldn't matter, and a correct guess never carries the word back.
+        var correct = manager.SubmitDrawAndGuessGuess("guest", "  Kedi ");
+        Assert.True(correct.Correct);
+        Assert.Equal(1, correct.Rank);
+        Assert.Null(correct.Text);
+
+        var afterGuess = manager.Get(host.RoomCode)!.DrawAndGuessState!;
+        Assert.Equal(10, afterGuess.Scores[guest.PlayerId]);
+        Assert.Contains(guest.PlayerId, afterGuess.CorrectGuesserIds);
+
+        // Already correct this round — a repeat guess is a silent no-op, not a re-score.
+        var again = manager.SubmitDrawAndGuessGuess("guest", "kedi");
+        Assert.False(again.Correct);
+        Assert.Equal(10, manager.Get(host.RoomCode)!.DrawAndGuessState!.Scores[guest.PlayerId]);
+    }
+
+    [Fact]
+    public void NextDrawAndGuessRoundPaysTheDrawerAndRotatesAwayFromThem()
+    {
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        manager.BeginGameSelection("host", ["draw-and-guess"]);
+        manager.CastVote("host", "draw-and-guess");
+        manager.ResolveVote("host");
+        manager.SubmitDrawAndGuessGuess("guest", "kedi");
+
+        Assert.Throws<RoomException>(() => manager.NextDrawAndGuessRound("guest"));
+
+        var next = manager.NextDrawAndGuessRound("host").DrawAndGuessState!;
+        Assert.Equal(guest.PlayerId, next.DrawerPlayerId);
+        Assert.Equal(2, next.RoundNumber);
+        Assert.Empty(next.CorrectGuesserIds);
+        // Host drew round 1 and never guesses their own word, so their only
+        // points are the drawer bonus: one correct guesser * 2 points.
+        Assert.Equal(2, next.Scores[host.PlayerId]);
+        // Guest's round-1 guess score (10, for guessing first) carries forward untouched.
+        Assert.Equal(10, next.Scores[guest.PlayerId]);
+    }
+
+    [Fact]
     public void HostTransfersAfterDisconnectGraceButNotBefore()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));

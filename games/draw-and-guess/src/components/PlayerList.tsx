@@ -1,7 +1,7 @@
-import type { MockPlayer } from '../data/mockPlayers';
+import type { DisplayPlayer } from '../domain/displayPlayer';
 
 interface PlayerListProps {
-  players: readonly MockPlayer[];
+  players: readonly DisplayPlayer[];
   drawerId: string;
 }
 

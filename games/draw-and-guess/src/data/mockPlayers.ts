@@ -1,9 +1,6 @@
-export interface MockPlayer {
-  id: string;
-  name: string;
-  color: string;
-  isYou?: boolean;
-}
+import type { DisplayPlayer } from '../domain/displayPlayer';
+
+export type MockPlayer = DisplayPlayer;
 
 /**
  * Standalone-only sahte oyuncular. Diğer oyunlardaki bot isimleriyle
