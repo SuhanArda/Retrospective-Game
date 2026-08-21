@@ -76,6 +76,17 @@ export const gameRegistry: readonly GameDefinition[] = [
     voteScreenshotUrl: '/screenshots/rus-ruleti-wide.jpg',
     getLaunchUrl: (config) => config.rusRuletiUrl,
   },
+  {
+    id: 'draw-and-guess',
+    name: 'Draw & Guess',
+    descriptionKey: 'games.draw-and-guess.description',
+    detailKey: 'games.draw-and-guess.detail',
+    stepsKey: 'games.draw-and-guess.steps',
+    status: 'available',
+    minPlayers: 3,
+    visualLabel: 'DG',
+    getLaunchUrl: (config) => config.drawAndGuessUrl,
+  },
 ];
 
 export function findGame(gameId: string): GameDefinition | null {
