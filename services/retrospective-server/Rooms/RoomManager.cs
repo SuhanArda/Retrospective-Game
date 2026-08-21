@@ -9,7 +9,7 @@ namespace Retrospective.Server.Rooms;
 public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
