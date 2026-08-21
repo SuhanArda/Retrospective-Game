@@ -26,6 +26,51 @@
   font-size: 26px;
 }
 
+.player-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.player-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e4dbf2;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.player-chip.is-drawer {
+  border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(91, 42, 134, 0.12);
+}
+
+.player-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.player-chip-name {
+  font-weight: 600;
+}
+
+.player-chip-badge {
+  font-size: 11px;
+  color: #6f6480;
+}
+
+.word-panel-hidden {
+  font-size: 15px;
+  font-style: italic;
+  color: #6f6480;
+}
+
 .word-panel {
   display: flex;
   align-items: center;
@@ -73,6 +118,12 @@
   border-radius: 12px;
   touch-action: none;
   max-width: 100%;
+  cursor: crosshair;
+}
+
+.drawing-canvas.is-readonly {
+  cursor: default;
+  opacity: 0.85;
 }
 
 .clear-button {

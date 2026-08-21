@@ -10,7 +10,12 @@ const STROKE_WIDTH = 4;
  * seçimi ve gerçek zamanlı yayınlama (başka oyunculara iletme) sonraki
  * adımlar, bu sadece yerel bir tuval.
  */
-export function DrawingCanvas() {
+interface DrawingCanvasProps {
+  /** Sadece o turun çizeni çizebilir — herkes tuvale müdahale edemesin diye. */
+  canDraw?: boolean;
+}
+
+export function DrawingCanvas({ canDraw = true }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -41,6 +46,7 @@ export function DrawingCanvas() {
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!canDraw) return;
     const context = canvasRef.current?.getContext('2d');
     if (!context) return;
     isDrawingRef.current = true;
@@ -76,15 +82,17 @@ export function DrawingCanvas() {
       <canvas
         ref={canvasRef}
         style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
-        className="drawing-canvas"
+        className={`drawing-canvas${canDraw ? '' : ' is-readonly'}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={stopDrawing}
         onPointerLeave={stopDrawing}
       />
-      <button type="button" className="clear-button" onClick={handleClear} disabled={isEmpty}>
-        Temizle
-      </button>
+      {canDraw && (
+        <button type="button" className="clear-button" onClick={handleClear} disabled={isEmpty}>
+          Temizle
+        </button>
+      )}
     </div>
   );
 }
