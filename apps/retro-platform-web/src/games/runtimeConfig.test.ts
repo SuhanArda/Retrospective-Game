@@ -11,10 +11,12 @@ describe('game runtime configuration', () => {
       VITE_RETRO_RUSH_URL: '/games/retro-rush/',
       VITE_SPIN_THE_BOTTLE_URL: '/games/spin-the-bottle/',
       VITE_RUS_RULETI_URL: '/games/rus-ruleti/',
+      VITE_IMPOSTER_URL: '/games/imposter/',
     })).toEqual({
       retroRushUrl: '/games/retro-rush/',
       spinTheBottleUrl: '/games/spin-the-bottle/',
       rusRuletiUrl: '/games/rus-ruleti/',
+      imposterUrl: '/games/imposter/',
     });
   });
 });

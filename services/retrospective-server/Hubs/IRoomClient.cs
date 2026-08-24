@@ -22,4 +22,5 @@ public interface IRoomClient
     Task RetroRushPlayerEliminated(RetroRushPlayerEliminated elimination);
     Task RetroRushRoundStarted(RetroRushGameSnapshot snapshot);
     Task RetroRushTargetQuestioned(RetroRushTargetQuestioned question);
+    Task ImposterStateChanged(ImposterStateChanged state);
 }

@@ -17,6 +17,7 @@ const config = {
   retroRushUrl: '/games/retro-rush/',
   spinTheBottleUrl: '/games/spin-the-bottle/',
   rusRuletiUrl: '/games/rus-ruleti/',
+  imposterUrl: '/games/imposter/',
 };
 
 describe('GameLauncher', () => {
@@ -66,6 +67,19 @@ describe('GameLauncher', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       roomCode: 'ABC123',
       gameId: 'spin-the-bottle',
+      gameSessionId: 'session-1',
+    });
+  });
+
+  it('launches Imposter through its configured frontend URL', () => {
+    const imposterContext = { ...context, gameId: 'imposter' };
+    const launcher = new GameLauncher(config, new MemoryStorage(), 'https://example.test', vi.fn());
+    const url = new URL(launcher.createLaunchUrl(imposterContext));
+
+    expect(url.pathname).toBe('/games/imposter/');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      roomCode: 'ABC123',
+      gameId: 'imposter',
       gameSessionId: 'session-1',
     });
   });

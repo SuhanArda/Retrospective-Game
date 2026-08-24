@@ -9,7 +9,7 @@ namespace Retrospective.Server.Rooms;
 public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "imposter"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -408,6 +408,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             RemoveConnectionMapping(player);
             room.Players.Remove(player.Id);
             RemoveRetroRushPlayer(room, player.Id);
+            RemoveImposterPlayer(room, player.Id);
             ElectHost(room);
             if (room.Players.Count == 0) _rooms.TryRemove(room.Code, out _);
             return Snapshot(room);
@@ -459,6 +460,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     RemoveConnectionMapping(room.Players[playerId]);
                     room.Players.Remove(playerId);
                     RemoveRetroRushPlayer(room, playerId);
+                    RemoveImposterPlayer(room, playerId);
                 }
                 ElectHost(room);
                 if (room.Players.Count == 0)
@@ -513,9 +515,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     {
         var candidates = candidateGameIds
             .Where(SupportedGames.Contains)
+            .Where(gameId => IsGamePlayable(room, gameId))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        if (candidates.Length == 0) candidates = SupportedGames.Order(StringComparer.Ordinal).ToArray();
+        if (candidates.Length == 0)
+            candidates = SupportedGames.Where(gameId => IsGamePlayable(room, gameId)).Order(StringComparer.Ordinal).ToArray();
 
         var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
         room.Status = RoomPhase.GameSelection;
@@ -534,8 +538,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private bool ResolveVote(GameRoom room)
     {
         if (room.Status != RoomPhase.GameSelection) return false;
-        var candidates = room.CandidateGameIds;
-        if (candidates.Count == 0) return false;
+        var candidates = room.CandidateGameIds.Where(gameId => IsGamePlayable(room, gameId)).ToArray();
+        if (candidates.Length == 0)
+            candidates = SupportedGames.Where(gameId => IsGamePlayable(room, gameId)).Order(StringComparer.Ordinal).ToArray();
+        if (candidates.Length == 0) return false;
+        room.CandidateGameIds = candidates;
 
         var tally = room.Votes.Values
             .Where(candidates.Contains)
@@ -559,8 +566,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
         room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
+        if (winner == "imposter") InitializeImposter(room, room.CurrentGameSession);
         return true;
     }
+
+    private static bool IsGamePlayable(GameRoom room, string gameId) =>
+        gameId != "imposter" || room.Players.Count is >= 3 and <= 10;
 
     /// <summary>
     /// Chamber count is deliberately not equal to the player count (same
@@ -779,6 +790,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public int Seed { get; set; } = seed;
         public string State { get; set; } = state;
         public RetroRushState? RetroRush { get; set; }
+        public ImposterState? Imposter { get; set; }
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);

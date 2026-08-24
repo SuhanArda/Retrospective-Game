@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_RETRO_RUSH_URL': publicValue('VITE_RETRO_RUSH_URL', 'http://localhost:5174'),
       'import.meta.env.VITE_SPIN_THE_BOTTLE_URL': publicValue('VITE_SPIN_THE_BOTTLE_URL', 'http://localhost:5175'),
       'import.meta.env.VITE_RUS_RULETI_URL': publicValue('VITE_RUS_RULETI_URL', 'http://localhost:5176'),
+      'import.meta.env.VITE_IMPOSTER_URL': publicValue('VITE_IMPOSTER_URL', 'http://localhost:5177'),
     },
   }
 })

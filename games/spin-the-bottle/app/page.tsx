@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { RoomRealtimeClient } from "@retro-platform/realtime-client";
 import {
   canControlSpinQuestion,
@@ -95,7 +95,7 @@ type Reaction = {
   id: number;
   kind: ReactionKind;
   label: string;
-  playerIndex: number;
+  playerId: string;
 };
 
 type PixelCatProps = {
@@ -172,8 +172,19 @@ export default function Home() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reactionId = useRef(0);
+  const reactionTimersRef = useRef<Set<number>>(new Set());
   const botQuestionsRef = useRef<BotQuestion[]>([]);
   const spinStateRef = useRef<SpinBottleStateSnapshot | null>(null);
+
+  const showReaction = useCallback((playerId: string, kind: ReactionKind, label: string) => {
+    const id = ++reactionId.current;
+    setReactions((current) => [...current, { id, kind, label, playerId }]);
+    const timeoutId = window.setTimeout(() => {
+      reactionTimersRef.current.delete(timeoutId);
+      setReactions((current) => current.filter((reaction) => reaction.id !== id));
+    }, 2200);
+    reactionTimersRef.current.add(timeoutId);
+  }, []);
 
   useEffect(() => {
     botQuestionsRef.current = botQuestions;
@@ -208,8 +219,11 @@ export default function Home() {
   }, [launchContext]);
 
   useEffect(() => {
+    const reactionTimers = reactionTimersRef.current;
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      reactionTimers.forEach((timeoutId) => clearTimeout(timeoutId));
+      reactionTimers.clear();
     };
   }, []);
 
@@ -270,6 +284,10 @@ export default function Home() {
     };
     const disposeSpin = client.on("spinResult", applySpin);
     const disposeSpinState = client.on("spinBottleStateChanged", applyAuthoritativeSpinState);
+    const disposeReaction = client.on("reaction", (reaction) => {
+      const option = reactionOptions.find(({ kind }) => kind === reaction.emoji);
+      if (option) showReaction(reaction.playerId, option.kind, option.label);
+    });
     const disposeReturn = client.on("returnedToGameSelection", () => {
       window.location.assign(buildPlatformGameSelectionUrl(
         spinTheBottleRuntimeConfig.platformUrl, launchContext.roomCode, window.location.origin,
@@ -281,12 +299,13 @@ export default function Home() {
       disposeRoom();
       disposeSpin();
       disposeSpinState();
+      disposeReaction();
       disposeReturn();
       disposeStatus();
       roomClientRef.current = null;
       void client.disconnect();
     };
-  }, [launchContext]);
+  }, [launchContext, showReaction]);
 
   function applyAuthoritativeSpinState(state: SpinBottleStateSnapshot | null) {
     spinStateRef.current = state;
@@ -415,13 +434,12 @@ export default function Home() {
   }
 
   function sendReaction(kind: ReactionKind, label: string) {
-    const id = ++reactionId.current;
-    const next = { id, kind, label, playerIndex: selected ?? 0 };
-    setReactions((current) => [...current, next]);
     setReactionsOpen(false);
-    window.setTimeout(() => {
-      setReactions((current) => current.filter((reaction) => reaction.id !== id));
-    }, 2200);
+    if (launchContext) {
+      void roomClientRef.current?.sendReaction(kind).catch(() => undefined);
+      return;
+    }
+    showReaction(basePlayers[0].id, kind, label);
   }
 
   function toggleMusic() {
@@ -548,7 +566,7 @@ export default function Home() {
             <div className={`cat-seat ${player.position}`} key={player.variant}>
               <div className="cat-reactions" aria-live="polite">
                 {reactions
-                  .filter((reaction) => reaction.playerIndex === index)
+                  .filter((reaction) => reaction.playerId === player.id)
                   .map((reaction) => (
                     <span className="thought-bubble" key={reaction.id}>
                       <RetroEmoji kind={reaction.kind} label={reaction.label} />
