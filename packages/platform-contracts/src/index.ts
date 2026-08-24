@@ -247,6 +247,8 @@ export interface DrawAndGuessStrokeEvent {
   playerId: string;
   points: number[];
   newStroke: boolean;
+  color: string;
+  isEraser: boolean;
 }
 
 export interface RoomSnapshot {
