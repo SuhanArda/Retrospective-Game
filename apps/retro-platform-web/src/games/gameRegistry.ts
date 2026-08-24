@@ -79,6 +79,17 @@ export const gameRegistry: readonly GameDefinition[] = [
     getLaunchUrl: (config) => config.rusRuletiUrl,
   },
   {
+    id: 'draw-and-guess',
+    name: 'Draw & Guess',
+    descriptionKey: 'games.draw-and-guess.description',
+    detailKey: 'games.draw-and-guess.detail',
+    stepsKey: 'games.draw-and-guess.steps',
+    status: 'available',
+    minPlayers: 3,
+    visualLabel: 'DG',
+    getLaunchUrl: (config) => config.drawAndGuessUrl,
+  },
+  {
     id: 'imposter',
     name: 'Imposter',
     descriptionKey: 'games.imposter.description',

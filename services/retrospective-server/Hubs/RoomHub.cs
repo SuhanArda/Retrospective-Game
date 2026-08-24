@@ -108,6 +108,52 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public Task<RoomSnapshot> CompleteFireQuestion(int expectedRevision) =>
         MutateRouletteState(rooms.CompleteFireQuestion(Context.ConnectionId, expectedRevision));
 
+    /// <summary>Return value only — SignalR delivers it to the caller alone, never broadcasts it.</summary>
+    public Task<string> RequestDrawAndGuessWord() =>
+        Task.FromResult(rooms.RequestDrawAndGuessWord(Context.ConnectionId));
+
+    public async Task<DrawAndGuessGuessResult> SubmitDrawAndGuessGuess(string text)
+    {
+        var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        var result = rooms.SubmitDrawAndGuessGuess(Context.ConnectionId, text);
+        await Clients.Group(GroupName(player.RoomCode)).DrawAndGuessGuessSubmitted(result);
+        if (result.Correct)
+        {
+            var room = rooms.Get(player.RoomCode)!;
+            await Broadcast(room);
+            await Clients.Group(GroupName(player.RoomCode)).DrawAndGuessStateChanged(room.DrawAndGuessState!);
+        }
+        return result;
+    }
+
+    public async Task<RoomSnapshot> NextDrawAndGuessRound()
+    {
+        var room = rooms.NextDrawAndGuessRound(Context.ConnectionId);
+        await Broadcast(room);
+        await Clients.Group(GroupName(room.Code)).DrawAndGuessStateChanged(room.DrawAndGuessState!);
+        return room;
+    }
+
+    /// <summary>
+    /// Pure relay — the server never inspects or stores stroke points, it
+    /// just forwards them to everyone else so the canvas stays live. Capped
+    /// well above what one pointermove batch needs, so a malformed client
+    /// can't flood the room with an unbounded payload.
+    /// </summary>
+    public async Task SendDrawAndGuessStroke(IReadOnlyList<double> points, bool newStroke)
+    {
+        if (points.Count > 64) return;
+        var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessStrokeReceived(
+            new DrawAndGuessStrokeEvent(player.PlayerId, points, newStroke));
+    }
+
+    public async Task ClearDrawAndGuessCanvas()
+    {
+        var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessCanvasCleared();
+    }
+
     public async Task LeaveRoom()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);

@@ -239,6 +239,16 @@ export const translations = {
           'Dolu çıkarsa hedef retro sorusunu cevaplar, namlu yeniden dolar ve oyun devam eder.',
         ],
       },
+      'draw-and-guess': {
+        description: 'Biri çizer, herkes tahmin eder — doğru bilen puan kazanır.',
+        detail:
+          'Her turda rastgele biri çizen olur, kalanlar tahmin sohbetine yazar. Doğru tahmin gizli kalır, sadece kaçıncı sırada bulunduğun görünür. Hızlı bilenler daha çok puan alır, çizen de kimse bilemezse boş döner.',
+        steps: [
+          'Sıra sendeyse verilen kelimeyi çiz, değilse sohbete tahminini yaz.',
+          'Doğru bilenler sırayla puan kazanır, kimse kelimeyi görmez.',
+          'Tur bitince yeni bir çizen ve yeni kelime gelir.',
+        ],
+      },
       platform: {
         name: 'Platform Oyunu',
         text: 'Engelleri aş. Düştüğünde oyun durur, karşına bir soru gelir.',
@@ -494,6 +504,16 @@ export const translations = {
           'On your turn, pick a teammate across the table and fire.',
           'An empty chamber passes the gun silently to whoever you just shot.',
           'A loaded chamber means they answer a question, then the cylinder reloads and play continues.',
+        ],
+      },
+      'draw-and-guess': {
+        description: 'One person draws, everyone else guesses — the fastest guessers score the most.',
+        detail:
+          'Each round picks a random drawer; everyone else types guesses in the chat. A correct guess never reveals the word — it just shows who got it and in what order. Faster guesses score more, and the drawer earns nothing if nobody figures it out.',
+        steps: [
+          "If it's your turn, draw the given word; otherwise, type your guess in the chat.",
+          'Correct guessers score in order — the word itself stays hidden.',
+          'When the round ends, a new drawer and a new word come up.',
         ],
       },
       platform: {

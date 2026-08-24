@@ -218,6 +218,37 @@ export interface RussianRouletteStateSnapshot {
   updatedAtUtc: number;
 }
 
+/**
+ * The secret word is deliberately absent — the server hands it out only to
+ * the current drawer, through a caller-only RPC reply, never through this
+ * broadcast shape. Scores accumulate across the whole game, not just the
+ * current round.
+ */
+export interface DrawAndGuessStateSnapshot {
+  drawerPlayerId: string;
+  roundNumber: number;
+  correctGuesserIds: string[];
+  scores: Record<string, number>;
+  revision: number;
+  updatedAtUtc: number;
+}
+
+/** A correct guess never carries the word — only who got it and in what order. */
+export interface DrawAndGuessGuessResult {
+  playerId: string;
+  displayName: string;
+  correct: boolean;
+  rank?: number;
+  text?: string;
+}
+
+/** A drawing stroke point batch, relayed as-is — the server neither inspects nor stores it. */
+export interface DrawAndGuessStrokeEvent {
+  playerId: string;
+  points: number[];
+  newStroke: boolean;
+}
+
 export interface RoomSnapshot {
   id: string;
   code: string;
@@ -235,6 +266,7 @@ export interface RoomSnapshot {
   currentGameSession?: GameSessionSnapshot;
   spinBottleState?: SpinBottleStateSnapshot;
   russianRouletteState?: RussianRouletteStateSnapshot;
+  drawAndGuessState?: DrawAndGuessStateSnapshot;
   /** Authoritative playerId -> gameId selections for the active room vote. */
   votes?: Record<string, string>;
   /** Unix milliseconds when the authoritative room vote opened. */

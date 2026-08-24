@@ -9,7 +9,7 @@ namespace Retrospective.Server.Rooms;
 public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "imposter"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -41,6 +41,27 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             "Sprint boyunca en çok söylediğin veya düşündüğün cümle neydi?",
         ],
     };
+    /// <summary>
+    /// Same list the standalone client prototype ships (games/draw-and-guess/src/data/words.ts)
+    /// — kept in sync by hand since a word only needs to match on this side
+    /// once a real room is involved; the client's own copy still backs its
+    /// offline demo mode.
+    /// </summary>
+    private static readonly string[] DrawAndGuessWords =
+    [
+        "kedi", "köpek", "aslan", "fil", "zürafa", "penguen", "kaplumbağa",
+        "tavşan", "kartal", "balina", "yılan", "maymun", "ayı", "kelebek",
+        "örümcek", "papağan", "at", "inek", "koyun", "tavuk",
+        "araba", "otobüs", "uçak", "tren", "bisiklet", "motosiklet", "gemi",
+        "helikopter", "kamyon", "traktör", "roket", "denizaltı", "scooter",
+        "ambulans", "itfaiye arabası",
+        "pizza", "hamburger", "elma", "muz", "karpuz", "dondurma", "pasta",
+        "makarna", "çikolata", "ekmek", "peynir", "yumurta", "kahve", "çay",
+        "patates kızartması", "sushi", "taco", "simit",
+    ];
+    private static readonly int[] DrawAndGuessRankPoints = [10, 7, 5];
+    private const int DrawAndGuessFallbackPoints = 3;
+    private const int DrawAndGuessDrawerPointsPerCorrectGuesser = 2;
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
     private readonly TimeSpan _disconnectGrace = TimeSpan.FromSeconds(options.Value.DisconnectGraceSeconds);
@@ -224,6 +245,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.LastSpinResult = null;
             room.SpinBottleState = null;
             room.RussianRouletteState = null;
+            room.DrawAndGuessState = null;
             room.Votes.Clear();
             room.VotingStartedAt = null;
             room.VotingEndsAt = null;
@@ -319,6 +341,78 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         {
             var state = AuthorizeQuestionAction(room, player, questionId, expectedRevision);
             AdvanceSpinState(state, "RESOLVED");
+            return Snapshot(room);
+        }
+    }
+
+    /// <summary>
+    /// The only place the secret word ever crosses the wire to a client —
+    /// and only to whoever is actually holding the pencil right now. A
+    /// SignalR method's return value goes to the caller alone, never
+    /// broadcast, which is exactly the delivery this needs.
+    /// </summary>
+    public string RequestDrawAndGuessWord(string connectionId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.DrawerPlayerId != player.Id) throw new RoomException("NOT_DRAWER");
+            return state.Word;
+        }
+    }
+
+    /// <summary>
+    /// The drawer never guesses their own word, and a guess only counts once
+    /// per player per round — trying again after a correct guess is a no-op
+    /// rather than an error, since a slow double-submit is more likely than
+    /// someone probing the rule.
+    /// </summary>
+    public DrawAndGuessGuessResult SubmitDrawAndGuessGuess(string connectionId, string text)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            if (room.Status != RoomPhase.Playing || room.CurrentGameSession?.GameId != "draw-and-guess")
+                throw new RoomException("INVALID_ROOM_STATE");
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.DrawerPlayerId == player.Id) throw new RoomException("DRAWER_CANNOT_GUESS");
+            var trimmed = text.Trim();
+            if (trimmed.Length == 0 || trimmed.Length > 60) throw new RoomException("INVALID_GUESS");
+            if (state.CorrectGuesserIds.Contains(player.Id))
+                return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed);
+
+            var turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+            var isCorrect = string.Equals(trimmed.ToLower(turkish), state.Word.ToLower(turkish), StringComparison.Ordinal);
+            if (!isCorrect) return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed);
+
+            var rank = state.CorrectGuesserIds.Count + 1;
+            var points = rank <= DrawAndGuessRankPoints.Length ? DrawAndGuessRankPoints[rank - 1] : DrawAndGuessFallbackPoints;
+            state.CorrectGuesserIds.Add(player.Id);
+            state.Scores[player.Id] = state.Scores.GetValueOrDefault(player.Id) + points;
+            state.Revision++;
+            state.UpdatedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            return new DrawAndGuessGuessResult(player.Id, player.DisplayName, true, rank, null);
+        }
+    }
+
+    /// <summary>
+    /// Host-only, like moving on in every other game here. The outgoing
+    /// drawer is paid for the round that just ended — nothing if nobody
+    /// guessed — before a fresh drawer and word replace the round entirely.
+    /// </summary>
+    public RoomSnapshot NextDrawAndGuessRound(string connectionId)
+    {
+        var (room, _) = Authorize(connectionId, hostRequired: true);
+        lock (room.Gate)
+        {
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.CorrectGuesserIds.Count > 0)
+            {
+                var bonus = state.CorrectGuesserIds.Count * DrawAndGuessDrawerPointsPerCorrectGuesser;
+                state.Scores[state.DrawerPlayerId] = state.Scores.GetValueOrDefault(state.DrawerPlayerId) + bonus;
+            }
+            room.DrawAndGuessState = CreateDrawAndGuessState(room, state.Scores);
             return Snapshot(room);
         }
     }
@@ -528,6 +622,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.LastSpinResult = null;
         room.SpinBottleState = null;
         room.RussianRouletteState = null;
+        room.DrawAndGuessState = null;
         room.Votes.Clear();
         room.CandidateGameIds = candidates;
         room.VotingStartedAt = now;
@@ -565,6 +660,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             Guid.NewGuid().ToString("N"), winner, Guid.NewGuid().ToString("N"),
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
         room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
+        room.DrawAndGuessState = winner == "draw-and-guess" ? CreateDrawAndGuessState(room, previousScores: null) : null;
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
         if (winner == "imposter") InitializeImposter(room, room.CurrentGameSession);
         return true;
@@ -586,6 +682,31 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         var chambers = Math.Clamp(players.Length + roomRandom.Next(-1, 4), MinChambers, MaxChambers);
         var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
         return new RussianRouletteState(holder.Id, chambers, roomRandom.Next(chambers), roomRandom.Next(chambers), "IDLE", 1, now);
+    }
+
+    /// <summary>
+    /// <paramref name="previousScores"/> carries the scoreboard across rounds
+    /// within the same game — only the very first round of a match starts
+    /// from an empty board. The word itself never leaves this method except
+    /// through <see cref="RequestDrawAndGuessWord"/>, which checks the caller
+    /// really is the drawer before handing it back.
+    /// </summary>
+    private DrawAndGuessState CreateDrawAndGuessState(GameRoom room, IReadOnlyDictionary<string, int>? previousScores)
+    {
+        var players = room.Players.Values.OrderBy(player => player.JoinedAt).ToArray();
+        var previousDrawerId = room.DrawAndGuessState?.DrawerPlayerId;
+        var eligibleDrawers = players.Length > 1 && previousDrawerId is not null
+            ? players.Where(player => player.Id != previousDrawerId).ToArray()
+            : players;
+        var drawer = eligibleDrawers[roomRandom.Next(eligibleDrawers.Length)];
+        var word = DrawAndGuessWords[roomRandom.Next(DrawAndGuessWords.Length)];
+        var roundNumber = (room.DrawAndGuessState?.RoundNumber ?? 0) + 1;
+        var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        var scores = previousScores is null
+            ? new Dictionary<string, int>(StringComparer.Ordinal)
+            : new Dictionary<string, int>(previousScores, StringComparer.Ordinal);
+        foreach (var player in players) scores.TryAdd(player.Id, 0);
+        return new DrawAndGuessState(drawer.Id, word, roundNumber, scores, 1, now);
     }
 
     private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
@@ -734,7 +855,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.RussianRouletteState.LastShooterPlayerId, room.RussianRouletteState.LastTargetPlayerId,
             room.RussianRouletteState.LastShotHit, room.RussianRouletteState.QuestionId,
             room.RussianRouletteState.QuestionText, room.RussianRouletteState.Revision,
-            room.RussianRouletteState.UpdatedAtUtc));
+            room.RussianRouletteState.UpdatedAtUtc),
+        room.DrawAndGuessState is null ? null : new DrawAndGuessStateSnapshot(
+            room.DrawAndGuessState.DrawerPlayerId, room.DrawAndGuessState.RoundNumber,
+            room.DrawAndGuessState.CorrectGuesserIds.ToArray(),
+            new Dictionary<string, int>(room.DrawAndGuessState.Scores),
+            room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc));
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -766,6 +892,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public SpinResult? LastSpinResult { get; set; }
         public SpinBottleState? SpinBottleState { get; set; }
         public RussianRouletteState? RussianRouletteState { get; set; }
+        public DrawAndGuessState? DrawAndGuessState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
     }
 
@@ -837,6 +964,26 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public string? QuestionId { get; set; }
         public string? QuestionText { get; set; }
         public string Status { get; set; } = status;
+        public int Revision { get; set; } = revision;
+        public long UpdatedAtUtc { get; set; } = updatedAtUtc;
+    }
+
+    /// <summary>
+    /// <see cref="Word"/> never leaves this class except through
+    /// <see cref="RequestDrawAndGuessWord"/>'s caller-only return value —
+    /// <see cref="Snapshot"/> deliberately does not map it. Scores persist
+    /// across rounds (a new instance replaces this one each round, carrying
+    /// the same dictionary forward) so the board reads as a running game,
+    /// not a per-round reset.
+    /// </summary>
+    private sealed class DrawAndGuessState(string drawerPlayerId, string word, int roundNumber,
+        Dictionary<string, int> scores, int revision, long updatedAtUtc)
+    {
+        public string DrawerPlayerId { get; } = drawerPlayerId;
+        public string Word { get; } = word;
+        public int RoundNumber { get; } = roundNumber;
+        public List<string> CorrectGuesserIds { get; } = [];
+        public Dictionary<string, int> Scores { get; } = scores;
         public int Revision { get; set; } = revision;
         public long UpdatedAtUtc { get; set; } = updatedAtUtc;
     }

@@ -17,6 +17,7 @@ const config = {
   retroRushUrl: '/games/retro-rush/',
   spinTheBottleUrl: '/games/spin-the-bottle/',
   rusRuletiUrl: '/games/rus-ruleti/',
+  drawAndGuessUrl: '/games/draw-and-guess/',
   imposterUrl: '/games/imposter/',
 };
 
