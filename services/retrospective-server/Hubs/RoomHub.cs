@@ -204,6 +204,24 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Clients.Group(GroupName(mutation.RoomCode)).RetroRushTargetQuestioned(mutation.Event);
     }
 
+    public Task<ImposterGameSnapshot> GetImposterSnapshot(string gameSessionId) =>
+        Task.FromResult(rooms.GetImposterSnapshot(Context.ConnectionId, gameSessionId));
+
+    public Task<ImposterGameSnapshot> ReadyImposterRole(string gameSessionId) =>
+        MutateImposter(rooms.ReadyImposterRole(Context.ConnectionId, gameSessionId));
+
+    public Task<ImposterGameSnapshot> CompleteImposterClue(string gameSessionId) =>
+        MutateImposter(rooms.CompleteImposterClue(Context.ConnectionId, gameSessionId));
+
+    public Task<ImposterGameSnapshot> CastImposterVote(CastImposterVoteRequest request) =>
+        MutateImposter(rooms.CastImposterVote(Context.ConnectionId, request));
+
+    public Task<ImposterGameSnapshot> StartNextImposterRound(string gameSessionId) =>
+        MutateImposter(rooms.StartNextImposterRound(Context.ConnectionId, gameSessionId));
+
+    public Task<ImposterGameSnapshot> SetImposterBackground(string gameSessionId, string backgroundId) =>
+        MutateImposter(rooms.SetImposterBackground(Context.ConnectionId, gameSessionId, backgroundId));
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (rooms.Disconnect(Context.ConnectionId) is { } room)
@@ -229,5 +247,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         await Broadcast(room);
         await Clients.Group(GroupName(room.Code)).RussianRouletteStateChanged(room.RussianRouletteState!);
         return room;
+    }
+
+    private async Task<ImposterGameSnapshot> MutateImposter(ImposterMutation mutation)
+    {
+        await Clients.Group(GroupName(mutation.RoomCode)).ImposterStateChanged(mutation.Event);
+        return rooms.GetImposterSnapshot(Context.ConnectionId, mutation.Event.GameSessionId);
     }
 }

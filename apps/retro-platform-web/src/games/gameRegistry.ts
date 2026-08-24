@@ -18,6 +18,8 @@ export interface GameDefinition {
    * string like "2+ players" could never support.
    */
   minPlayers: number;
+  /** Optional upper bound enforced by both the vote UI and room authority. */
+  maxPlayers?: number;
   visualLabel: string;
   /**
    * Real screenshot for the games page's showcase card, e.g. `/screenshots/retro-rush.jpg`.
@@ -75,6 +77,20 @@ export const gameRegistry: readonly GameDefinition[] = [
     screenshotUrl: '/screenshots/rus-ruleti.jpg',
     voteScreenshotUrl: '/screenshots/rus-ruleti-wide.jpg',
     getLaunchUrl: (config) => config.rusRuletiUrl,
+  },
+  {
+    id: 'imposter',
+    name: 'Imposter',
+    descriptionKey: 'games.imposter.description',
+    detailKey: 'games.imposter.detail',
+    stepsKey: 'games.imposter.steps',
+    status: 'available',
+    minPlayers: 3,
+    maxPlayers: 10,
+    visualLabel: 'IM',
+    screenshotUrl: '/screenshots/imposter-v2.png',
+    voteScreenshotUrl: '/screenshots/imposter-wide-v2.png',
+    getLaunchUrl: (config) => config.imposterUrl,
   },
 ];
 

@@ -22,6 +22,57 @@ export interface GameSessionSnapshot {
   state: 'ACTIVE' | 'ENDED';
 }
 
+export type ImposterPhase = 'ROLE_REVEAL' | 'CLUE_GIVING' | 'VOTING' | 'RESULTS';
+export type ImposterRole = 'IMPOSTER' | 'CREW';
+
+export interface ImposterPlayerSnapshot {
+  playerId: string;
+  displayName: string;
+  avatarIndex: number;
+  isConnected: boolean;
+  hasRevealedRole: boolean;
+  hasGivenClue: boolean;
+  hasVoted: boolean;
+}
+
+export interface ImposterResultSnapshot {
+  imposterPlayerId: string;
+  suspectedPlayerIds: readonly string[];
+  imposterCaught: boolean;
+}
+
+/**
+ * This payload is returned to one authenticated participant at a time. The
+ * server omits `secretWord` for the Imposter until results, so secret role
+ * data must never be copied into the shared RoomSnapshot.
+ */
+export interface ImposterGameSnapshot {
+  gameSessionId: string;
+  roundNumber: number;
+  revision: number;
+  phase: ImposterPhase;
+  backgroundId: string;
+  players: readonly ImposterPlayerSnapshot[];
+  currentSpeakerPlayerId?: string;
+  yourRole: ImposterRole;
+  secretWord?: string;
+  wordCategory?: string;
+  retroQuestion?: string;
+  hasVoted: boolean;
+  result?: ImposterResultSnapshot;
+}
+
+export interface ImposterStateChanged {
+  gameSessionId: string;
+  roundNumber: number;
+  revision: number;
+}
+
+export interface CastImposterVoteRequest {
+  gameSessionId: string;
+  targetPlayerId: string;
+}
+
 export type RetroRushPhase = 'COUNTDOWN' | 'RUNNING' | 'QUESTION' | 'RESTARTING';
 export type RetroRushMovementState =
   | 'ACTIVE'

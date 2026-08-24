@@ -29,9 +29,6 @@ export default defineConfig(({ command, mode }) => {
           ]
         : []),
     ],
-    ssr: {
-      target: "webworker",
-    },
     define: {
       "import.meta.env.VITE_API_URL": publicValue("VITE_API_URL", "http://localhost:5281"),
       "import.meta.env.VITE_PLATFORM_URL": publicValue("VITE_PLATFORM_URL", "http://localhost:5173"),
