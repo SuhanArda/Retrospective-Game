@@ -62,6 +62,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
   const bridgeRef = useRef<DrawAndGuessRoomBridge | null>(null);
   const roomClientRef = useRef<RoomRealtimeClient | null>(null);
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
+  const nextMessageIdRef = useRef(0);
 
   const localPlayerId = launchContext.playerId;
 
@@ -87,11 +88,12 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       }),
       bridge.onStateChanged((state) => setBridgeState(state)),
       bridge.onGuess((event) => {
+        const messageId = `online-guess-${nextMessageIdRef.current++}`;
         setMessages((msgs) => [
           ...msgs,
           event.correct
-            ? { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'correct', correctRank: event.rank }
-            : { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'guess', text: event.text },
+            ? { id: messageId, playerId: event.playerId, playerName: event.displayName, kind: 'correct', correctRank: event.rank }
+            : { id: messageId, playerId: event.playerId, playerName: event.displayName, kind: 'guess', text: event.text },
         ]);
       }),
       bridge.onStroke((event) => {
@@ -150,7 +152,10 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
   const scores = bridgeState?.scores ?? {};
 
   function handleGuessSubmit(text: string) {
-    void bridgeRef.current?.submitGuess(text).catch(() => undefined);
+    void bridgeRef.current?.submitGuess(text).then(
+      (result) => console.log('[DrawAndGuess] Guess submit result:', result),
+      (error: unknown) => console.error('[DrawAndGuess] Guess submit failed:', error),
+    );
   }
 
   function handleStroke(x: number, y: number, newStroke: boolean) {
