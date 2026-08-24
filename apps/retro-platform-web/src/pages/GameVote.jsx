@@ -149,6 +149,8 @@ function GameVote() {
             const count = tally[game.id] ?? 0
             const picked = myVote === game.id
             const hasPhoto = Boolean(game.voteScreenshotUrl)
+            const supportsRoomSize = room.players.length >= game.minPlayers &&
+              (!game.maxPlayers || room.players.length <= game.maxPlayers)
             return (
               <button
                 type="button"
@@ -158,7 +160,7 @@ function GameVote() {
                   backgroundImage: `linear-gradient(to bottom, rgba(20,14,30,0.2) 0%, rgba(20,14,30,0.55) 55%, rgba(20,14,30,0.92) 100%), url(${game.voteScreenshotUrl})`,
                 } : undefined}
                 onClick={() => handleVote(game.id)}
-                disabled={game.status !== 'available'}
+                disabled={game.status !== 'available' || !supportsRoomSize}
                 aria-pressed={picked}
               >
                 {!hasPhoto && <span className="game-card-icon" aria-hidden="true">{game.visualLabel}</span>}
@@ -170,6 +172,11 @@ function GameVote() {
                 </span>
                 {game.status !== 'available' && (
                   <span className="game-card-soon">{t('vote.comingSoon')}</span>
+                )}
+                {game.status === 'available' && !supportsRoomSize && (
+                  <span className="game-card-soon">
+                    {game.minPlayers}{game.maxPlayers ? `–${game.maxPlayers}` : '+'} {t('gamesPage.playersSuffix')}
+                  </span>
                 )}
                 {picked && <span className="game-card-badge">{t('vote.yourPick')}</span>}
               </button>

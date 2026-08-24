@@ -9,7 +9,7 @@ npm install
 npm run dev:all
 ```
 
-This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, Spin the Bottle on `5175`, and Rus Ruleti on `5176`. `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
+This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, Spin the Bottle on `5175`, Rus Ruleti on `5176`, and Imposter on `5177`. `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
 
 ## Authority and boundaries
 
@@ -24,6 +24,7 @@ Platform / games
        active game-session id / round id / seed
        Spin the Bottle result
        Rus Ruleti cylinder + shot outcome
+       Imposter roles + clue turn + secret votes
 ```
 
 - `services/retrospective-server` is the room and game-session authority. Its `ConcurrentDictionary` is intentionally process-local for this milestone.
@@ -48,6 +49,8 @@ For Spin the Bottle, any attached participant may request a spin. The server sel
 
 For Rus Ruleti, the server owns the cylinder: chamber count, bullet position, and pointer are held server-side and deliberately excluded from `RussianRouletteStateSnapshot`, so no client can read a hit before firing. Only the current holder may `RequestFire`, never at themselves; the pointer advances on every shot, so the bullet is guaranteed within one cylinder rather than re-rolled per shot. A miss silently passes the gun to whoever was shot at. A hit puts the room in `QUESTION_ACTIVE` with a server-chosen question, and only that target may `CompleteFireQuestion` — which reloads the cylinder in secret and hands them the gun. Nobody is ever eliminated. Standalone launch keeps the original local bot behavior.
 
+For Imposter, the server chooses the word and role, records each participant's ready state, advances the spoken-clue turn, and resolves secret votes. Shared room snapshots never contain the secret word or Imposter identity. Each authenticated participant fetches a private game snapshot; the Imposter receives no word until results. Reconnects reuse the room identity and fetch the latest authoritative round state.
+
 ## REST and SignalR surface
 
 | Surface | Purpose |
@@ -69,10 +72,11 @@ $env:AllowedOrigins__0='http://192.168.1.50:5173'
 $env:AllowedOrigins__1='http://192.168.1.50:5174'
 $env:AllowedOrigins__2='http://192.168.1.50:5175'
 $env:AllowedOrigins__3='http://192.168.1.50:5176'
+$env:AllowedOrigins__4='http://192.168.1.50:5177'
 dotnet run --project services/retrospective-server --urls http://0.0.0.0:5281
 ```
 
-Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5176` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
+Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5177` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
 
 ## Verification
 
@@ -80,8 +84,10 @@ Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform ga
 npm run test:server
 npm run test:web
 npm run test:retro-rush
+npm run test:imposter
 npm run build
 npm run lint
+npm run smoke:imposter
 ```
 
 For manual acceptance, use two independent browser profiles: create in one, join in the other, verify both participant lists, start each game as host, verify the shared spin target/angle, refresh during play and reconnect, verify guest host actions are refused, close the host past the grace period to observe host transfer, then use host Back and confirm both return to selection.

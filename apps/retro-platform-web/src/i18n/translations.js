@@ -195,6 +195,17 @@ export const translations = {
     },
     games: {
       // Oyun adları çevrilmez — özel isimler. Sadece açıklamalar çevrilir.
+      imposter: {
+        description:
+          'Gizli Imposter’ı bulmak için kelimeyi ele vermeden sırayla ipucu ver ve şüphelendiğin kişiye oy ver.',
+        detail:
+          'Bir oyuncu gizlice Imposter olur, diğerleri ortak kelimeyi bilir. Herkes kelimeyi açıkça söylemeden sırayla ipucu verir; ardından ekip şüphelendiği kişiye gizlice oy verir ve Imposter’ı bulmaya çalışır.',
+        steps: [
+          'Kartını aç ve rolünü yalnızca kendin gör.',
+          'Kelimeyi söylemeden sırayla sesli bir ipucu ver.',
+          'İpuçlarını değerlendir, şüphelendiğin kişiye oy ver ve Imposter’ı ortaya çıkar.',
+        ],
+      },
       'spin-the-bottle': {
         description:
           'Şişeyi döndür, seçilen takım arkadaşınla İş veya Eğlence kategorisinden bir retro sorusu yanıtla.',
@@ -451,6 +462,17 @@ export const translations = {
       backToLobby: 'Back to Lobby',
     },
     games: {
+      imposter: {
+        description:
+          'Give clues without revealing the word, then vote to uncover the hidden Imposter.',
+        detail:
+          'One player is secretly the Imposter while everyone else knows the shared word. Players take turns giving a spoken clue without saying the word, then vote in secret to identify the Imposter.',
+        steps: [
+          'Open your card and keep your role private.',
+          'Take turns giving a spoken clue without saying the shared word.',
+          'Compare the clues, vote for a suspect, and reveal the Imposter.',
+        ],
+      },
       'spin-the-bottle': {
         description:
           'Spin the bottle, pick a teammate, and answer a retrospective question from the Work or Fun category.',

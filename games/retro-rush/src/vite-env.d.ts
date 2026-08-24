@@ -9,6 +9,7 @@ interface Window {
       roundId: number;
       mapSeed: number | null;
       roundStartAtUnixMs: number;
+      roundSpawn: { x: number; y: number };
       gameplayLocked: boolean;
       matchState: string;
       cameraScrollX: number;

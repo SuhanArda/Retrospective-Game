@@ -325,9 +325,11 @@ public sealed partial class RoomManager
     {
         session.RoundId = "1";
         var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-        var state = new RetroRushState(session.Id, 1, session.Seed, now, now + RetroRushCountdownMs);
+        var state = new RetroRushState(
+            session.Id, 1, session.Seed, now, now + RetroRushCountdownMs,
+            RetroRushSpawnX, RetroRushSpawnY);
         foreach (var entry in room.Players.Values.OrderBy(player => player.JoinedAt).Select((player, slot) => (player, slot)))
-            state.Players[entry.player.Id] = NewPlayer(entry.player, entry.slot);
+            state.Players[entry.player.Id] = NewPlayer(entry.player, entry.slot, state.SpawnX, state.SpawnY);
         session.RetroRush = state;
     }
 
@@ -342,8 +344,8 @@ public sealed partial class RoomManager
         state.ActiveRockets.Clear();
         foreach (var player in state.Players.Values)
         {
-            player.X = RetroRushSpawnX;
-            player.Y = RetroRushSpawnY;
+            player.X = state.SpawnX;
+            player.Y = state.SpawnY;
             player.VelocityX = 0;
             player.VelocityY = 0;
             player.Facing = "right";
@@ -424,7 +426,8 @@ public sealed partial class RoomManager
 
     private static RetroRushGameSnapshot Snapshot(RetroRushState state) => new(
         state.GameSessionId, state.RoundId, state.MapSeed, state.Phase, state.PhaseStartedAtUtc,
-        state.RoundStartAtUnixMs, state.Players.Values.OrderBy(player => player.Slot)
+        state.RoundStartAtUnixMs, state.SpawnX, state.SpawnY,
+        state.Players.Values.OrderBy(player => player.Slot)
             .Select(player => Snapshot(player, state.RoundId)).ToArray(),
         state.CollectedPickupIds.Order(StringComparer.Ordinal).ToArray(),
         state.ActiveRockets.Values.Select(Snapshot).ToArray(), state.ActiveQuestion);
@@ -439,15 +442,16 @@ public sealed partial class RoomManager
         rocket.RocketId, rocket.OwnerPlayerId, rocket.TargetPlayerId, rocket.X, rocket.Y,
         rocket.SpawnedAtUtc, rocket.RoundId);
 
-    private static RetroRushPlayerState NewPlayer(RoomPlayer player, int slot) => new(
+    private static RetroRushPlayerState NewPlayer(RoomPlayer player, int slot, double spawnX, double spawnY) => new(
         player.Id, player.DisplayName, player.Color, slot, slot % 4, player.ConnectionId is not null,
-        RetroRushSpawnX, RetroRushSpawnY);
+        spawnX, spawnY);
 
     private sealed record RetroQuestionDefinition(
         string Id, string Category, string Type, string Prompt, IReadOnlyList<string>? Options, bool Required);
 
     private sealed class RetroRushState(
-        string gameSessionId, int roundId, int mapSeed, long phaseStartedAtUtc, long roundStartAtUnixMs)
+        string gameSessionId, int roundId, int mapSeed, long phaseStartedAtUtc, long roundStartAtUnixMs,
+        double spawnX, double spawnY)
     {
         public string GameSessionId { get; } = gameSessionId;
         public int RoundId { get; set; } = roundId;
@@ -455,6 +459,8 @@ public sealed partial class RoomManager
         public string Phase { get; set; } = "COUNTDOWN";
         public long PhaseStartedAtUtc { get; set; } = phaseStartedAtUtc;
         public long RoundStartAtUnixMs { get; set; } = roundStartAtUnixMs;
+        public double SpawnX { get; } = spawnX;
+        public double SpawnY { get; } = spawnY;
         public Dictionary<string, RetroRushPlayerState> Players { get; } = new(StringComparer.Ordinal);
         public HashSet<string> CollectedPickupIds { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, RetroRushRocketState> ActiveRockets { get; } = new(StringComparer.Ordinal);

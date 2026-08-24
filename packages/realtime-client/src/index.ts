@@ -11,6 +11,9 @@ import type {
   FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
+  ImposterGameSnapshot,
+  ImposterStateChanged,
+  CastImposterVoteRequest,
   RoomReactionEvent,
   RoomSnapshot,
   RussianRouletteStateSnapshot,
@@ -74,6 +77,7 @@ type EventMap = {
   retroRushPlayerEliminated: RetroRushPlayerEliminated;
   retroRushRoundStarted: RetroRushGameSnapshot;
   retroRushTargetQuestioned: RetroRushTargetQuestioned;
+  imposterStateChanged: ImposterStateChanged;
 };
 
 type Listener<K extends keyof EventMap> = (event: EventMap[K]) => void;
@@ -186,6 +190,24 @@ export class RoomRealtimeClient {
   requestRetroRushAskTarget(request: RequestRetroRushAskTargetRequest): Promise<void> {
     return this.invoke('RequestRetroRushAskTarget', request);
   }
+  getImposterSnapshot(gameSessionId: string): Promise<ImposterGameSnapshot> {
+    return this.invoke('GetImposterSnapshot', gameSessionId);
+  }
+  readyImposterRole(gameSessionId: string): Promise<ImposterGameSnapshot> {
+    return this.invoke('ReadyImposterRole', gameSessionId);
+  }
+  completeImposterClue(gameSessionId: string): Promise<ImposterGameSnapshot> {
+    return this.invoke('CompleteImposterClue', gameSessionId);
+  }
+  castImposterVote(request: CastImposterVoteRequest): Promise<ImposterGameSnapshot> {
+    return this.invoke('CastImposterVote', request);
+  }
+  startNextImposterRound(gameSessionId: string): Promise<ImposterGameSnapshot> {
+    return this.invoke('StartNextImposterRound', gameSessionId);
+  }
+  setImposterBackground(gameSessionId: string, backgroundId: string): Promise<ImposterGameSnapshot> {
+    return this.invoke('SetImposterBackground', gameSessionId, backgroundId);
+  }
 
   private async open(): Promise<RoomSnapshot> {
     this.emit('connectionChanged', 'connecting');
@@ -216,6 +238,7 @@ export class RoomRealtimeClient {
     connection.on('RetroRushPlayerEliminated', (elimination: RetroRushPlayerEliminated) => this.emit('retroRushPlayerEliminated', elimination));
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
     connection.on('RetroRushTargetQuestioned', (question: RetroRushTargetQuestioned) => this.emit('retroRushTargetQuestioned', question));
+    connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {
       this.emit('connectionChanged', 'connected');

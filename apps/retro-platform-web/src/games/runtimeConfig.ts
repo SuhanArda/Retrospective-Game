@@ -3,6 +3,7 @@ export interface GameRuntimeConfig {
   spinTheBottleUrl: string;
   rusRuletiUrl: string;
   drawAndGuessUrl: string;
+  imposterUrl: string;
 }
 
 export function parseGameRuntimeConfig(
@@ -19,6 +20,7 @@ export function parseGameRuntimeConfig(
     spinTheBottleUrl: requiredUrl('VITE_SPIN_THE_BOTTLE_URL'),
     rusRuletiUrl: requiredUrl('VITE_RUS_RULETI_URL'),
     drawAndGuessUrl: requiredUrl('VITE_DRAW_AND_GUESS_URL'),
+    imposterUrl: requiredUrl('VITE_IMPOSTER_URL'),
   };
 }
 

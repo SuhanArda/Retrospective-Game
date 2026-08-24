@@ -60,7 +60,7 @@ function Games() {
                   </div>
 
                   <p className="showcase-players">
-                    {game.minPlayers}+ {t('gamesPage.playersSuffix')}
+                    {game.minPlayers}{game.maxPlayers ? `–${game.maxPlayers}` : '+'} {t('gamesPage.playersSuffix')}
                   </p>
 
                   <p className="showcase-detail">{t(game.detailKey)}</p>
