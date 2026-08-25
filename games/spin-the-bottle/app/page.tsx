@@ -15,12 +15,27 @@ import {
 } from "./platformIntegration";
 import { loadRoomQuestions, type BotQuestion } from "./questionBotClient";
 import { adaptSpinTheBottleQuestion } from "./spinTheBottleQuestionAdapter";
+import { getCatSeatPosition, getSpinTargetAngle, MAX_SPIN_PLAYERS } from "./catLayout";
+
+const catVariants = [
+  "orange",
+  "black",
+  "gray",
+  "white",
+  "tuxedo",
+  "brown",
+  "cream",
+  "calico",
+  "siamese",
+  "silver-tabby",
+] as const;
+
+type CatVariant = (typeof catVariants)[number];
 
 type Player = {
   id: string;
   name: string;
-  variant: string;
-  position: string;
+  variant: CatVariant;
   mood: string;
 };
 
@@ -49,14 +64,14 @@ function getServerLaunchContext(): SpinTheBottleLaunchContext {
   return null;
 }
 
-const basePlayers: Player[] = [
-  { id: "local-1", name: "Oyuncu 1", variant: "orange", position: "pos-0", mood: "Hazır" },
-  { id: "local-2", name: "Oyuncu 2", variant: "black", position: "pos-1", mood: "Hazır" },
-  { id: "local-3", name: "Oyuncu 3", variant: "gray", position: "pos-2", mood: "Hazır" },
-  { id: "local-4", name: "Oyuncu 4", variant: "white", position: "pos-3", mood: "Hazır" },
-  { id: "local-5", name: "Oyuncu 5", variant: "tuxedo", position: "pos-4", mood: "Hazır" },
-  { id: "local-6", name: "Oyuncu 6", variant: "brown", position: "pos-5", mood: "Hazır" },
-];
+const playerTemplates: readonly Player[] = catVariants.map((variant, index) => ({
+  id: `local-${index + 1}`,
+  name: `Oyuncu ${index + 1}`,
+  variant,
+  mood: "Hazır",
+}));
+
+const defaultPlayers = playerTemplates.slice(0, 6);
 
 const questions = {
   İş: [
@@ -151,7 +166,7 @@ export default function Home() {
   );
   const roomCode = launchContext?.roomCode ?? "MEET-246";
   const [rotation, setRotation] = useState(0);
-  const [players, setPlayers] = useState(basePlayers);
+  const [players, setPlayers] = useState<Player[]>(() => [...defaultPlayers]);
   const [spinning, setSpinning] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [phase, setPhase] = useState<FlowPhase>("idle");
@@ -233,19 +248,14 @@ export default function Home() {
       ?.split(",")
       .map((name) => name.trim())
       .filter(Boolean)
-      .slice(0, basePlayers.length);
-    const playerNames = suppliedNames?.length
-      ? suppliedNames
-      : launchContext?.displayName
-        ? [launchContext.displayName]
-        : null;
-    if (!playerNames?.length) return;
+      .slice(0, MAX_SPIN_PLAYERS);
+    if (launchContext || !suppliedNames?.length) return;
 
     const frame = requestAnimationFrame(() => {
       setPlayers(
-        basePlayers.map((player, index) => ({
+        playerTemplates.slice(0, suppliedNames.length).map((player, index) => ({
           ...player,
-          name: playerNames[index] || player.name,
+          name: suppliedNames[index],
         })),
       );
     });
@@ -259,8 +269,8 @@ export default function Home() {
     roomClientRef.current = client;
     const disposeRoom = client.on("roomSnapshot", (room) => {
       if (room.currentGameSession?.gameSessionId !== launchContext.gameSessionId) return;
-      setPlayers(room.players.slice(0, basePlayers.length).map((participant, index) => ({
-        ...basePlayers[index],
+      setPlayers(room.players.slice(0, MAX_SPIN_PLAYERS).map((participant, index) => ({
+        ...playerTemplates[index],
         id: participant.id,
         name: participant.displayName,
         mood: participant.isConnected ? "Hazır" : "Bağlantı bekleniyor",
@@ -391,7 +401,7 @@ export default function Home() {
     setCategory(null);
     setQuestion("");
     setSpinning(true);
-    setRotation(rotation - normalized + extraTurns * 360 + next * 60);
+    setRotation(rotation - normalized + extraTurns * 360 + getSpinTargetAngle(next, players.length));
     timerRef.current = setTimeout(() => {
       setSelected(next);
       setSpinning(false);
@@ -439,7 +449,8 @@ export default function Home() {
       void roomClientRef.current?.sendReaction(kind).catch(() => undefined);
       return;
     }
-    showReaction(basePlayers[0].id, kind, label);
+    const localPlayer = players[0];
+    if (localPlayer) showReaction(localPlayer.id, kind, label);
   }
 
   function toggleMusic() {
@@ -503,18 +514,18 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="room" aria-label="Altı kedinin oynadığı şişe çevirmece alanı">
+      <section className="room" aria-label={`${players.length} kedinin oynadığı şişe çevirmece alanı`}>
         <div className="room-vignette" />
-        <aside className="player-panel panel">
+        <aside className="player-panel panel" data-player-density={players.length >= 9 ? "compact" : "normal"}>
           <div className="panel-title">
             <span>OYUNCULAR</span>
-            <b>{players.length} / 6</b>
+            <b>{players.length} / {MAX_SPIN_PLAYERS}</b>
           </div>
           <div className="player-list">
             {players.map((player, index) => (
               <div
                 className={`player-row ${selected === index ? "active" : ""}`}
-                key={player.variant}
+                key={player.id}
               >
                 <RetroEmoji kind="happy" label="ᴗ" />
                 <div>
@@ -561,25 +572,38 @@ export default function Home() {
           )}
         </aside>
 
-        <div className="cat-circle">
-          {players.map((player, index) => (
-            <div className={`cat-seat ${player.position}`} key={player.variant}>
-              <div className="cat-reactions" aria-live="polite">
-                {reactions
-                  .filter((reaction) => reaction.playerId === player.id)
-                  .map((reaction) => (
-                    <span className="thought-bubble" key={reaction.id}>
-                      <RetroEmoji kind={reaction.kind} label={reaction.label} />
-                    </span>
-                  ))}
+        <div className="cat-circle" data-player-density={players.length >= 8 ? "compact" : players.length >= 7 ? "cozy" : "normal"}>
+          {players.map((player, index) => {
+            const seat = getCatSeatPosition(index, players.length);
+            return (
+              <div
+                className="cat-seat"
+                key={player.id}
+                style={{
+                  "--seat-x": `${seat.xPercent}%`,
+                  "--seat-y": `${seat.yPercent}%`,
+                  "--seat-z": seat.zIndex,
+                } as React.CSSProperties}
+              >
+                <div className="cat-seat-content">
+                  <div className="cat-reactions" aria-live="polite">
+                    {reactions
+                      .filter((reaction) => reaction.playerId === player.id)
+                      .map((reaction) => (
+                        <span className="thought-bubble" key={reaction.id}>
+                          <RetroEmoji kind={reaction.kind} label={reaction.label} />
+                        </span>
+                      ))}
+                  </div>
+                  <div className="name-tag">
+                    {player.name}
+                    {selected === index && <span>★</span>}
+                  </div>
+                  <PixelCat player={player} selected={selected === index} index={index} />
+                </div>
               </div>
-              <div className="name-tag">
-                {player.name}
-                {selected === index && <span>★</span>}
-              </div>
-              <PixelCat player={player} selected={selected === index} index={index} />
-            </div>
-          ))}
+            );
+          })}
 
           <button
             className="bottle-zone"

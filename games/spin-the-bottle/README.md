@@ -1,6 +1,6 @@
 # Spin the Bottle
 
-Online toplantılar için cozy, retro piksel görünümlü şişe çevirmece oyunu.
+Online toplantılar için 1–10 oyunculu, cozy ve retro piksel görünümlü şişe çevirmece oyunu.
 
 ## Projeyi açma
 
@@ -32,12 +32,13 @@ Yerel geliştirme sırasında yapılan değişiklikler kaydedildiği anda taray�
 Oyuncu isimleri bağlantıdaki `players` parametresiyle gönderilebilir:
 
 ```text
-http://localhost:3000/?players=Ayşe,Mert,Deniz,Ece,Can,Selin
+http://localhost:3000/?players=Ayşe,Mert,Deniz,Ece,Can,Selin,Arda,İpek,Ozan,Lale
 ```
 
-İsim gönderilmezse oyun `Oyuncu 1`–`Oyuncu 6` etiketlerini kullanır. İsimlerde
-boşluk veya Türkçe karakter varsa ana site bağlantıyı `encodeURIComponent` ile
-oluşturmalıdır.
+Bağlantıda 1–10 isim gönderilebilir; kedi çemberi oyuncu sayısına göre otomatik
+olarak eşit aralıklı bir elipse dönüşür. İsim gönderilmezse yerel demo altı
+oyuncuyla açılır. İsimlerde boşluk veya Türkçe karakter varsa ana site bağlantıyı
+`encodeURIComponent` ile oluşturmalıdır.
 
 ## ZIP dosyasını aktarma
 
