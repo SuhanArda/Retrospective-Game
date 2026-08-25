@@ -88,6 +88,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 3,
     visualLabel: 'DG',
+    screenshotUrl: '/screenshots/draw-and-guess.jpg',
+    voteScreenshotUrl: '/screenshots/draw-and-guess-wide.jpg',
     getLaunchUrl: (config) => config.drawAndGuessUrl,
   },
   {

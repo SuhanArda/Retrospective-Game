@@ -13,9 +13,7 @@ describe('game registry', () => {
     expect(findGame('rus-ruleti')?.name).toBe('Rus Ruleti');
     expect(findGame('draw-and-guess')?.name).toBe('Draw & Guess');
     expect(findGame('imposter')?.name).toBe('Imposter');
-    // draw-and-guess has no showcase art yet — see gameRegistry.ts.
-    const shouldHaveScreenshots = available.filter((game) => game.id !== 'draw-and-guess');
-    expect(shouldHaveScreenshots.every((game) => game.screenshotUrl && game.voteScreenshotUrl)).toBe(true);
+    expect(available.every((game) => game.screenshotUrl && game.voteScreenshotUrl)).toBe(true);
   });
 
   it('returns null for unknown games', () => expect(findGame('not-a-game')).toBeNull());
