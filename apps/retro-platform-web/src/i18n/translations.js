@@ -269,7 +269,7 @@ export const translations = {
   },
   en: {
     header: {
-      brand: 'Game Platform',
+      brand: 'Retro Platform',
       openMenu: 'Open menu',
       closeMenu: 'Close menu',
     },
@@ -294,7 +294,7 @@ export const translations = {
       submit: 'Continue',
     },
     home: {
-      brand: 'Game Platform',
+      brand: 'Retro Platform',
       titlePrefix: 'Meetings just got ',
       titleHighlight: 'fun',
       subtitle:
