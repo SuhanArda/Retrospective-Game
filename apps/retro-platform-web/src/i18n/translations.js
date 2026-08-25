@@ -1,7 +1,7 @@
 export const translations = {
   tr: {
     header: {
-      brand: 'Oyun Platformu',
+      brand: 'Retro Platformu',
       openMenu: 'Menüyü aç',
       closeMenu: 'Menüyü kapat',
     },
@@ -26,7 +26,7 @@ export const translations = {
       submit: 'Devam Et',
     },
     home: {
-      brand: 'Oyun Platformu',
+      brand: 'Retro Platformu',
       titlePrefix: 'Toplantılar artık ',
       titleHighlight: 'eğlenceli',
       subtitle:
