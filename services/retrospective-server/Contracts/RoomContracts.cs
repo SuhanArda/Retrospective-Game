@@ -109,7 +109,9 @@ public sealed record DrawAndGuessWordReveal(string Word, int Revision);
 public sealed record DrawAndGuessStrokeEvent(
     string PlayerId,
     IReadOnlyList<double> Points,
-    bool NewStroke);
+    bool NewStroke,
+    string Color,
+    bool IsEraser);
 
 public sealed record FireResult(
     string GameSessionId,

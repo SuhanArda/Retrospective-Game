@@ -112,6 +112,37 @@
   gap: 10px;
 }
 
+.drawing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.color-palette {
+  display: flex;
+  gap: 6px;
+}
+
+.color-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #e4dbf2;
+  padding: 0;
+  cursor: pointer;
+}
+
+.color-swatch.is-selected {
+  border-color: #5b2a86;
+  box-shadow: 0 0 0 2px rgba(91, 42, 134, 0.2);
+}
+
+.tool-button.is-selected {
+  background: #5b2a86;
+  border-color: #5b2a86;
+  color: #ffffff;
+}
+
 .drawing-canvas {
   background: #ffffff;
   border: 2px solid #e4dbf2;

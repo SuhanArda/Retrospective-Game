@@ -21,6 +21,8 @@ export interface StrokeEvent {
   playerId: string;
   points: readonly number[];
   newStroke: boolean;
+  color: string;
+  isEraser: boolean;
 }
 
 /**
@@ -60,6 +62,8 @@ export class DrawAndGuessRoomBridge {
           playerId: stroke.playerId,
           points: stroke.points,
           newStroke: stroke.newStroke,
+          color: stroke.color,
+          isEraser: stroke.isEraser,
         }));
       }),
       client.on('drawAndGuessCanvasCleared', () => {
@@ -120,8 +124,8 @@ export class DrawAndGuessRoomBridge {
   }
 
   /** Fire-and-forget — the server relays it to everyone else without acknowledging back. */
-  sendStroke(points: readonly number[], newStroke: boolean): void {
-    void this.client.sendDrawAndGuessStroke(points, newStroke).catch(() => undefined);
+  sendStroke(points: readonly number[], newStroke: boolean, color: string, isEraser: boolean): void {
+    void this.client.sendDrawAndGuessStroke(points, newStroke, color, isEraser).catch(() => undefined);
   }
 
   clearCanvas(): void {

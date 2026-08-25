@@ -11,16 +11,23 @@ export const WORD_LIST: Readonly<Record<WordCategory, readonly string[]>> = {
     'kedi', 'köpek', 'aslan', 'fil', 'zürafa', 'penguen', 'kaplumbağa',
     'tavşan', 'kartal', 'balina', 'yılan', 'maymun', 'ayı', 'kelebek',
     'örümcek', 'papağan', 'at', 'inek', 'koyun', 'tavuk',
+    'kurbağa', 'timsah', 'zebra', 'panda', 'koala', 'kanguru', 'yunus',
+    'ahtapot', 'karınca', 'arı', 'sincap', 'geyik', 'kurt', 'tilki',
+    'baykuş', 'flamingo', 'deve', 'fare', 'keçi', 'ördek',
   ],
   araclar: [
     'araba', 'otobüs', 'uçak', 'tren', 'bisiklet', 'motosiklet', 'gemi',
     'helikopter', 'kamyon', 'traktör', 'roket', 'denizaltı', 'scooter',
     'ambulans', 'itfaiye arabası',
+    'taksi', 'vapur', 'yelkenli', 'uçurtma', 'paraşüt', 'teleferik',
+    'forklift', 'çöp kamyonu', 'polis arabası', 'kaykay',
   ],
   yemekler: [
     'pizza', 'hamburger', 'elma', 'muz', 'karpuz', 'dondurma', 'pasta',
     'makarna', 'çikolata', 'ekmek', 'peynir', 'yumurta', 'kahve', 'çay',
     'patates kızartması', 'sushi', 'taco', 'simit',
+    'portakal', 'çilek', 'üzüm', 'ananas', 'limon', 'salatalık', 'domates',
+    'havuç', 'bal', 'süt', 'çorba', 'kek',
   ],
 };
 
