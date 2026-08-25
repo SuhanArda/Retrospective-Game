@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Spin the Bottle",
-  description: "Online toplantılar için altı kedili retro şişe çevirmece oyunu.",
+  description: "Online toplantılar için 1–10 kedili retro şişe çevirmece oyunu.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 

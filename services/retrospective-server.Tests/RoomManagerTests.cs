@@ -403,6 +403,66 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void SpinTargetsAllTenPlayersWithEqualAngularSpacing()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T12:00:00Z"));
+        var manager = CreateManager(clock, new FixedRoomRandom(9));
+        var host = manager.Create(CreateRequest("Host"));
+        var guests = Enumerable.Range(2, 9)
+            .Select(index => manager.Join(host.RoomCode, new JoinRoomRequest($"Player {index}", "#123456")))
+            .ToArray();
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.BeginGameSelection("host", ["spin-the-bottle"]);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        manager.AdvanceTimedStates();
+
+        var spin = manager.Spin("host");
+
+        Assert.Equal(9, spin.TargetIndex);
+        Assert.Equal(guests[^1].PlayerId, spin.TargetPlayerId);
+        Assert.Equal(4 * 360 + 324, spin.FinalAngle);
+    }
+
+    [Fact]
+    public void SpinSupportsAHostOnlyRoom()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T12:00:00Z"));
+        var manager = CreateManager(clock, new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Host"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.BeginGameSelection("host", ["spin-the-bottle"]);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        manager.AdvanceTimedStates();
+
+        var spin = manager.Spin("host");
+
+        Assert.Equal(0, spin.TargetIndex);
+        Assert.Equal(host.PlayerId, spin.TargetPlayerId);
+        Assert.Equal(4 * 360, spin.FinalAngle);
+    }
+
+    [Fact]
+    public void SpinRoundsEqualSpacingForSevenPlayers()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T12:00:00Z"));
+        var manager = CreateManager(clock, new FixedRoomRandom(6));
+        var host = manager.Create(CreateRequest("Host"));
+        var guests = Enumerable.Range(2, 6)
+            .Select(index => manager.Join(host.RoomCode, new JoinRoomRequest($"Player {index}", "#123456")))
+            .ToArray();
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.BeginGameSelection("host", ["spin-the-bottle"]);
+        clock.Advance(TimeSpan.FromSeconds(30));
+        manager.AdvanceTimedStates();
+
+        var spin = manager.Spin("host");
+
+        Assert.Equal(6, spin.TargetIndex);
+        Assert.Equal(guests[^1].PlayerId, spin.TargetPlayerId);
+        Assert.Equal(4 * 360 + 309, spin.FinalAngle);
+    }
+
+    [Fact]
     public void RouletteStateIsAuthoritativeHiddenAndGatedByHolderAndTarget()
     {
         // FixedRoomRandom(0) always answers 0, so chamber pointer and bullet

@@ -19,4 +19,10 @@ describe('game registry', () => {
   });
 
   it('returns null for unknown games', () => expect(findGame('not-a-game')).toBeNull());
+
+  it('allows Spin the Bottle rooms with one to ten players', () => {
+    const spin = findGame('spin-the-bottle');
+    expect(spin?.minPlayers).toBe(1);
+    expect(spin?.maxPlayers).toBe(10);
+  });
 });
