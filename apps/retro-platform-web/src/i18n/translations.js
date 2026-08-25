@@ -184,7 +184,7 @@ export const translations = {
     },
     starting: {
       brand: 'Oyun Seçildi',
-      launching: 'Retro Rush bu sekmede başlatılıyor...',
+      launching: 'Oyun bu sekmede başlatılıyor...',
       launchError: 'Oyun başlatılamadı. Yapılandırmayı kontrol edip tekrar dene.',
       invalidSession: 'Oyun oturumu bulunamadı',
       backToGames: 'Oyunlara Dön',
