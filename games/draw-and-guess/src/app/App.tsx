@@ -99,7 +99,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       bridge.onStroke((event) => {
         const [x, y] = event.points;
         if (x === undefined || y === undefined) return;
-        canvasRef.current?.applyRemotePoint(x, y, event.newStroke);
+        canvasRef.current?.applyRemotePoint(x, y, event.newStroke, event.color, event.isEraser);
       }),
       bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
     ];
@@ -158,8 +158,8 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
     );
   }
 
-  function handleStroke(x: number, y: number, newStroke: boolean) {
-    bridgeRef.current?.sendStroke([x, y], newStroke);
+  function handleStroke(x: number, y: number, newStroke: boolean, color: string, isEraser: boolean) {
+    bridgeRef.current?.sendStroke([x, y], newStroke, color, isEraser);
   }
 
   function handleClear() {

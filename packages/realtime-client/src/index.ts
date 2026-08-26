@@ -154,8 +154,8 @@ export class RoomRealtimeClient {
     return this.invoke('SubmitDrawAndGuessGuess', text);
   }
   nextDrawAndGuessRound(): Promise<RoomSnapshot> { return this.invoke('NextDrawAndGuessRound'); }
-  sendDrawAndGuessStroke(points: readonly number[], newStroke: boolean): Promise<void> {
-    return this.invoke('SendDrawAndGuessStroke', points, newStroke);
+  sendDrawAndGuessStroke(points: readonly number[], newStroke: boolean, color: string, isEraser: boolean): Promise<void> {
+    return this.invoke('SendDrawAndGuessStroke', points, newStroke, color, isEraser);
   }
   clearDrawAndGuessCanvas(): Promise<void> { return this.invoke('ClearDrawAndGuessCanvas'); }
   leaveRoom(): Promise<void> { return this.invoke('LeaveRoom'); }

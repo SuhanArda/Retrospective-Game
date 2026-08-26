@@ -13,6 +13,7 @@
     "start:node": "node .output/server/index.mjs",
     "check:cloudflare": "vinext-cloudflare deploy --dry-run",
     "deploy:cloudflare": "vinext-cloudflare deploy",
+    "test": "vitest run",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

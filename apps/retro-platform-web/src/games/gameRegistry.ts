@@ -59,7 +59,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     detailKey: 'games.spin-the-bottle.detail',
     stepsKey: 'games.spin-the-bottle.steps',
     status: 'available',
-    minPlayers: 2,
+    minPlayers: 1,
+    maxPlayers: 10,
     visualLabel: 'SB',
     screenshotUrl: '/screenshots/spin-the-bottle.jpg',
     voteScreenshotUrl: '/screenshots/spin-the-bottle-wide.jpg',
@@ -87,6 +88,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 3,
     visualLabel: 'DG',
+    screenshotUrl: '/screenshots/draw-and-guess.jpg',
+    voteScreenshotUrl: '/screenshots/draw-and-guess-wide.jpg',
     getLaunchUrl: (config) => config.drawAndGuessUrl,
   },
   {

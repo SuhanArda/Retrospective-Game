@@ -140,12 +140,12 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     /// well above what one pointermove batch needs, so a malformed client
     /// can't flood the room with an unbounded payload.
     /// </summary>
-    public async Task SendDrawAndGuessStroke(IReadOnlyList<double> points, bool newStroke)
+    public async Task SendDrawAndGuessStroke(IReadOnlyList<double> points, bool newStroke, string color, bool isEraser)
     {
-        if (points.Count > 64) return;
+        if (points.Count > 64 || color.Length > 16) return;
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessStrokeReceived(
-            new DrawAndGuessStrokeEvent(player.PlayerId, points, newStroke));
+            new DrawAndGuessStrokeEvent(player.PlayerId, points, newStroke, color, isEraser));
     }
 
     public async Task ClearDrawAndGuessCanvas()
