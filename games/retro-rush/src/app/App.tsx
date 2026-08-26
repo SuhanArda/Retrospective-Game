@@ -105,9 +105,9 @@ export function App() {
     {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
     {shouldShowStandaloneStart(Boolean(launchContext), snapshot.state) && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}
     {snapshot.state === 'COUNTDOWN' && <div className="phase-note" data-testid="round-start-countdown" role="status" aria-live="polite">PARKUR BAŞLIYOR · {snapshot.countdown}</div>}
+    {snapshot.state === 'FINISHED' && <ResultsScreen snapshot={snapshot} />}
     {question && <QuestionOverlay question={question} mode="verbal" onAnswered={() => bridge.emit('questionAnswered', { questionId: question.id })} />}
     {targeting && <TargetSelection players={snapshot.players} protectedTargets={targeting} onSelect={(playerId) => { bridge.emit('targetSelected', { playerId }); setTargeting(null); }} onCancel={() => setTargeting(null)} />}
-    {snapshot.state === 'FINISHED' && <ResultsScreen snapshot={snapshot} answers={[]} onRestart={() => { setQuestion(null); bridge.emit('restartMatch', undefined); }} />}
     {announcement && <div className="toast" role="status" aria-live="polite">{announcement}</div>}
   </main>;
 }

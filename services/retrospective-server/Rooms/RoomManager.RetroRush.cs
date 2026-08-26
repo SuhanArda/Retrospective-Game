@@ -17,6 +17,8 @@ public sealed partial class RoomManager
     private const int RetroRushRocketHitStunMs = 250;
     private const int RetroRushRocketLifetimeMs = 5_000;
     private const int RetroRushCountdownMs = 3_500;
+    private const int RetroRushRoundDurationMs = 180_000;
+    private const int RetroRushResultsDurationMs = 4_000;
     private const int RetroRushSpeedCooldownMs = 15_000;
     private const int RetroRushAskCooldownMs = 30_000;
     private const int RetroRushQuestionPoolSize = 20;
@@ -89,7 +91,7 @@ public sealed partial class RoomManager
                 throw new RoomException("INVALID_PLAYER_SNAPSHOT");
             var player = RequirePlayer(state, authenticated.Id);
             if (request.Sequence <= player.Sequence) return new(room.Code, null);
-            if (state.Phase != "RUNNING" || !IsActive(player)) throw new RoomException("PLAYER_NOT_ACTIVE");
+            if (state.Phase != "RUNNING" || !IsActive(player)) return new(room.Code, null);
             player.X = request.X;
             player.Y = request.Y;
             player.VelocityX = request.VelocityX;
@@ -234,18 +236,19 @@ public sealed partial class RoomManager
             var player = RequirePlayer(state, authenticated.Id);
             if (!IsActive(player)) return new(room.Code, null);
             if (state.Phase != "RUNNING") throw new RoomException("INVALID_RETRO_RUSH_PHASE");
-            player.MovementState = "ANSWERING_QUESTION";
+            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            var order = state.EliminationOrder.Count + 1;
+            player.EliminatedAtUnixMs = now;
+            player.EliminationOrder = order;
+            player.MovementState = "FINISHED";
+            player.StateBeforeDisconnect = "FINISHED";
             player.AnimationState = "eliminated";
-            var definition = RetroRushQuestions[(state.RoundId - 1) % RetroRushQuestions.Length];
-            var questionIndex = (state.RoundId - 1) % RetroRushQuestionPoolSize;
-            var question = new RetroRushQuestionSnapshot(
-                definition.Id, questionIndex, player.PlayerId, "ACTIVE", state.RoundId, definition.Category, definition.Type,
-                definition.Prompt, definition.Options, definition.Required);
-            state.ActiveQuestion = question;
-            state.Phase = "QUESTION";
-            state.PhaseStartedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-            state.ActiveRockets.Clear();
-            return new(room.Code, new RetroRushPlayerEliminated(state.RoundId, player.PlayerId, question));
+            player.VelocityX = 0;
+            player.VelocityY = 0;
+            state.EliminationOrder.Add(new(player.PlayerId, now, order));
+            if (state.Players.Values.Count(candidate => candidate.EliminatedAtUnixMs is null) <= 1)
+                FinishRetroRushRound(state, now);
+            return new(room.Code, new RetroRushPlayerEliminated(state.RoundId, player.PlayerId, now, order));
         }
     }
 
@@ -339,7 +342,12 @@ public sealed partial class RoomManager
         state.Phase = "COUNTDOWN";
         state.PhaseStartedAtUtc = now;
         state.RoundStartAtUnixMs = now + RetroRushCountdownMs;
+        state.RoundDeadlineAtUnixMs = state.RoundStartAtUnixMs + RetroRushRoundDurationMs;
+        state.ResultsEndAtUnixMs = 0;
         state.ActiveQuestion = null;
+        state.EliminationOrder.Clear();
+        state.Ranking.Clear();
+        state.LastPlacePlayerId = null;
         state.CollectedPickupIds.Clear();
         state.ActiveRockets.Clear();
         foreach (var player in state.Players.Values)
@@ -359,6 +367,8 @@ public sealed partial class RoomManager
             player.SpeedReadyAtUtc = 0;
             player.AskReadyAtUtc = 0;
             player.AskSelectionExpiresAtUtc = 0;
+            player.EliminatedAtUnixMs = null;
+            player.EliminationOrder = null;
             player.OwnedAbilityIds.Clear();
         }
     }
@@ -391,11 +401,77 @@ public sealed partial class RoomManager
         {
             state.Phase = "RUNNING";
             state.PhaseStartedAtUtc = state.RoundStartAtUnixMs;
+            state.Revision++;
         }
+        if (state.Phase == "RUNNING" && now >= state.RoundDeadlineAtUnixMs)
+            FinishRetroRushRound(state, now);
+        if (state.Phase == "RESULTS" && now >= state.ResultsEndAtUnixMs)
+            OpenRetroRushQuestion(state, state.ResultsEndAtUnixMs);
         foreach (var rocketId in state.ActiveRockets.Values
                      .Where(rocket => now - rocket.SpawnedAtUtc >= RetroRushRocketLifetimeMs)
                      .Select(rocket => rocket.RocketId).ToArray())
             state.ActiveRockets.Remove(rocketId);
+    }
+
+    private RetroRushGameSnapshot? AdvanceRetroRushTimedState(GameRoom room)
+    {
+        var state = room.CurrentGameSession?.RetroRush;
+        if (state is null) return null;
+        RefreshRetroRushPhase(state);
+        if (state.BroadcastRevision == state.Revision) return null;
+        state.BroadcastRevision = state.Revision;
+        return Snapshot(state);
+    }
+
+    private void FinishRetroRushRound(RetroRushState state, long finishedAtUnixMs)
+    {
+        if (state.Phase != "RUNNING") return;
+        var ordered = state.Players.Values
+            .Where(player => player.EliminatedAtUnixMs is null)
+            .OrderByDescending(player => player.X)
+            .ThenBy(player => player.PlayerId, StringComparer.Ordinal)
+            .Concat(state.Players.Values
+                .Where(player => player.EliminatedAtUnixMs is not null)
+                .OrderByDescending(player => player.EliminationOrder)
+                .ThenBy(player => player.PlayerId, StringComparer.Ordinal))
+            .ToArray();
+        state.Ranking.Clear();
+        state.Ranking.AddRange(ordered.Select((player, index) => new RetroRushRankingEntry(
+            player.PlayerId, player.DisplayName, player.Color, index + 1, player.X,
+            player.EliminatedAtUnixMs is not null, player.EliminatedAtUnixMs)));
+        state.LastPlacePlayerId = state.Ranking.LastOrDefault()?.PlayerId;
+        state.Phase = "RESULTS";
+        state.PhaseStartedAtUtc = finishedAtUnixMs;
+        state.ResultsEndAtUnixMs = finishedAtUnixMs + RetroRushResultsDurationMs;
+        state.ActiveQuestion = null;
+        state.ActiveRockets.Clear();
+        foreach (var player in state.Players.Values)
+        {
+            player.VelocityX = 0;
+            player.VelocityY = 0;
+            player.MovementState = "FINISHED";
+            player.StateBeforeDisconnect = "FINISHED";
+            if (player.EliminatedAtUnixMs is null) player.AnimationState = "idle";
+        }
+        state.Revision++;
+    }
+
+    private void OpenRetroRushQuestion(RetroRushState state, long openedAtUnixMs)
+    {
+        if (state.Phase != "RESULTS" || state.LastPlacePlayerId is null) return;
+        var definition = RetroRushQuestions[(state.RoundId - 1) % RetroRushQuestions.Length];
+        var questionIndex = (state.RoundId - 1) % RetroRushQuestionPoolSize;
+        state.ActiveQuestion = new RetroRushQuestionSnapshot(
+            definition.Id, questionIndex, state.LastPlacePlayerId, "ACTIVE", state.RoundId,
+            definition.Category, definition.Type, definition.Prompt, definition.Options, definition.Required);
+        state.Phase = "QUESTION";
+        state.PhaseStartedAtUtc = openedAtUnixMs;
+        if (state.Players.TryGetValue(state.LastPlacePlayerId, out var owner))
+        {
+            owner.MovementState = "ANSWERING_QUESTION";
+            owner.StateBeforeDisconnect = "ANSWERING_QUESTION";
+        }
+        state.Revision++;
     }
 
     private void RequireRetroRushRoundStarted(RetroRushState state)
@@ -426,11 +502,12 @@ public sealed partial class RoomManager
 
     private static RetroRushGameSnapshot Snapshot(RetroRushState state) => new(
         state.GameSessionId, state.RoundId, state.MapSeed, state.Phase, state.PhaseStartedAtUtc,
-        state.RoundStartAtUnixMs, state.SpawnX, state.SpawnY,
+        state.RoundStartAtUnixMs, state.RoundDeadlineAtUnixMs, state.ResultsEndAtUnixMs, state.SpawnX, state.SpawnY,
         state.Players.Values.OrderBy(player => player.Slot)
             .Select(player => Snapshot(player, state.RoundId)).ToArray(),
         state.CollectedPickupIds.Order(StringComparer.Ordinal).ToArray(),
-        state.ActiveRockets.Values.Select(Snapshot).ToArray(), state.ActiveQuestion);
+        state.ActiveRockets.Values.Select(Snapshot).ToArray(), state.EliminationOrder.ToArray(),
+        state.Ranking.ToArray(), state.LastPlacePlayerId, state.ActiveQuestion);
 
     private static RetroRushPlayerSnapshot Snapshot(RetroRushPlayerState player, int roundId) => new(
         player.PlayerId, player.DisplayName, player.Color, player.Slot, player.SkinIndex, player.Connected,
@@ -459,12 +536,19 @@ public sealed partial class RoomManager
         public string Phase { get; set; } = "COUNTDOWN";
         public long PhaseStartedAtUtc { get; set; } = phaseStartedAtUtc;
         public long RoundStartAtUnixMs { get; set; } = roundStartAtUnixMs;
+        public long RoundDeadlineAtUnixMs { get; set; } = roundStartAtUnixMs + RetroRushRoundDurationMs;
+        public long ResultsEndAtUnixMs { get; set; }
         public double SpawnX { get; } = spawnX;
         public double SpawnY { get; } = spawnY;
         public Dictionary<string, RetroRushPlayerState> Players { get; } = new(StringComparer.Ordinal);
         public HashSet<string> CollectedPickupIds { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, RetroRushRocketState> ActiveRockets { get; } = new(StringComparer.Ordinal);
+        public List<RetroRushEliminationSnapshot> EliminationOrder { get; } = [];
+        public List<RetroRushRankingEntry> Ranking { get; } = [];
+        public string? LastPlacePlayerId { get; set; }
         public RetroRushQuestionSnapshot? ActiveQuestion { get; set; }
+        public long Revision { get; set; }
+        public long BroadcastRevision { get; set; }
     }
 
     private sealed class RetroRushPlayerState(
@@ -493,6 +577,8 @@ public sealed partial class RoomManager
         public long SpeedReadyAtUtc { get; set; }
         public long AskReadyAtUtc { get; set; }
         public long AskSelectionExpiresAtUtc { get; set; }
+        public long? EliminatedAtUnixMs { get; set; }
+        public int? EliminationOrder { get; set; }
         public HashSet<string> OwnedAbilityIds { get; } = new(StringComparer.Ordinal);
     }
 
