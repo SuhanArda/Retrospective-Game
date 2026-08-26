@@ -5,6 +5,9 @@ import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCa
 import { PlayerList } from '../components/PlayerList';
 import { GuessChat, type ChatMessage } from '../components/GuessChat';
 import { ScoreBoard } from '../components/ScoreBoard';
+import { ScorePop } from '../components/ScorePop';
+import { RoundTimer } from '../components/RoundTimer';
+import { WordHint } from '../components/WordHint';
 import { pickRandomWord } from '../data/words';
 import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
 import type { DisplayPlayer } from '../domain/displayPlayer';
@@ -59,6 +62,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
   const [word, setWord] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [announcement, setAnnouncement] = useState('');
+  const [scorePop, setScorePop] = useState<{ id: string; points: number } | null>(null);
   const bridgeRef = useRef<DrawAndGuessRoomBridge | null>(null);
   const roomClientRef = useRef<RoomRealtimeClient | null>(null);
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
@@ -93,6 +97,9 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
             ? { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'correct', correctRank: event.rank }
             : { id: crypto.randomUUID(), playerId: event.playerId, playerName: event.displayName, kind: 'guess', text: event.text },
         ]);
+        if (event.correct && event.playerId === localPlayerId && event.points !== undefined) {
+          setScorePop({ id: crypto.randomUUID(), points: event.points });
+        }
       }),
       bridge.onStroke((event) => {
         const [x, y] = event.points;
@@ -100,6 +107,9 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
         canvasRef.current?.applyRemotePoint(x, y, event.newStroke, event.color, event.isEraser);
       }),
       bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
+      bridge.onWordReveal((revealedWord) => {
+        setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
+      }),
     ];
 
     void client.connect().then(
@@ -165,6 +175,10 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
     bridgeRef.current?.nextRound();
   }
 
+  function handleRequestLetterHint() {
+    bridgeRef.current?.requestLetterHint();
+  }
+
   function returnToGames() {
     void roomClientRef.current?.returnToGameSelection().catch(() => setAnnouncement('Oda bağlantısı kurulamadı'));
   }
@@ -182,6 +196,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 
   return (
     <div className="page">
+      {scorePop && <ScorePop key={scorePop.id} points={scorePop.points} onDone={() => setScorePop(null)} />}
       <div className="page-content">
         <div className="brand">Draw & Guess</div>
         <h1 className="title">Çiz, tahmin et</h1>
@@ -193,13 +208,29 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
             <PlayerList players={displayPlayers} drawerId={bridgeState?.drawerId ?? ''} />
 
             <div className="word-panel">
+              {bridgeState && <RoundTimer endsAtUtc={bridgeState.roundEndsAtUtc} />}
               {isYouDrawing ? (
                 <>
                   <span className="word-panel-label">Çizilecek kelime</span>
                   <span className="word-panel-word">{word ?? '…'}</span>
+                  {bridgeState && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={handleRequestLetterHint}
+                      disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
+                    >
+                      Harf Ver
+                    </button>
+                  )}
                 </>
               ) : (
-                <span className="word-panel-hidden">{drawerName} çiziyor — tahmin etmeye çalış</span>
+                <>
+                  <span className="word-panel-hidden">{drawerName} çiziyor — tahmin etmeye çalış</span>
+                  {bridgeState && (
+                    <WordHint wordLength={bridgeState.wordLength} revealedLetters={bridgeState.revealedLetters} />
+                  )}
+                </>
               )}
               {roomIsHost && (
                 <button type="button" className="btn-secondary" onClick={handleNextRound}>
@@ -214,6 +245,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
                 <GuessChat
                   messages={messages}
                   canGuess={!isYouDrawing && !youAlreadyCorrect}
+                  alreadyCorrect={youAlreadyCorrect}
                   onSubmit={handleGuessSubmit}
                 />
                 <ScoreBoard players={displayPlayers} scores={scores} />
@@ -246,6 +278,7 @@ function StandaloneGame() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [scorePop, setScorePop] = useState<{ id: string; points: number } | null>(null);
 
   const isYouDrawing = drawerId === YOU_ID;
   const youAlreadyCorrect = correctGuesserIds.includes(YOU_ID);
@@ -266,6 +299,7 @@ function StandaloneGame() {
       setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'correct', correctRank: rank }]);
       const points = GUESS_RANK_POINTS[rank - 1] ?? GUESS_FALLBACK_POINTS;
       setScores((current) => ({ ...current, [playerId]: (current[playerId] ?? 0) + points }));
+      if (playerId === YOU_ID) setScorePop({ id: crypto.randomUUID(), points });
     } else {
       setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId, playerName, kind: 'guess', text: rawText }]);
     }
@@ -314,6 +348,7 @@ function StandaloneGame() {
 
   return (
     <div className="page">
+      {scorePop && <ScorePop key={scorePop.id} points={scorePop.points} onDone={() => setScorePop(null)} />}
       <div className="page-content">
         <div className="brand">Draw & Guess</div>
         <h1 className="title">Çiz, tahmin et</h1>
@@ -340,6 +375,7 @@ function StandaloneGame() {
             <GuessChat
               messages={messages}
               canGuess={!isYouDrawing && !youAlreadyCorrect}
+              alreadyCorrect={youAlreadyCorrect}
               onSubmit={(text) => submitGuess(YOU_ID, 'Sen', text)}
             />
             <ScoreBoard players={MOCK_PLAYERS} scores={scores} />

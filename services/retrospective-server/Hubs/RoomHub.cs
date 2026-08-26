@@ -134,6 +134,14 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         return room;
     }
 
+    /// <summary>Only the drawer succeeds here — see RoomManager for why there's no per-player limit.</summary>
+    public async Task<RoomSnapshot> RequestDrawAndGuessLetterHint()
+    {
+        var room = rooms.RequestDrawAndGuessLetterHint(Context.ConnectionId);
+        await Clients.Group(GroupName(room.Code)).DrawAndGuessStateChanged(room.DrawAndGuessState!);
+        return room;
+    }
+
     /// <summary>
     /// Pure relay — the server never inspects or stores stroke points, it
     /// just forwards them to everyone else so the canvas stays live. Capped

@@ -84,7 +84,10 @@ public sealed record DrawAndGuessStateSnapshot(
     IReadOnlyList<string> CorrectGuesserIds,
     IReadOnlyDictionary<string, int> Scores,
     int Revision,
-    long UpdatedAtUtc);
+    long UpdatedAtUtc,
+    long RoundEndsAtUtc,
+    int WordLength,
+    IReadOnlyDictionary<int, char> RevealedLetters);
 
 /// <summary>
 /// A correct guess never carries the word back to the room — only who got
@@ -96,7 +99,8 @@ public sealed record DrawAndGuessGuessResult(
     string DisplayName,
     bool Correct,
     int? Rank,
-    string? Text);
+    string? Text,
+    int? Points);
 
 public sealed record DrawAndGuessWordReveal(string Word, int Revision);
 

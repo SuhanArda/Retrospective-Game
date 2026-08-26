@@ -91,6 +91,34 @@
   font-weight: 700;
 }
 
+.word-hint {
+  display: flex;
+  gap: 4px;
+}
+
+.word-hint-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  border-bottom: 2px solid #c9bde0;
+  color: #5b2a86;
+}
+
+.round-timer {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #5b2a86;
+  background: #f5f4f8;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
 .btn-secondary {
   border: 1px solid #e4dbf2;
   background: #f5f4f8;
@@ -277,6 +305,12 @@
   font-weight: 600;
 }
 
+.guess-chat-message.is-reveal {
+  color: #6f6480;
+  font-style: italic;
+  text-align: center;
+}
+
 .guess-chat-form {
   display: flex;
   gap: 8px;
@@ -296,4 +330,24 @@
 .guess-chat-input:disabled {
   background: #f5f4f8;
   color: #a79bbf;
+}
+
+.score-pop {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  font-size: 72px;
+  font-weight: 800;
+  color: #237a34;
+  text-shadow: 0 4px 18px rgba(35, 122, 52, 0.35);
+  pointer-events: none;
+  z-index: 50;
+  animation: score-pop 1.6s ease-out forwards;
+}
+
+@keyframes score-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
+  30% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.35); }
 }
