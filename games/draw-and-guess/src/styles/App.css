@@ -107,6 +107,18 @@
   text-transform: uppercase;
   border-bottom: 2px solid #c9bde0;
   color: #5b2a86;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.word-hint-letter.is-latest {
+  color: #e63946;
+  border-color: #e63946;
+  animation: word-hint-pop 0.4s ease-out;
+}
+
+@keyframes word-hint-pop {
+  0% { transform: scale(1.8); }
+  100% { transform: scale(1); }
 }
 
 .round-timer {
