@@ -110,7 +110,8 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       }),
       bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
       bridge.onWordReveal((revealedWord) => {
-        setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
+        const messageId = `online-reveal-${nextMessageIdRef.current++}`;
+        setMessages((msgs) => [...msgs, { id: messageId, playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
       }),
     ];
 
@@ -219,25 +220,36 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
                   <span className="word-panel-label">Çizilecek kelime</span>
                   <span className="word-panel-word">{word ?? '…'}</span>
                   {bridgeState && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleRequestLetterHint}
-                      disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
-                    >
-                      Harf Ver
-                    </button>
+                    <>
+                      <WordHint
+                        wordLength={bridgeState.wordLength}
+                        revealedLetters={bridgeState.revealedLetters}
+                        lastRevealedIndex={bridgeState.lastRevealedIndex}
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={handleRequestLetterHint}
+                        disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
+                      >
+                        Harf Ver
+                      </button>
+                    </>
                   )}
                 </>
               ) : (
                 <>
                   <span className="word-panel-hidden">{drawerName} çiziyor — tahmin etmeye çalış</span>
                   {bridgeState && (
-                    <WordHint wordLength={bridgeState.wordLength} revealedLetters={bridgeState.revealedLetters} />
+                    <WordHint
+                      wordLength={bridgeState.wordLength}
+                      revealedLetters={bridgeState.revealedLetters}
+                      lastRevealedIndex={bridgeState.lastRevealedIndex}
+                    />
                   )}
                 </>
               )}
-              {roomIsHost && (
+              {isYouDrawing && (
                 <button type="button" className="btn-secondary" onClick={handleNextRound}>
                   Sıradaki tur
                 </button>

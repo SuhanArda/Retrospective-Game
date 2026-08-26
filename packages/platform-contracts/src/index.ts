@@ -256,6 +256,8 @@ export interface DrawAndGuessStateSnapshot {
   wordLength: number;
   /** index → açılan harf. Sadece çizen açabilir, hepsi herkese aynı görünür. */
   revealedLetters: Record<number, string>;
+  /** En son açılan harfin index'i — "Harf Ver"in az önce bir şey yaptığını vurgulamak için. */
+  lastRevealedIndex?: number;
 }
 
 /** Süre dolunca (kimse ya da herkes bilemediyse) sohbete düşen kelime açıklaması. */

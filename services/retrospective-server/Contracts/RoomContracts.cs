@@ -87,7 +87,8 @@ public sealed record DrawAndGuessStateSnapshot(
     long UpdatedAtUtc,
     long RoundEndsAtUtc,
     int WordLength,
-    IReadOnlyDictionary<int, char> RevealedLetters);
+    IReadOnlyDictionary<int, char> RevealedLetters,
+    int? LastRevealedIndex);
 
 /// <summary>
 /// A correct guess never carries the word back to the room — only who got

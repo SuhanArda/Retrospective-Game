@@ -393,7 +393,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 .Where(index => !state.RevealedLetterIndices.Contains(index))
                 .ToArray();
             if (hiddenIndices.Length == 0) throw new RoomException("ALL_LETTERS_REVEALED");
-            state.RevealedLetterIndices.Add(hiddenIndices[roomRandom.Next(hiddenIndices.Length)]);
+            var revealedIndex = hiddenIndices[roomRandom.Next(hiddenIndices.Length)];
+            state.RevealedLetterIndices.Add(revealedIndex);
+            state.LastRevealedIndex = revealedIndex;
             state.Revision++;
             state.UpdatedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             return Snapshot(room);
@@ -445,17 +447,18 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     /// <summary>
-    /// Host-only, like moving on in every other game here — a manual
-    /// "skip ahead" for when the drawer's picture is hopeless. Everyone
-    /// guessing correctly instead advances automatically, via
-    /// <see cref="AdvanceTimedStates"/>.
+    /// Drawer-only, not host — it's their round to give up on, not whoever
+    /// happens to be running the room. A manual "skip ahead" for when the
+    /// picture is hopeless; everyone guessing correctly instead advances
+    /// automatically, via <see cref="AdvanceTimedStates"/>.
     /// </summary>
     public RoomSnapshot NextDrawAndGuessRound(string connectionId)
     {
-        var (room, _) = Authorize(connectionId, hostRequired: true);
+        var (room, player) = Authorize(connectionId, hostRequired: false);
         lock (room.Gate)
         {
-            _ = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.DrawerPlayerId != player.Id) throw new RoomException("NOT_DRAWER");
             AdvanceDrawAndGuessRound(room);
             return Snapshot(room);
         }
@@ -678,21 +681,17 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     drawAndGuessStateChanged = true;
                 }
 
-                if (gameStarted ||
-              spinStateChanged ||
-              retroRushSnapshot is not null ||
-              drawAndGuessStateChanged ||
-              drawAndGuessWordReveal is not null)
-          {
-              changes.Add(new TimedRoomChange(
-                  RoomCode: room.Code,
-                  Snapshot: Snapshot(room),
-                  GameStarted: gameStarted,
-                  SpinStateChanged: spinStateChanged,
-                  RetroRushSnapshot: retroRushSnapshot,
-                  DrawAndGuessStateChanged: drawAndGuessStateChanged,
-                  DrawAndGuessWordReveal: drawAndGuessWordReveal));
-          } 
+                if (gameStarted || spinStateChanged || retroRushSnapshot is not null || drawAndGuessStateChanged)
+                {
+                    changes.Add(new TimedRoomChange(
+                        RoomCode: room.Code,
+                        Snapshot: Snapshot(room),
+                        GameStarted: gameStarted,
+                        SpinStateChanged: spinStateChanged,
+                        DrawAndGuessStateChanged: drawAndGuessStateChanged,
+                        DrawAndGuessWordReveal: drawAndGuessWordReveal,
+                        RetroRushSnapshot: retroRushSnapshot));
+                }
             }
         }
         return changes;
@@ -961,7 +960,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             new Dictionary<string, int>(room.DrawAndGuessState.Scores),
             room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc,
             room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
-            room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index])));
+            room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index]),
+            room.DrawAndGuessState.LastRevealedIndex));
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -1095,6 +1095,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public long RoundEndsAtUtc { get; } = roundEndsAtUtc;
         /// <summary>Çizenin açtığı harflerin kelime içindeki index'leri — her yeni turda sıfırdan başlar.</summary>
         public HashSet<int> RevealedLetterIndices { get; } = [];
+        /// <summary>En son açılan harfin index'i — client bunu vurgulayıp "Harf Ver"in bir şey yaptığını hissettirir.</summary>
+        public int? LastRevealedIndex { get; set; }
     }
 }
 
@@ -1106,9 +1108,9 @@ public sealed record TimedRoomChange(
     RoomSnapshot Snapshot,
     bool GameStarted,
     bool SpinStateChanged,
-    RetroRushGameSnapshot? RetroRushSnapshot,
     bool DrawAndGuessStateChanged,
-    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
+    RetroRushGameSnapshot? RetroRushSnapshot = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

@@ -10,6 +10,7 @@ export interface DrawAndGuessBridgeState {
   roundEndsAtUtc: number;
   wordLength: number;
   revealedLetters: Readonly<Record<number, string>>;
+  lastRevealedIndex?: number;
 }
 
 export interface GuessEvent {
@@ -91,6 +92,7 @@ export class DrawAndGuessRoomBridge {
       roundEndsAtUtc: state.roundEndsAtUtc,
       wordLength: state.wordLength,
       revealedLetters: state.revealedLetters,
+      lastRevealedIndex: state.lastRevealedIndex,
     };
     this.stateListeners.forEach((listener) => listener(this.latestState!));
   }
