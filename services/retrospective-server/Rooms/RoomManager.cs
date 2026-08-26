@@ -73,6 +73,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private const int DrawAndGuessDrawerPointsPerCorrectGuesser = 2;
     /// <summary>Herkes bildikten sonra sıradaki tura otomatik geçmeden önceki bekleme — son tahmini/kutlamayı görsünler diye.</summary>
     private const int DrawAndGuessRoundCompleteDelayMs = 2500;
+    /// <summary>Her turun süresi — kimse (ya da herkes) bilemezse bu süre dolunca kelime açıklanıp tur ilerler.</summary>
+    private const int DrawAndGuessRoundDurationMs = 30_000;
     private const int SpinBottleMaxPlayers = 10;
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
@@ -375,6 +377,30 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     /// <summary>
+    /// Only the drawer can give a letter away — as many times as they like,
+    /// no per-player limit, since it's their own picture that isn't landing.
+    /// Everyone sees the same opened letters; which index opens is random
+    /// among the ones still hidden.
+    /// </summary>
+    public RoomSnapshot RequestDrawAndGuessLetterHint(string connectionId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.DrawerPlayerId != player.Id) throw new RoomException("NOT_DRAWER");
+            var hiddenIndices = Enumerable.Range(0, state.Word.Length)
+                .Where(index => !state.RevealedLetterIndices.Contains(index))
+                .ToArray();
+            if (hiddenIndices.Length == 0) throw new RoomException("ALL_LETTERS_REVEALED");
+            state.RevealedLetterIndices.Add(hiddenIndices[roomRandom.Next(hiddenIndices.Length)]);
+            state.Revision++;
+            state.UpdatedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            return Snapshot(room);
+        }
+    }
+
+    /// <summary>
     /// The drawer never guesses their own word, and a guess only counts once
     /// per player per round — trying again after a correct guess is a no-op
     /// rather than an error, since a slow double-submit is more likely than
@@ -392,11 +418,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             var trimmed = text.Trim();
             if (trimmed.Length == 0 || trimmed.Length > 60) throw new RoomException("INVALID_GUESS");
             if (state.CorrectGuesserIds.Contains(player.Id))
-                return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed);
+                return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed, null);
 
             var turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
             var isCorrect = string.Equals(trimmed.ToLower(turkish), state.Word.ToLower(turkish), StringComparison.Ordinal);
-            if (!isCorrect) return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed);
+            if (!isCorrect) return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed, null);
 
             var rank = state.CorrectGuesserIds.Count + 1;
             var points = rank <= DrawAndGuessRankPoints.Length ? DrawAndGuessRankPoints[rank - 1] : DrawAndGuessFallbackPoints;
@@ -414,7 +440,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             if (otherPlayerIds.Length > 0 && otherPlayerIds.All(state.CorrectGuesserIds.Contains))
                 state.RoundCompletedAtUtc = now + DrawAndGuessRoundCompleteDelayMs;
 
-            return new DrawAndGuessGuessResult(player.Id, player.DisplayName, true, rank, null);
+            return new DrawAndGuessGuessResult(player.Id, player.DisplayName, true, rank, null, points);
         }
     }
 
@@ -634,6 +660,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     }
                 }
 
+                DrawAndGuessWordReveal? drawAndGuessWordReveal = null;
                 if (room.Status == RoomPhase.Playing)
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
 
@@ -641,12 +668,20 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, retroRushSnapshot));
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
+                    // Herkes zaten bildi — kelimeyi ayrıca açıklamaya gerek yok.
+                    AdvanceDrawAndGuessRound(room);
+                    drawAndGuessStateChanged = true;
+                }
+                else if (room.DrawAndGuessState is { } timedOutState && timedOutState.RoundEndsAtUtc <= now)
+                {
+                    // Süre doldu, kimse (ya da herkes) bilemedi — kelimeyi açıklayıp devam et.
+                    drawAndGuessWordReveal = new DrawAndGuessWordReveal(timedOutState.Word, timedOutState.Revision);
                     AdvanceDrawAndGuessRound(room);
                     drawAndGuessStateChanged = true;
                 }
 
                 if (gameStarted || spinStateChanged || drawAndGuessStateChanged)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, drawAndGuessStateChanged));
+                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, drawAndGuessStateChanged, drawAndGuessWordReveal));
             }
         }
         return changes;
@@ -757,7 +792,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             ? new Dictionary<string, int>(StringComparer.Ordinal)
             : new Dictionary<string, int>(previousScores, StringComparer.Ordinal);
         foreach (var player in players) scores.TryAdd(player.Id, 0);
-        return new DrawAndGuessState(drawer.Id, word, roundNumber, scores, recentWords, 1, now);
+        return new DrawAndGuessState(drawer.Id, word, roundNumber, scores, recentWords, now + DrawAndGuessRoundDurationMs, 1, now);
     }
 
     private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
@@ -913,7 +948,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.DrawAndGuessState.DrawerPlayerId, room.DrawAndGuessState.RoundNumber,
             room.DrawAndGuessState.CorrectGuesserIds.ToArray(),
             new Dictionary<string, int>(room.DrawAndGuessState.Scores),
-            room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc));
+            room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc,
+            room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
+            room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index])));
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -1030,7 +1067,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// not a per-round reset.
     /// </summary>
     private sealed class DrawAndGuessState(string drawerPlayerId, string word, int roundNumber,
-        Dictionary<string, int> scores, List<string> recentWords, int revision, long updatedAtUtc)
+        Dictionary<string, int> scores, List<string> recentWords, long roundEndsAtUtc, int revision, long updatedAtUtc)
     {
         public string DrawerPlayerId { get; } = drawerPlayerId;
         public string Word { get; } = word;
@@ -1043,19 +1080,17 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public long UpdatedAtUtc { get; set; } = updatedAtUtc;
         /// <summary>Çizen hariç herkes bildiğinde dolar; <see cref="AdvanceTimedStates"/> bu zaman geçince turu otomatik ilerletir.</summary>
         public long? RoundCompletedAtUtc { get; set; }
+        /// <summary>Sabit tur süresi doluş anı — kimse (ya da herkes) bilemezse <see cref="AdvanceTimedStates"/> kelimeyi açıklayıp turu ilerletir.</summary>
+        public long RoundEndsAtUtc { get; } = roundEndsAtUtc;
+        /// <summary>Çizenin açtığı harflerin kelime içindeki index'leri — her yeni turda sıfırdan başlar.</summary>
+        public HashSet<int> RevealedLetterIndices { get; } = [];
     }
 }
 
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
 public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
-public sealed record TimedRoomChange(
-    string RoomCode,
-    RoomSnapshot Snapshot,
-    bool GameStarted,
-    bool SpinStateChanged,
-    RetroRushGameSnapshot? RetroRushSnapshot);
-public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged, bool DrawAndGuessStateChanged);
+public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged, bool DrawAndGuessStateChanged, DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

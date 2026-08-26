@@ -7,6 +7,9 @@ export interface DrawAndGuessBridgeState {
   correctGuesserIds: readonly string[];
   scores: Readonly<Record<string, number>>;
   revision: number;
+  roundEndsAtUtc: number;
+  wordLength: number;
+  revealedLetters: Readonly<Record<number, string>>;
 }
 
 export interface GuessEvent {
@@ -15,6 +18,7 @@ export interface GuessEvent {
   correct: boolean;
   rank?: number;
   text?: string;
+  points?: number;
 }
 
 export interface StrokeEvent {
@@ -37,6 +41,7 @@ export class DrawAndGuessRoomBridge {
   private readonly guessListeners = new Set<(event: GuessEvent) => void>();
   private readonly strokeListeners = new Set<(event: StrokeEvent) => void>();
   private readonly clearListeners = new Set<() => void>();
+  private readonly wordRevealListeners = new Set<(word: string) => void>();
   private readonly disposers: Array<() => void> = [];
   private latestState: DrawAndGuessBridgeState | null = null;
 
@@ -55,6 +60,7 @@ export class DrawAndGuessRoomBridge {
           correct: result.correct,
           rank: result.rank,
           text: result.text,
+          points: result.points,
         }));
       }),
       client.on('drawAndGuessStrokeReceived', (stroke) => {
@@ -69,6 +75,9 @@ export class DrawAndGuessRoomBridge {
       client.on('drawAndGuessCanvasCleared', () => {
         this.clearListeners.forEach((listener) => listener());
       }),
+      client.on('drawAndGuessWordRevealed', (reveal) => {
+        this.wordRevealListeners.forEach((listener) => listener(reveal.word));
+      }),
     );
   }
 
@@ -79,6 +88,9 @@ export class DrawAndGuessRoomBridge {
       correctGuesserIds: state.correctGuesserIds,
       scores: state.scores,
       revision: state.revision,
+      roundEndsAtUtc: state.roundEndsAtUtc,
+      wordLength: state.wordLength,
+      revealedLetters: state.revealedLetters,
     };
     this.stateListeners.forEach((listener) => listener(this.latestState!));
   }
@@ -104,6 +116,12 @@ export class DrawAndGuessRoomBridge {
     return () => this.clearListeners.delete(listener);
   }
 
+  /** Süre dolup kelime açıklandığında (kimse ya da herkes bilemedi) tetiklenir. */
+  onWordReveal(listener: (word: string) => void): () => void {
+    this.wordRevealListeners.add(listener);
+    return () => this.wordRevealListeners.delete(listener);
+  }
+
   /** Only resolves for the caller — the server never broadcasts a word. */
   requestWord(): Promise<string> {
     return this.client.requestDrawAndGuessWord();
@@ -116,11 +134,17 @@ export class DrawAndGuessRoomBridge {
       correct: result.correct,
       rank: result.rank,
       text: result.text,
+      points: result.points,
     }));
   }
 
   nextRound(): void {
     void this.client.nextDrawAndGuessRound().catch(() => undefined);
+  }
+
+  /** Sadece çizen için işe yarar — sunucu başkasından gelen isteği reddeder. */
+  requestLetterHint(): void {
+    void this.client.requestDrawAndGuessLetterHint().catch(() => undefined);
   }
 
   /** Fire-and-forget — the server relays it to everyone else without acknowledging back. */
