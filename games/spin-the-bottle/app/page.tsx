@@ -16,6 +16,7 @@ import {
 import { loadRoomQuestions, type BotQuestion } from "./questionBotClient";
 import { adaptSpinTheBottleQuestion } from "./spinTheBottleQuestionAdapter";
 import { getCatSeatPosition, getSpinTargetAngle, MAX_SPIN_PLAYERS } from "./catLayout";
+import { resolveSelectedPlayerName, toTurkishUpperCase } from "./playerLabels";
 
 const catVariants = [
   "orange",
@@ -473,11 +474,11 @@ export default function Home() {
   const isQuestionOwner = launchContext
     ? canControlSpinQuestion(spinState, launchContext.playerId)
     : true;
-  const questionOwnerName = spinState
-    ? players.find((player) => player.id === spinState.targetPlayerId)?.name ?? `${spinState.targetIndex + 1}. kişi`
-    : selected !== null
-      ? players[selected]?.name
-      : "";
+  const questionOwnerName = resolveSelectedPlayerName(
+    players,
+    selected,
+    spinState?.targetPlayerId,
+  );
 
   return (
     <main
@@ -560,7 +561,7 @@ export default function Home() {
               {spinning
                 ? "Şişe kararını veriyor..."
                 : selected !== null
-                  ? `${selected + 1}. kişi seçildi!`
+                  ? `${questionOwnerName} seçildi!`
                   : "Sıradaki kişiyi şans seçsin."}
             </p>
           </div>
@@ -692,13 +693,8 @@ export default function Home() {
 
             {phase === "choice" && (
               <>
-                <p className="challenge-type">✦ {selected + 1}. KİŞİ SEÇİLDİ ✦</p>
+                <p className="challenge-type">✦ {toTurkishUpperCase(questionOwnerName)} SEÇİLDİ ✦</p>
                 <h2 id="challenge-title">İş mi Eğlence mi?</h2>
-                <p className="selection-note">
-                  {isQuestionOwner
-                    ? `${players[selected].name} için soru kategorisini seçin.`
-                    : `${questionOwnerName} seçim yapıyor...`}
-                </p>
                 <div className="category-actions">
                   <button type="button" className="work-button" onClick={() => chooseCategory("İş")} disabled={!isQuestionOwner || questionActionPending}>
                     <span>▣</span>
@@ -717,16 +713,14 @@ export default function Home() {
             {phase === "question" && (
               <>
                 <p className="challenge-type">✦ {category?.toUpperCase()} SORUSU ✦</p>
-                <h2 id="challenge-title">{selected + 1}. Kişi için</h2>
+                <h2 id="challenge-title">{questionOwnerName} cevaplıyor</h2>
                 <p className="challenge-text">“{question}”</p>
-                {isQuestionOwner ? (
+                {isQuestionOwner && (
                   <div className="card-actions">
                     <button type="button" className="done-button" onClick={finishTurn} disabled={questionActionPending}>
                       TAMAMLANDI <span>✓</span>
                     </button>
                   </div>
-                ) : (
-                  <p className="selection-note">{questionOwnerName} için bekleniyor...</p>
                 )}
               </>
             )}
