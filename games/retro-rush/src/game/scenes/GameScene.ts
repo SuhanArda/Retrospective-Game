@@ -37,7 +37,7 @@ import type {
 } from '@retro-platform/contracts';
 import { RemotePlayerInterpolator } from '../../networking/RemotePlayerInterpolator';
 import type { ServerEvent } from '../../networking/transportMessages';
-import { isRoundStartLocked, remainingRoundStartSeconds } from '../../networking/roundStartDeadline';
+import { isRoundStartLocked, remainingRoundStartSeconds, remainingRoundTimeMs } from '../../networking/roundStartDeadline';
 
 interface PlayerRuntime {
   snapshot: PlayerSnapshot;
@@ -116,6 +116,7 @@ export class GameScene extends Phaser.Scene {
   private networkSequence = 0;
   private networkSendAccumulatorMs = 0;
   private roundStartAtUnixMs = 0;
+  private roundDeadlineAtUnixMs = 0;
   private authoritativeRoundSpawn: Point = roundSpawnPosition(sampleMap.spawn);
   private eliminationPending = false;
   private readonly collectedPickupIds = new Set<string>();
@@ -240,6 +241,7 @@ export class GameScene extends Phaser.Scene {
         roundId: this.networkRoundId,
         mapSeed: this.networkMapSeed,
         roundStartAtUnixMs: this.roundStartAtUnixMs,
+        roundDeadlineAtUnixMs: this.roundDeadlineAtUnixMs,
         roundSpawn: { ...this.authoritativeRoundSpawn },
         gameplayLocked: !this.isGameplayRunning(),
         matchState: this.matchState,
@@ -475,18 +477,24 @@ export class GameScene extends Phaser.Scene {
     this.networkRoundId = snapshot.roundId;
     this.networkMapSeed = snapshot.mapSeed;
     this.roundStartAtUnixMs = snapshot.roundStartAtUnixMs;
+    this.roundDeadlineAtUnixMs = snapshot.roundDeadlineAtUnixMs;
     this.authoritativeRoundSpawn = { x: snapshot.spawnX, y: snapshot.spawnY };
     if (newRound) this.prepareOnlineRound(snapshot.mapSeed);
 
     const incomingIds = new Set(snapshot.players.map((player) => player.playerId));
+    const eliminatedIds = new Set(snapshot.eliminationOrder.map((elimination) => elimination.playerId));
+    const rankingById = new Map(snapshot.ranking.map((entry) => [entry.playerId, entry]));
     for (const networkPlayer of snapshot.players) {
       const player = this.ensureNetworkPlayer(networkPlayer);
+      const ranking = rankingById.get(networkPlayer.playerId);
       player.slot = networkPlayer.slot;
       player.snapshot = {
         ...player.snapshot,
         name: networkPlayer.displayName,
         state: networkPlayer.movementState as PlayerState,
         isLocal: networkPlayer.playerId === this.transport.localPlayerId,
+        eliminations: eliminatedIds.has(networkPlayer.playerId) ? 1 : 0,
+        ...(ranking ? { finishPosition: ranking.place } : {}),
       };
       player.facing = networkPlayer.facing === 'left' ? -1 : 1;
       player.sprite.setFlipX(player.facing < 0).setAlpha(networkPlayer.connected ? 1 : 0.45);
@@ -500,6 +508,7 @@ export class GameScene extends Phaser.Scene {
       if (!networkPlayer.connected || networkPlayer.movementState === 'DISCONNECTED') {
         player.snapshot = { ...player.snapshot, state: 'DISCONNECTED' };
       }
+      if (eliminatedIds.has(networkPlayer.playerId)) this.setOnlinePlayerEliminated(player);
     }
     for (const player of [...this.players]) {
       if (!incomingIds.has(player.snapshot.id)) this.removeNetworkPlayer(player);
@@ -515,11 +524,14 @@ export class GameScene extends Phaser.Scene {
     });
     for (const rocket of snapshot.activeRockets) this.spawnOnlineRocket(rocket);
 
-    if (!this.isOnlineRoundStartLocked() && snapshot.phase === 'RUNNING') this.beginOnlineRunning();
+    if (!this.isOnlineRoundStartLocked() && snapshot.phase === 'RUNNING' && Date.now() < snapshot.roundDeadlineAtUnixMs) this.beginOnlineRunning();
     else if (snapshot.phase === 'COUNTDOWN' || this.isOnlineRoundStartLocked()) {
       this.matchState = 'COUNTDOWN';
       this.lockLocalPlayerForRoundStart();
       this.updateOnlineCountdown();
+    } else if (snapshot.phase === 'RESULTS' || snapshot.phase === 'QUESTION') {
+      this.matchState = 'FINISHED';
+      this.freezeOnlineRoundParticipants();
     } else this.matchState = 'LOADING';
 
     if (snapshot.activeQuestion) this.openOnlineQuestion(snapshot.activeQuestion);
@@ -646,15 +658,30 @@ export class GameScene extends Phaser.Scene {
   private applyOnlineElimination(elimination: RetroRushPlayerEliminated) {
     if (!this.isGameplayRunning() || elimination.roundId !== this.networkRoundId) return;
     const player = this.playersById.get(elimination.playerId);
-    if (!player || player.snapshot.state === 'ANSWERING_QUESTION') return;
+    if (!player || player.snapshot.state === 'FINISHED') return;
+    player.snapshot = { ...player.snapshot, state: 'FINISHED', eliminations: 1 };
+    this.setOnlinePlayerEliminated(player);
+    this.publishSnapshot(true);
+  }
+
+  private setOnlinePlayerEliminated(player: PlayerRuntime) {
     resetHitStun(player.hitState);
-    player.snapshot = { ...player.snapshot, state: 'ANSWERING_QUESTION', eliminations: player.snapshot.eliminations + 1 };
     player.sprite.disableBody(true, true);
     player.label.setVisible(false);
-    this.matchState = 'LOADING';
-    this.stopLocalHorizontalMovement();
-    this.openOnlineQuestion(elimination.question);
-    this.publishSnapshot(true);
+    if (player.snapshot.isLocal) {
+      this.eliminationPending = true;
+      this.clearPendingGameplayInput();
+    }
+  }
+
+  private freezeOnlineRoundParticipants() {
+    for (const player of this.players) {
+      if (!player.sprite.body || !player.sprite.active) continue;
+      const body = player.sprite.body as Phaser.Physics.Arcade.Body;
+      body.setAllowGravity(false);
+      player.sprite.setAcceleration(0, 0).setVelocity(0, 0);
+    }
+    this.clearPendingGameplayInput();
   }
 
   private openOnlineQuestion(question: RetroRushGameSnapshot['activeQuestion']) {
@@ -665,28 +692,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   private presentOnlineQuestion(question: NonNullable<RetroRushGameSnapshot['activeQuestion']>, announce: boolean) {
-    const indexedQuestion = this.questionPool.length > 0 && Number.isInteger(question.questionIndex)
-      ? this.questionPool[question.questionIndex! % this.questionPool.length]
+    const questionIndex = Number.isInteger(question.questionIndex) ? question.questionIndex! : 0;
+    const indexedQuestion = this.questionPool.length > 0
+      ? this.questionPool[questionIndex % this.questionPool.length]
       : undefined;
-    if (!indexedQuestion) return;
+    const fallbackQuestion = retroQuestions[questionIndex % retroQuestions.length]!;
+    const presentedQuestion = indexedQuestion ?? fallbackQuestion;
     this.bridge.emit('questionOpened', {
       id: question.questionId,
-      category: indexedQuestion.category,
-      type: indexedQuestion.type,
-      prompt: indexedQuestion.prompt,
-      ...(indexedQuestion.options ? { options: indexedQuestion.options } : {}),
-      required: indexedQuestion.required,
+      category: presentedQuestion.category,
+      type: presentedQuestion.type,
+      prompt: presentedQuestion.prompt,
+      ...(presentedQuestion.options ? { options: presentedQuestion.options } : {}),
+      required: presentedQuestion.required,
       ownerPlayerId: question.ownerPlayerId,
       ownerName: this.playersById.get(question.ownerPlayerId)?.snapshot.name ?? 'Oyuncu',
       canConfirm: question.ownerPlayerId === this.transport.localPlayerId,
     });
-    if (announce) this.bridge.emit('announcement', 'Retrospektif sorusunu sözlü olarak yanıtla');
+    if (announce) this.bridge.emit('announcement', question.ownerPlayerId === this.transport.localPlayerId
+      ? 'Son sıradaki oyuncu olarak retrospektif sorusunu yanıtla'
+      : 'Son sıradaki oyuncunun retrospektif sorusu açıldı');
   }
 
   private syncOnlinePhase() {
-    if (this.networkRoundId === 0 || this.matchState !== 'COUNTDOWN') return;
-    if (!this.isOnlineRoundStartLocked()) this.beginOnlineRunning();
-    else this.updateOnlineCountdown();
+    if (this.networkRoundId === 0) return;
+    if (this.matchState === 'COUNTDOWN') {
+      if (!this.isOnlineRoundStartLocked()) this.beginOnlineRunning();
+      else this.updateOnlineCountdown();
+      return;
+    }
+    if (this.matchState === 'RUNNING' && Date.now() >= this.roundDeadlineAtUnixMs) {
+      this.matchState = 'LOADING';
+      this.freezeOnlineRoundParticipants();
+      this.publishSnapshot(true);
+    }
   }
 
   private updateOnlineCountdown() {
@@ -721,7 +760,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isGameplayRunning() {
-    return this.matchState === 'RUNNING' && !this.isOnlineRoundStartLocked();
+    return this.matchState === 'RUNNING' && !this.isOnlineRoundStartLocked() &&
+      (this.transport.mode !== 'online' || Date.now() < this.roundDeadlineAtUnixMs);
   }
 
   private lockLocalPlayerForRoundStart() {
@@ -1239,7 +1279,9 @@ export class GameScene extends Phaser.Scene {
     this.lastSnapshotAt = this.time.now;
     this.bridge.emit('snapshot', {
       state: this.matchState,
-      timeRemainingMs: Math.max(0, gameplayConfig.world.matchDurationMs - this.elapsedMs),
+      timeRemainingMs: this.transport.mode === 'online' && this.roundDeadlineAtUnixMs > 0
+        ? remainingRoundTimeMs(this.roundDeadlineAtUnixMs)
+        : Math.max(0, gameplayConfig.world.matchDurationMs - this.elapsedMs),
       countdown: this.countdown,
       players: this.players.map((player) => ({ ...player.snapshot })),
       checkpointLabel: 'Başlangıç Noktası',
@@ -1250,7 +1292,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private sendNetworkSnapshot(deltaMs: number) {
-    if (!this.isGameplayRunning() || !this.local || this.networkRoundId === 0 || this.local.snapshot.state === 'DISCONNECTED') return;
+    if (!this.isGameplayRunning() || !this.local || this.networkRoundId === 0 ||
+        !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
     this.networkSendAccumulatorMs += deltaMs;
     const intervalMs = 1_000 / gameplayConfig.network.sendRateHz;
     if (this.networkSendAccumulatorMs < intervalMs) return;

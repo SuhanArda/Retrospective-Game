@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendRoundGameplay, isRoundStartLocked, remainingRoundStartSeconds } from './roundStartDeadline';
+import { canSendAuthoritativeRoundGameplay, canSendRoundGameplay, isRoundStartLocked, remainingRoundStartSeconds, remainingRoundTimeMs } from './roundStartDeadline';
 
 describe('authoritative round start deadline', () => {
   it('keeps every client locked until the shared Unix deadline', () => {
@@ -21,5 +21,13 @@ describe('authoritative round start deadline', () => {
     expect(remainingRoundStartSeconds(13_500, 10_000)).toBe(4);
     expect(remainingRoundStartSeconds(13_500, 10_500)).toBe(3);
     expect(remainingRoundStartSeconds(13_500, 13_500)).toBe(0);
+  });
+
+  it('stops gameplay at the authoritative round deadline', () => {
+    expect(canSendAuthoritativeRoundGameplay(1, 1, 'RUNNING', 10_000, 20_000, 19_999)).toBe(true);
+    expect(canSendAuthoritativeRoundGameplay(1, 1, 'RUNNING', 10_000, 20_000, 20_000)).toBe(false);
+    expect(canSendAuthoritativeRoundGameplay(1, 1, 'RESULTS', 10_000, 20_000, 15_000)).toBe(false);
+    expect(remainingRoundTimeMs(20_000, 19_250)).toBe(750);
+    expect(remainingRoundTimeMs(20_000, 21_000)).toBe(0);
   });
 });

@@ -10,7 +10,7 @@ import type {
   ShoveCommand,
   UseAbilityCommand,
 } from './transportMessages';
-import { canSendRoundGameplay } from './roundStartDeadline';
+import { canSendAuthoritativeRoundGameplay } from './roundStartDeadline';
 
 export class SignalRGameTransport implements GameTransport {
   readonly mode = 'online' as const;
@@ -22,6 +22,8 @@ export class SignalRGameTransport implements GameTransport {
   private lifecycleGeneration = 0;
   private currentRoundId = 0;
   private roundStartAtUnixMs = 0;
+  private roundDeadlineAtUnixMs = 0;
+  private phase: RetroRushGameSnapshot['phase'] = 'COUNTDOWN';
   private latestSnapshot: RetroRushGameSnapshot | null = null;
 
   constructor(
@@ -155,21 +157,25 @@ export class SignalRGameTransport implements GameTransport {
     );
   }
 
-  private applyRoundAuthority(roundId: number, roundStartAtUnixMs: number) {
-    if (roundId < this.currentRoundId) return;
-    this.currentRoundId = roundId;
-    this.roundStartAtUnixMs = roundStartAtUnixMs;
+  private applyRoundAuthority(snapshot: RetroRushGameSnapshot) {
+    if (snapshot.roundId < this.currentRoundId) return;
+    this.currentRoundId = snapshot.roundId;
+    this.roundStartAtUnixMs = snapshot.roundStartAtUnixMs;
+    this.roundDeadlineAtUnixMs = snapshot.roundDeadlineAtUnixMs;
+    this.phase = snapshot.phase;
   }
 
   private acceptSnapshot(snapshot: RetroRushGameSnapshot, type: 'retroSnapshot' | 'retroRoundStarted') {
     if (snapshot.roundId < this.currentRoundId) return;
-    this.applyRoundAuthority(snapshot.roundId, snapshot.roundStartAtUnixMs);
+    this.applyRoundAuthority(snapshot);
     this.latestSnapshot = snapshot;
     this.emit({ type, snapshot });
   }
 
   private canSendGameplay(roundId: number) {
-    return canSendRoundGameplay(this.currentRoundId, roundId, this.roundStartAtUnixMs);
+    return canSendAuthoritativeRoundGameplay(
+      this.currentRoundId, roundId, this.phase, this.roundStartAtUnixMs, this.roundDeadlineAtUnixMs,
+    );
   }
 
   private run(operation: Promise<unknown>) { void operation.catch((error: unknown) => this.emitError(error)); }

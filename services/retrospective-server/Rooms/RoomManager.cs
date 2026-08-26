@@ -578,6 +578,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             {
                 var gameStarted = false;
                 var spinStateChanged = false;
+                RetroRushGameSnapshot? retroRushSnapshot = null;
                 if (room.Status == RoomPhase.GameSelection &&
                     room.VotingEndsAt is { } votingEnd && votingEnd <= now)
                 {
@@ -598,8 +599,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     }
                 }
 
-                if (gameStarted || spinStateChanged)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged));
+                if (room.Status == RoomPhase.Playing)
+                    retroRushSnapshot = AdvanceRetroRushTimedState(room);
+
+                if (gameStarted || spinStateChanged || retroRushSnapshot is not null)
+                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, retroRushSnapshot));
             }
         }
         return changes;
@@ -992,7 +996,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
 public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
-public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged);
+public sealed record TimedRoomChange(
+    string RoomCode,
+    RoomSnapshot Snapshot,
+    bool GameStarted,
+    bool SpinStateChanged,
+    RetroRushGameSnapshot? RetroRushSnapshot);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions
