@@ -8,6 +8,7 @@ import type {
   DrawAndGuessGuessResult,
   DrawAndGuessStateSnapshot,
   DrawAndGuessStrokeEvent,
+  DrawAndGuessWordReveal,
   FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
@@ -66,6 +67,7 @@ type EventMap = {
   drawAndGuessGuessSubmitted: DrawAndGuessGuessResult;
   drawAndGuessStrokeReceived: DrawAndGuessStrokeEvent;
   drawAndGuessCanvasCleared: undefined;
+  drawAndGuessWordRevealed: DrawAndGuessWordReveal;
   reaction: RoomReactionEvent;
   connectionChanged: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   retroRushSnapshot: RetroRushGameSnapshot;
@@ -154,6 +156,7 @@ export class RoomRealtimeClient {
     return this.invoke('SubmitDrawAndGuessGuess', text);
   }
   nextDrawAndGuessRound(): Promise<RoomSnapshot> { return this.invoke('NextDrawAndGuessRound'); }
+  requestDrawAndGuessLetterHint(): Promise<RoomSnapshot> { return this.invoke('RequestDrawAndGuessLetterHint'); }
   sendDrawAndGuessStroke(points: readonly number[], newStroke: boolean, color: string, isEraser: boolean): Promise<void> {
     return this.invoke('SendDrawAndGuessStroke', points, newStroke, color, isEraser);
   }
@@ -228,6 +231,7 @@ export class RoomRealtimeClient {
     connection.on('DrawAndGuessGuessSubmitted', (result: DrawAndGuessGuessResult) => this.emit('drawAndGuessGuessSubmitted', result));
     connection.on('DrawAndGuessStrokeReceived', (stroke: DrawAndGuessStrokeEvent) => this.emit('drawAndGuessStrokeReceived', stroke));
     connection.on('DrawAndGuessCanvasCleared', () => this.emit('drawAndGuessCanvasCleared', undefined));
+    connection.on('DrawAndGuessWordRevealed', (reveal: DrawAndGuessWordReveal) => this.emit('drawAndGuessWordRevealed', reveal));
     connection.on('ReactionReceived', (reaction: RoomReactionEvent) => this.emit('reaction', reaction));
     connection.on('RetroRushSnapshot', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushSnapshot', snapshot));
     connection.on('RetroRushPlayerUpdated', (player: RetroRushPlayerSnapshot) => this.emit('retroRushPlayerUpdated', player));

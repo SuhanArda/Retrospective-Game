@@ -252,6 +252,16 @@ export interface DrawAndGuessStateSnapshot {
   scores: Record<string, number>;
   revision: number;
   updatedAtUtc: number;
+  roundEndsAtUtc: number;
+  wordLength: number;
+  /** index → açılan harf. Sadece çizen açabilir, hepsi herkese aynı görünür. */
+  revealedLetters: Record<number, string>;
+}
+
+/** Süre dolunca (kimse ya da herkes bilemediyse) sohbete düşen kelime açıklaması. */
+export interface DrawAndGuessWordReveal {
+  word: string;
+  revision: number;
 }
 
 /** A correct guess never carries the word — only who got it and in what order. */
@@ -261,6 +271,7 @@ export interface DrawAndGuessGuessResult {
   correct: boolean;
   rank?: number;
   text?: string;
+  points?: number;
 }
 
 /** A drawing stroke point batch, relayed as-is — the server neither inspects nor stores it. */

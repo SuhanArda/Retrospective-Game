@@ -16,6 +16,7 @@ public interface IRoomClient
     Task DrawAndGuessGuessSubmitted(DrawAndGuessGuessResult result);
     Task DrawAndGuessStrokeReceived(DrawAndGuessStrokeEvent stroke);
     Task DrawAndGuessCanvasCleared();
+    Task DrawAndGuessWordRevealed(DrawAndGuessWordReveal reveal);
     Task ReactionReceived(RoomReaction reaction);
     Task RetroRushSnapshot(RetroRushGameSnapshot snapshot);
     Task RetroRushPlayerUpdated(RetroRushPlayerSnapshot player);
