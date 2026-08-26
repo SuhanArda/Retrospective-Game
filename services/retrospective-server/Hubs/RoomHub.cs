@@ -231,7 +231,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         var mutation = rooms.RequestRetroRushPlayerElimination(Context.ConnectionId, request);
         if (mutation.Event is not null)
+        {
             await Clients.Group(GroupName(mutation.RoomCode)).RetroRushPlayerEliminated(mutation.Event);
+            if (rooms.GetRetroRushSnapshotForRoom(mutation.RoomCode) is { } snapshot)
+                await Clients.Group(GroupName(mutation.RoomCode)).RetroRushSnapshot(snapshot);
+        }
     }
 
     public async Task CompleteRetroRushQuestion(CompleteRetroRushQuestionRequest request)

@@ -1,7 +1,7 @@
 export const translations = {
   tr: {
     header: {
-      brand: 'Oyun Platformu',
+      brand: 'Retro Platformu',
       openMenu: 'Menüyü aç',
       closeMenu: 'Menüyü kapat',
     },
@@ -26,7 +26,7 @@ export const translations = {
       submit: 'Devam Et',
     },
     home: {
-      brand: 'Oyun Platformu',
+      brand: 'Retro Platformu',
       titlePrefix: 'Toplantılar artık ',
       titleHighlight: 'eğlenceli',
       subtitle:
@@ -184,7 +184,7 @@ export const translations = {
     },
     starting: {
       brand: 'Oyun Seçildi',
-      launching: 'Retro Rush bu sekmede başlatılıyor...',
+      launching: 'Oyun bu sekmede başlatılıyor...',
       launchError: 'Oyun başlatılamadı. Yapılandırmayı kontrol edip tekrar dene.',
       invalidSession: 'Oyun oturumu bulunamadı',
       backToGames: 'Oyunlara Dön',
@@ -210,7 +210,7 @@ export const translations = {
         description:
           'Şişeyi döndür, seçilen takım arkadaşınla İş veya Eğlence kategorisinden bir retro sorusu yanıtla.',
         detail:
-          'Altı kedi şişenin etrafında toplanır. Döndürünce seçilen kişi İş veya Eğlence kategorisini seçer, o kategoriden bir retro sorusu gelir. Birlikte konuşup turu tamamlar, şişeyi yeniden döndürürsünüz.',
+          'Bir ila on kedi şişenin etrafında toplanır. Döndürünce seçilen kişi İş veya Eğlence kategorisini seçer, o kategoriden bir retro sorusu gelir. Birlikte konuşup turu tamamlar, şişeyi yeniden döndürürsünüz.',
         steps: [
           'Şişeyi döndür ve takım arkadaşlarından birinin seçilmesini bekle.',
           'Seçilen kişi için İş veya Eğlence kategorisini seç.',
@@ -269,7 +269,7 @@ export const translations = {
   },
   en: {
     header: {
-      brand: 'Game Platform',
+      brand: 'Retro Platform',
       openMenu: 'Open menu',
       closeMenu: 'Close menu',
     },
@@ -294,7 +294,7 @@ export const translations = {
       submit: 'Continue',
     },
     home: {
-      brand: 'Game Platform',
+      brand: 'Retro Platform',
       titlePrefix: 'Meetings just got ',
       titleHighlight: 'fun',
       subtitle:
@@ -477,7 +477,7 @@ export const translations = {
         description:
           'Spin the bottle, pick a teammate, and answer a retrospective question from the Work or Fun category.',
         detail:
-          'Six cats gather around the bottle. Each spin selects a teammate, who picks Work or Fun, then answers a retrospective question from that category. Discuss it together, complete the turn, and spin again.',
+          'One to ten cats gather around the bottle. Each spin selects a teammate, who picks Work or Fun, then answers a retrospective question from that category. Discuss it together, complete the turn, and spin again.',
         steps: [
           'Spin the bottle and wait for it to select a teammate.',
           'Choose the Work or Fun category for the selected player.',

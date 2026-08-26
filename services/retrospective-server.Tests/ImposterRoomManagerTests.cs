@@ -54,6 +54,36 @@ public sealed class ImposterRoomManagerTests
     }
 
     [Fact]
+    public void CharacterAssignmentsAndClueOrderAreRandomizedIndependently()
+    {
+        var game = CreateStartedGame(new SequenceRoomRandom(0, 0, 0, 7, 3, 7, 2, 1));
+
+        var hostView = game.Manager.GetImposterSnapshot("host", game.SessionId);
+        var guestView = game.Manager.GetImposterSnapshot("guest-1", game.SessionId);
+        Assert.Equal([7, 4, 9], hostView.Players.Select(player => player.AvatarIndex));
+        Assert.Equal(
+            hostView.Players.Select(player => (player.PlayerId, player.AvatarIndex)),
+            guestView.Players.Select(player => (player.PlayerId, player.AvatarIndex)));
+        Assert.Equal(3, hostView.Players.Select(player => player.AvatarIndex).Distinct().Count());
+
+        game.Manager.ReadyImposterRole("host", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-1", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-2", game.SessionId);
+
+        Assert.Equal(game.SecondGuestId,
+            game.Manager.GetImposterSnapshot("host", game.SessionId).CurrentSpeakerPlayerId);
+        game.Manager.CompleteImposterClue("guest-2", game.SessionId);
+        Assert.Equal(game.HostId,
+            game.Manager.GetImposterSnapshot("guest-1", game.SessionId).CurrentSpeakerPlayerId);
+        game.Manager.CompleteImposterClue("host", game.SessionId);
+        Assert.Equal(game.FirstGuestId,
+            game.Manager.GetImposterSnapshot("guest-2", game.SessionId).CurrentSpeakerPlayerId);
+        game.Manager.CompleteImposterClue("guest-1", game.SessionId);
+
+        Assert.Equal("VOTING", game.Manager.GetImposterSnapshot("host", game.SessionId).Phase);
+    }
+
+    [Fact]
     public void ReadyAndClueTurnsAreServerAuthoritative()
     {
         var game = CreateStartedGame();
@@ -121,6 +151,37 @@ public sealed class ImposterRoomManagerTests
     }
 
     [Fact]
+    public void NextRoundKeepsCharactersAndDrawsNewClueOrder()
+    {
+        var game = CreateStartedGame(new SequenceRoomRandom(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 2, 1));
+        var firstRoundAvatars = game.Manager.GetImposterSnapshot("host", game.SessionId)
+            .Players.ToDictionary(player => player.PlayerId, player => player.AvatarIndex);
+        game.Manager.ReadyImposterRole("host", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-1", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-2", game.SessionId);
+        game.Manager.CompleteImposterClue("host", game.SessionId);
+        game.Manager.CompleteImposterClue("guest-1", game.SessionId);
+        game.Manager.CompleteImposterClue("guest-2", game.SessionId);
+        game.Manager.CastImposterVote("host", new CastImposterVoteRequest(game.SessionId, game.FirstGuestId));
+        game.Manager.CastImposterVote("guest-1", new CastImposterVoteRequest(game.SessionId, game.HostId));
+        game.Manager.CastImposterVote("guest-2", new CastImposterVoteRequest(game.SessionId, game.HostId));
+
+        game.Manager.StartNextImposterRound("host", game.SessionId);
+        var nextRound = game.Manager.GetImposterSnapshot("host", game.SessionId);
+        Assert.Equal(
+            firstRoundAvatars,
+            nextRound.Players.ToDictionary(player => player.PlayerId, player => player.AvatarIndex));
+
+        game.Manager.ReadyImposterRole("host", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-1", game.SessionId);
+        game.Manager.ReadyImposterRole("guest-2", game.SessionId);
+        Assert.Equal(game.SecondGuestId,
+            game.Manager.GetImposterSnapshot("guest-1", game.SessionId).CurrentSpeakerPlayerId);
+    }
+
+    [Fact]
     public void HostBackgroundSelectionIsAuthoritativeAndSurvivesTheNextRound()
     {
         var game = CreateStartedGame();
@@ -162,7 +223,7 @@ public sealed class ImposterRoomManagerTests
         return game;
     }
 
-    private static StartedImposterGame CreateStartedGame()
+    private static StartedImposterGame CreateStartedGame(IRoomRandom? random = null)
     {
         var manager = new RoomManager(
             TimeProvider.System,
@@ -171,7 +232,7 @@ public sealed class ImposterRoomManagerTests
                 DisconnectGraceSeconds = 25,
                 QuestionLoadingMilliseconds = 1800,
             }),
-            new FixedRoomRandom());
+            random ?? new FixedRoomRandom());
         var host = manager.Create(new CreateRoomRequest("Yağmur", "#654321", "Sprint Retro", 10, 30, 30));
         var firstGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
         var secondGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ece", "#abcdef"));
@@ -185,18 +246,28 @@ public sealed class ImposterRoomManagerTests
             manager,
             resolution.Snapshot.CurrentGameSession!.GameSessionId,
             host.PlayerId,
-            firstGuest.PlayerId);
+            firstGuest.PlayerId,
+            secondGuest.PlayerId);
     }
 
     private sealed record StartedImposterGame(
         RoomManager Manager,
         string SessionId,
         string HostId,
-        string FirstGuestId);
+        string FirstGuestId,
+        string SecondGuestId);
 
     private sealed class FixedRoomRandom : IRoomRandom
     {
         public int Next(int maximumExclusive) => 0;
         public int Next(int minimumInclusive, int maximumExclusive) => minimumInclusive;
+    }
+
+    private sealed class SequenceRoomRandom(params int[] values) : IRoomRandom
+    {
+        private int _index;
+        public int Next(int maximumExclusive) => values[_index++] % maximumExclusive;
+        public int Next(int minimumInclusive, int maximumExclusive) =>
+            minimumInclusive + values[_index++] % (maximumExclusive - minimumInclusive);
     }
 }

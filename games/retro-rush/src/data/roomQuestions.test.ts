@@ -17,7 +17,10 @@ describe('loadRoomQuestions', () => {
       status: 200, headers: { 'Content-Type': 'application/json' },
     }));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-1', 'token-1')).resolves.toHaveLength(20);
+    const first = loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-1', 'token-1');
+    const duplicate = loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-1', 'token-1');
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([expect.any(Array), expect.any(Array)]);
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:5281/api/rooms/ABC234/ai/questions',
       expect.objectContaining({ signal: expect.any(AbortSignal), headers: expect.objectContaining({
@@ -30,6 +33,6 @@ describe('loadRoomQuestions', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...set, questions: null }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
     })));
-    await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-1', 'token-1')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
+    await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-2', 'token-2')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
   });
 });

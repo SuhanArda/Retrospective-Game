@@ -7,6 +7,7 @@ public sealed partial class RoomManager
     private const string ImposterGameId = "imposter";
     private const int ImposterMinPlayers = 3;
     private const int ImposterMaxPlayers = 10;
+    private const int ImposterAvatarCount = 10;
 
     public ImposterGameSnapshot GetImposterSnapshot(string connectionId, string gameSessionId)
     {
@@ -89,7 +90,8 @@ public sealed partial class RoomManager
                 current.RoundNumber + 1,
                 current.Revision + 1,
                 current.PackIndex,
-                current.BackgroundId);
+                current.BackgroundId,
+                current.AvatarIndicesByPlayerId);
             return Mutation(room, session.Imposter);
         }
     }
@@ -110,7 +112,7 @@ public sealed partial class RoomManager
     }
 
     private void InitializeImposter(GameRoom room, GameSession session) =>
-        session.Imposter = CreateImposterState(room, session.Id, 1, 1, null, "balcony");
+        session.Imposter = CreateImposterState(room, session.Id, 1, 1, null, "balcony", null);
 
     private ImposterState CreateImposterState(
         GameRoom room,
@@ -118,7 +120,8 @@ public sealed partial class RoomManager
         int roundNumber,
         int revision,
         int? previousPackIndex,
-        string backgroundId)
+        string backgroundId,
+        IReadOnlyDictionary<string, int>? previousAvatarIndices)
     {
         var playerIds = room.Players.Values
             .OrderBy(player => player.JoinedAt)
@@ -131,7 +134,47 @@ public sealed partial class RoomManager
             ? roomRandom.Next(ImposterDemoCatalog.Words.Count)
             : (previousPackIndex.Value + 1 + roomRandom.Next(ImposterDemoCatalog.Words.Count - 1)) % ImposterDemoCatalog.Words.Count;
         var imposterPlayerId = playerIds[roomRandom.Next(playerIds.Count)];
-        return new ImposterState(gameSessionId, roundNumber, revision, packIndex, playerIds, imposterPlayerId, backgroundId);
+        var avatarIndices = previousAvatarIndices is null
+            ? RandomAvatarIndices(playerIds)
+            : playerIds.ToDictionary(
+                playerId => playerId,
+                playerId => previousAvatarIndices[playerId],
+                StringComparer.Ordinal);
+        var clueOrderPlayerIds = playerIds.ToList();
+        Shuffle(clueOrderPlayerIds);
+        return new ImposterState(
+            gameSessionId,
+            roundNumber,
+            revision,
+            packIndex,
+            playerIds,
+            clueOrderPlayerIds,
+            avatarIndices,
+            imposterPlayerId,
+            backgroundId);
+    }
+
+    private Dictionary<string, int> RandomAvatarIndices(IReadOnlyList<string> playerIds)
+    {
+        var availableAvatarIndices = Enumerable.Range(0, ImposterAvatarCount).ToArray();
+        var assignments = new Dictionary<string, int>(playerIds.Count, StringComparer.Ordinal);
+        for (var playerIndex = 0; playerIndex < playerIds.Count; playerIndex++)
+        {
+            var selectedIndex = roomRandom.Next(playerIndex, availableAvatarIndices.Length);
+            (availableAvatarIndices[playerIndex], availableAvatarIndices[selectedIndex]) =
+                (availableAvatarIndices[selectedIndex], availableAvatarIndices[playerIndex]);
+            assignments[playerIds[playerIndex]] = availableAvatarIndices[playerIndex];
+        }
+        return assignments;
+    }
+
+    private void Shuffle<T>(IList<T> values)
+    {
+        for (var index = 0; index < values.Count - 1; index++)
+        {
+            var selectedIndex = roomRandom.Next(index, values.Count);
+            (values[index], values[selectedIndex]) = (values[selectedIndex], values[index]);
+        }
     }
 
     private static ImposterState RequireImposter(GameRoom room, string gameSessionId)
@@ -149,16 +192,16 @@ public sealed partial class RoomManager
     }
 
     private static string? CurrentSpeaker(ImposterState state) =>
-        state.Phase == "CLUE_GIVING" && state.PlayerIds.Count > 0
-            ? state.PlayerIds[state.SpeakerIndex]
+        state.Phase == "CLUE_GIVING" && state.ClueOrderPlayerIds.Count > 0
+            ? state.ClueOrderPlayerIds[state.SpeakerIndex]
             : null;
 
     private static int FindNextSpeakerIndex(ImposterState state, int startIndex)
     {
-        for (var offset = 0; offset < state.PlayerIds.Count; offset++)
+        for (var offset = 0; offset < state.ClueOrderPlayerIds.Count; offset++)
         {
-            var index = (startIndex + offset) % state.PlayerIds.Count;
-            if (!state.CluePlayerIds.Contains(state.PlayerIds[index])) return index;
+            var index = (startIndex + offset) % state.ClueOrderPlayerIds.Count;
+            if (!state.CluePlayerIds.Contains(state.ClueOrderPlayerIds[index])) return index;
         }
         return 0;
     }
@@ -171,13 +214,13 @@ public sealed partial class RoomManager
         var pack = ImposterDemoCatalog.Words[state.PackIndex];
         var isImposter = state.ImposterPlayerId == playerId;
         var revealSecrets = state.Phase == "RESULTS";
-        var players = state.PlayerIds.Select((id, avatarIndex) =>
+        var players = state.PlayerIds.Select(id =>
         {
             var player = room.Players[id];
             return new ImposterPlayerSnapshot(
                 id,
                 player.DisplayName,
-                avatarIndex,
+                state.AvatarIndicesByPlayerId[id],
                 player.ConnectionId is not null,
                 state.ReadyPlayerIds.Contains(id),
                 state.CluePlayerIds.Contains(id),
@@ -224,8 +267,11 @@ public sealed partial class RoomManager
         var removedIndex = state.PlayerIds.IndexOf(playerId);
         if (removedIndex < 0) return;
 
+        var removedSpeakerIndex = state.ClueOrderPlayerIds.IndexOf(playerId);
         var wasCurrentSpeaker = CurrentSpeaker(state) == playerId;
         state.PlayerIds.RemoveAt(removedIndex);
+        if (removedSpeakerIndex >= 0) state.ClueOrderPlayerIds.RemoveAt(removedSpeakerIndex);
+        state.AvatarIndicesByPlayerId.Remove(playerId);
         state.ReadyPlayerIds.Remove(playerId);
         state.CluePlayerIds.Remove(playerId);
         state.Votes.Remove(playerId);
@@ -246,8 +292,10 @@ public sealed partial class RoomManager
             if (state.CluePlayerIds.Count == state.PlayerIds.Count) state.Phase = "VOTING";
             else
             {
-                var startIndex = wasCurrentSpeaker ? removedIndex : Math.Max(0, state.SpeakerIndex - (removedIndex < state.SpeakerIndex ? 1 : 0));
-                state.SpeakerIndex = FindNextSpeakerIndex(state, startIndex % state.PlayerIds.Count);
+                var startIndex = wasCurrentSpeaker
+                    ? removedSpeakerIndex
+                    : Math.Max(0, state.SpeakerIndex - (removedSpeakerIndex < state.SpeakerIndex ? 1 : 0));
+                state.SpeakerIndex = FindNextSpeakerIndex(state, startIndex % state.ClueOrderPlayerIds.Count);
             }
         }
         else if (state.Phase == "VOTING" && state.Votes.Count == state.PlayerIds.Count)
@@ -263,6 +311,8 @@ public sealed partial class RoomManager
         int revision,
         int packIndex,
         List<string> playerIds,
+        List<string> clueOrderPlayerIds,
+        Dictionary<string, int> avatarIndicesByPlayerId,
         string imposterPlayerId,
         string backgroundId)
     {
@@ -271,6 +321,8 @@ public sealed partial class RoomManager
         public int Revision { get; set; } = revision;
         public int PackIndex { get; } = packIndex;
         public List<string> PlayerIds { get; } = playerIds;
+        public List<string> ClueOrderPlayerIds { get; } = clueOrderPlayerIds;
+        public Dictionary<string, int> AvatarIndicesByPlayerId { get; } = avatarIndicesByPlayerId;
         public string ImposterPlayerId { get; } = imposterPlayerId;
         public string BackgroundId { get; set; } = backgroundId;
         public string Phase { get; set; } = "ROLE_REVEAL";

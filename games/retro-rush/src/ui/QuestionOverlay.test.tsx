@@ -18,7 +18,7 @@ describe('verbal question overlay', () => {
   it('focuses the single confirmation and invokes it without answer validation', () => {
     const onAnswered = vi.fn();
     const view = render(<QuestionOverlay question={question} mode="verbal" onAnswered={onAnswered} />);
-    const button = view.getByRole('button', { name: 'CEVAPLADIM — YENİDEN BAŞLAT' });
+    const button = view.getByRole('button', { name: 'CEVAPLADIM — DEVAM ET' });
     expect(button).toHaveFocus();
     fireEvent.click(button);
     expect(onAnswered).toHaveBeenCalledOnce();
@@ -29,6 +29,6 @@ describe('verbal question overlay', () => {
     const view = render(<QuestionOverlay question={{ ...question, ownerName: 'Ali', canConfirm: false }} mode="verbal" onAnswered={onAnswered} />);
     expect(view.getByRole('heading', { name: 'Ali adlı oyuncunun sorusu' })).toBeInTheDocument();
     expect(view.getByText('Ali bekleniyor...')).toBeInTheDocument();
-    expect(view.queryByRole('button', { name: 'CEVAPLADIM — YENİDEN BAŞLAT' })).not.toBeInTheDocument();
+    expect(view.queryByRole('button', { name: 'CEVAPLADIM — DEVAM ET' })).not.toBeInTheDocument();
   });
 });

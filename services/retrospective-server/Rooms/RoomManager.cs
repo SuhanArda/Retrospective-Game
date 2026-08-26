@@ -75,6 +75,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private const int DrawAndGuessRoundCompleteDelayMs = 2500;
     /// <summary>Her turun süresi — kimse (ya da herkes) bilemezse bu süre dolunca kelime açıklanıp tur ilerler.</summary>
     private const int DrawAndGuessRoundDurationMs = 30_000;
+    private const int SpinBottleMaxPlayers = 10;
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
     private readonly TimeSpan _disconnectGrace = TimeSpan.FromSeconds(options.Value.DisconnectGraceSeconds);
@@ -276,7 +277,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 throw new RoomException("INVALID_ROOM_STATE");
             if (room.SpinBottleState is not null && room.SpinBottleState.Status is not ("IDLE" or "RESOLVED"))
                 throw new RoomException("SPIN_ALREADY_ACTIVE");
-            var eligible = room.Players.Values.OrderBy(player => player.JoinedAt).Take(6).ToArray();
+            var eligible = room.Players.Values.OrderBy(player => player.JoinedAt).Take(SpinBottleMaxPlayers).ToArray();
             if (eligible.Length == 0) throw new RoomException("NO_PLAYERS");
             var targetIndex = roomRandom.Next(eligible.Length);
             var turns = roomRandom.Next(4, 7);
@@ -286,7 +287,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             var spinId = Guid.NewGuid().ToString("N");
             var result = new SpinResult(spinId, room.CurrentGameSession.Id, room.CurrentGameSession.RoundId,
                 spinner.Id, eligible[targetIndex].Id, targetIndex,
-                previousAngle - normalizedAngle + turns * 360 + targetIndex * 60, 3200, now.ToUnixTimeMilliseconds());
+                previousAngle - normalizedAngle + turns * 360 + SpinTargetAngle(targetIndex, eligible.Length), 3200, now.ToUnixTimeMilliseconds());
             room.LastSpinResult = result;
             room.SpinBottleState = new SpinBottleState(spinId, spinner.Id, eligible[targetIndex].Id, targetIndex,
                 null, null, null, "SPINNING", 1, now.ToUnixTimeMilliseconds(), (now + TimeSpan.FromMilliseconds(result.DurationMs)).ToUnixTimeMilliseconds());
@@ -640,6 +641,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             {
                 var gameStarted = false;
                 var spinStateChanged = false;
+                RetroRushGameSnapshot? retroRushSnapshot = null;
                 var drawAndGuessStateChanged = false;
                 if (room.Status == RoomPhase.GameSelection &&
                     room.VotingEndsAt is { } votingEnd && votingEnd <= now)
@@ -662,6 +664,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 }
 
                 DrawAndGuessWordReveal? drawAndGuessWordReveal = null;
+                if (room.Status == RoomPhase.Playing)
+                    retroRushSnapshot = AdvanceRetroRushTimedState(room);
+
+                if (gameStarted || spinStateChanged || retroRushSnapshot is not null)
+                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, retroRushSnapshot));
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
                     // Herkes zaten bildi — kelimeyi ayrıca açıklamaya gerek yok.
@@ -902,6 +909,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     private static string Normalize(string code) => code.Trim().ToUpperInvariant();
+    private static int SpinTargetAngle(int targetIndex, int playerCount) =>
+        (int)Math.Round(targetIndex * 360d / playerCount, MidpointRounding.AwayFromZero);
     private static byte[] HashToken(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));
     private static string NormalizeColor(string color) => System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9A-Fa-f]{6}$") ? color : "#6C5CE7";
     private static void ValidateName(string name)
