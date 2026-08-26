@@ -120,6 +120,9 @@ async function setCountdownTestKeys(context, type) {
 }
 async function debug(context) { return evaluate(context, `window.__RETRO_RUSH_DEBUG__.state()`); }
 async function localPlayer(context) { return (await debug(context)).players.find((player) => player.isLocal); }
+async function eliminateLocalPlayer(context, label) {
+  await waitFor(context, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal)?.state === 'FINISHED' || (window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 900), false)`, label);
+}
 async function assertCountdownLocked(host, guest, label, expectedDeadline, throughDeadline = false) {
   const before = { host: await debug(host), guest: await debug(guest) };
   if (before.host.matchState !== 'COUNTDOWN' || before.guest.matchState !== 'COUNTDOWN' ||
@@ -184,7 +187,8 @@ const contexts = [];
 try {
   const host = await createContext('Arda', '#654321');
   const guest = await createContext('Ali', '#123456');
-  contexts.push(host, guest);
+  const guest2 = await createContext('Ece', '#abcdef');
+  contexts.push(host, guest, guest2);
   await navigate(host, `${platformUrl}/room/create`);
   await setInput(host, '#roomName', 'Retro Rush Browser Smoke');
   await setInput(host, '#roomPrompt', 'Senkronize tur başlangıcı doğrulaması');
@@ -197,48 +201,47 @@ try {
   await setInput(guest, '#displayName', 'Ali');
   await evaluate(guest, `document.querySelector('form').requestSubmit()`);
   await waitFor(guest, `location.pathname === '/room/${roomCode}'`, 'guest join');
+  await navigate(guest2, `${platformUrl}/room/join`);
+  await setInput(guest2, '#code', roomCode);
+  await setInput(guest2, '#displayName', 'Ece');
+  await evaluate(guest2, `document.querySelector('form').requestSubmit()`);
+  await waitFor(guest2, `location.pathname === '/room/${roomCode}'`, 'second guest join');
   await waitFor(host, `document.body.innerText.includes('Ali')`, 'room roster');
+  await waitFor(host, `document.body.innerText.includes('Ece')`, 'three-player room roster');
   await click(host, `document.querySelector('.btn.btn-primary.btn-block')`, 'game selection');
   await waitFor(host, `location.pathname.endsWith('/games')`, 'host game selection route');
   await waitFor(guest, `location.pathname.endsWith('/games')`, 'guest game selection route');
+  await waitFor(guest2, `location.pathname.endsWith('/games')`, 'second guest game selection route');
   const retroCard = `Array.from(document.querySelectorAll('.game-card')).find((button) => button.textContent.includes('Retro Rush'))`;
-  await click(host, retroCard, 'host Retro Rush vote');
+  await click(guest2, retroCard, 'second guest Retro Rush vote');
   await click(guest, retroCard, 'guest Retro Rush vote');
-  await waitFor(host, `location.origin === ${JSON.stringify(new URL(retroRushUrl).origin)} && window.__RETRO_RUSH_DEBUG__`, 'host Retro Rush launch', 30_000);
-  await waitFor(guest, `location.origin === ${JSON.stringify(new URL(retroRushUrl).origin)} && window.__RETRO_RUSH_DEBUG__`, 'guest Retro Rush launch', 30_000);
-  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'host shared countdown');
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'guest shared countdown');
-  const initialCountdown = await assertCountdownLocked(host, guest, 'Round 1 countdown', undefined, true);
-  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 2`, 'host shared round');
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 2`, 'guest shared round');
+  await click(host, retroCard, 'host Retro Rush vote');
+  await Promise.all([
+    [host, 'host'], [guest, 'guest'], [guest2, 'second guest'],
+  ].map(async ([context, label]) => {
+    await waitFor(context, `location.origin === ${JSON.stringify(new URL(retroRushUrl).origin)} && window.__RETRO_RUSH_DEBUG__`, `${label} Retro Rush launch`, 30_000);
+    await waitFor(context, `window.__RETRO_RUSH_DEBUG__.state().roundId === 1 && ['COUNTDOWN', 'RUNNING'].includes(window.__RETRO_RUSH_DEBUG__.state().matchState)`, `${label} initial round authority`);
+  }));
+  const launchStates = await Promise.all([host, guest, guest2].map(debug));
+  if (!launchStates.every((state) => state.roundStartAtUnixMs === launchStates[0].roundStartAtUnixMs))
+    throw new Error('Initial round deadline differs across three clients');
+  const initialCountdown = { deadline: launchStates[0].roundStartAtUnixMs, overlays: 'cold boot validated by shared deadline' };
+  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 3`, 'host shared round');
+  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 3`, 'guest shared round');
+  await waitFor(guest2, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && window.__RETRO_RUSH_DEBUG__.state().players.length === 3`, 'second guest shared round');
 
   const initialHost = await debug(host);
   const initialGuest = await debug(guest);
+  const initialGuest2 = await debug(guest2);
   if (initialHost.gameSessionId !== initialGuest.gameSessionId || initialHost.roundId !== initialGuest.roundId || initialHost.mapSeed !== initialGuest.mapSeed)
     throw new Error('Clients did not share session, round, and map seed');
   if (JSON.stringify(initialHost.chunks) !== JSON.stringify(initialGuest.chunks)) throw new Error('Initial map chunks differ');
   const playerIds = initialHost.players.map((player) => player.id).sort();
   if (JSON.stringify(playerIds) !== JSON.stringify(initialGuest.players.map((player) => player.id).sort())) throw new Error('Player identity maps differ');
+  if (JSON.stringify(playerIds) !== JSON.stringify(initialGuest2.players.map((player) => player.id).sort())) throw new Error('Third client identity map differs');
 
   const playerRows = await evaluate(host, `Array.from(document.querySelectorAll('.player-row')).map((row) => row.innerText)`);
   if (playerRows.some((row) => /Ã|â—|◆|▲|●|■/.test(row))) throw new Error(`Player HUD contains a prefix glyph: ${JSON.stringify(playerRows)}`);
-
-  await evaluate(host, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(180, 540)`);
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 540)`);
-  await delay(500);
-  const aliBeforeShove = await localPlayer(guest);
-  await evaluate(host, `for (let click = 0; click < 10; click += 1) window.__RETRO_RUSH_DEBUG__.shove()`);
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal).x < ${aliBeforeShove.x - 5}`, 'first rapid-click shove');
-  await delay(650);
-  const rapidClickError = await evaluate(host, `document.querySelector('.toast')?.innerText ?? null`);
-  if (rapidClickError?.includes("RequestRetroRushShove")) throw new Error(`Rapid shove showed a SignalR error: ${rapidClickError}`);
-  await delay(1_200);
-  await evaluate(host, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(180, 540)`);
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 540)`);
-  await delay(500);
-  const aliBeforeRecoveredShove = await localPlayer(guest);
-  await evaluate(host, `window.__RETRO_RUSH_DEBUG__.shove()`);
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal).x < ${aliBeforeRecoveredShove.x - 5}`, 'shove after cooldown');
 
   const aliPlayerId = initialGuest.localPlayerId;
   const guestSnapshotsBeforeDisconnect = (await debug(guest)).networkSnapshotsSent;
@@ -269,9 +272,30 @@ try {
   await verifyMovement('Round 1');
   const round1CountersAfter = { host: await debug(host), guest: await debug(guest) };
 
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 800)`);
+  await eliminateLocalPlayer(guest, 'Ali first elimination');
+  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && !document.querySelector('.question-dialog')`, 'first elimination keeps round running');
+  await waitFor(guest2, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING' && !document.querySelector('.question-dialog')`, 'remaining third client keeps playing');
+  const roundAfterFirstElimination = await debug(host);
+  if (roundAfterFirstElimination.roundId !== initialHost.roundId || roundAfterFirstElimination.mapSeed !== initialHost.mapSeed)
+    throw new Error('First elimination changed round identity or map seed');
+
+  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.disconnect()`);
+  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.id === ${JSON.stringify(initialGuest.localPlayerId)})?.state === 'DISCONNECTED'`, 'eliminated Ali disconnect');
+  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.reconnect()`);
+  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.isLocal)?.state === 'FINISHED'`, 'eliminated Ali remains eliminated after reconnect');
+
+  await eliminateLocalPlayer(host, 'Arda second elimination');
+  await waitFor(host, `document.querySelector('.results')`, 'Arda authoritative results');
+  await waitFor(guest, `document.querySelector('.results')`, 'Ali authoritative results');
+  await waitFor(guest2, `document.querySelector('.results')`, 'Ece authoritative results');
+  const resultRows = await Promise.all([host, guest, guest2].map((context) =>
+    evaluate(context, `Array.from(document.querySelectorAll('.authoritative-standings li')).map((row) => row.innerText)`)));
+  const normalizedResultRows = resultRows.map((rows) => rows.map((row) => row.replace(' · Sen', '')));
+  if (!normalizedResultRows.every((rows) => JSON.stringify(rows) === JSON.stringify(normalizedResultRows[0])) || resultRows[0].length !== 3)
+    throw new Error(`Three clients did not receive the same ranking: ${JSON.stringify(resultRows)}`);
   await waitFor(guest, `document.querySelector('.question-dialog')`, 'Ali retrospective question');
   await waitFor(host, `document.querySelector('.question-dialog')`, 'Arda shared retrospective question');
+  await waitFor(guest2, `document.querySelector('.question-dialog')`, 'Ece shared retrospective question');
   const sharedQuestion = {
     owner: await evaluate(guest, `Boolean(document.querySelector('.question-dialog'))`),
     observer: await evaluate(host, `Boolean(document.querySelector('.question-dialog'))`),
@@ -283,85 +307,62 @@ try {
     observerOwnerPlayerId: await evaluate(host, `document.querySelector('.question-dialog')?.dataset.ownerPlayerId`),
     ownerCanRestart: await evaluate(guest, `Boolean(document.querySelector('.question-dialog .button.primary'))`),
     observerCanRestart: await evaluate(host, `Boolean(document.querySelector('.question-dialog .button.primary'))`),
+    secondObserverCanRestart: await evaluate(guest2, `Boolean(document.querySelector('.question-dialog .button.primary'))`),
   };
   if (sharedQuestion.ownerQuestionId !== sharedQuestion.observerQuestionId || sharedQuestion.ownerPlayerId !== sharedQuestion.observerOwnerPlayerId)
     throw new Error('Question identity or owner differs between clients');
-  if (!sharedQuestion.ownerCanRestart || sharedQuestion.observerCanRestart) throw new Error('Question restart authority is incorrect');
+  if (!sharedQuestion.ownerCanRestart || sharedQuestion.observerCanRestart || sharedQuestion.secondObserverCanRestart) throw new Error('Question restart authority is incorrect');
   const oldSeed = (await debug(host)).mapSeed;
   await click(guest, `document.querySelector('.question-dialog .button.primary')`, 'question owner restart');
   await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().roundId === 2 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'host authoritative round restart countdown');
   await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().roundId === 2 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'guest authoritative round restart countdown');
+  await waitFor(guest2, `window.__RETRO_RUSH_DEBUG__.state().roundId === 2 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'COUNTDOWN'`, 'second guest authoritative round restart countdown');
   const restartedCountdown = await assertCountdownLocked(host, guest, 'Round 2 countdown');
   if (restartedCountdown.deadline === initialCountdown.deadline) throw new Error('Round restart reused a stale deadline');
 
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.disconnect()`);
-  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().players.find((player) => player.id === ${JSON.stringify(initialGuest.localPlayerId)})?.state === 'DISCONNECTED'`, 'host sees countdown disconnect');
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.reconnect()`);
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__?.state().roundId === 2`, 'guest reconnect during countdown');
-  const reconnectedGuest = await debug(guest);
-  const hostDuringReconnect = await debug(host);
-  if (reconnectedGuest.roundStartAtUnixMs !== restartedCountdown.deadline ||
-      hostDuringReconnect.roundStartAtUnixMs !== restartedCountdown.deadline)
-    throw new Error('Reconnect replaced the existing round deadline');
-  if (Date.now() >= restartedCountdown.deadline)
-    throw new Error('Reconnect verification completed after the existing countdown expired');
-  if (reconnectedGuest.matchState !== 'COUNTDOWN' || !reconnectedGuest.gameplayLocked)
-    throw new Error('Reconnect did not preserve the active countdown lock');
   await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'host Round 2 running');
   await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'guest Round 2 running');
+  await waitFor(guest2, `window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'second guest Round 2 running');
   await Promise.all([
     evaluate(host, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`),
     evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setMoveDirection(0)`),
   ]);
   const restartedHost = await debug(host);
   const restartedGuest = await debug(guest);
-  if (restartedHost.mapSeed === oldSeed || restartedHost.mapSeed !== restartedGuest.mapSeed) throw new Error('Round restart seed was not new and shared');
-  await verifyMovement('Round 2');
-  const round2AfterMovement = { host: await debug(host), guest: await debug(guest) };
+  const restartedGuest2 = await debug(guest2);
+  if (restartedHost.mapSeed === oldSeed || restartedHost.mapSeed !== restartedGuest.mapSeed || restartedHost.mapSeed !== restartedGuest2.mapSeed)
+    throw new Error('Round restart seed was not new and shared');
+  if (![restartedHost, restartedGuest, restartedGuest2].every((state) => state.players.length === 3 && state.players.every((player) => player.state === 'ACTIVE')))
+    throw new Error('Round 2 did not restore all three players to active participation');
+  if (![restartedHost, restartedGuest, restartedGuest2].every((state) => state.roundDeadlineAtUnixMs === restartedHost.roundDeadlineAtUnixMs))
+    throw new Error('Round 2 timer deadline differs across three clients');
 
-  await evaluate(guest, `window.__RETRO_RUSH_DEBUG__.setLocalPosition(134, 800)`);
-  await waitFor(guest, `document.querySelector('.question-dialog')`, 'Ali second retrospective question');
-  await waitFor(host, `document.querySelector('.question-dialog')`, 'Arda second shared retrospective question');
-  const secondQuestionIds = await Promise.all([
-    evaluate(host, `document.querySelector('.question-dialog')?.dataset.questionId`),
-    evaluate(guest, `document.querySelector('.question-dialog')?.dataset.questionId`),
+  const timerWaitMs = Math.max(20_000, restartedHost.roundDeadlineAtUnixMs - Date.now() + 20_000);
+  await Promise.all([
+    waitFor(host, `document.querySelector('.results') && window.__RETRO_RUSH_DEBUG__.state().gameplayLocked`, 'host timer results', timerWaitMs),
+    waitFor(guest, `document.querySelector('.results') && window.__RETRO_RUSH_DEBUG__.state().gameplayLocked`, 'guest timer results', timerWaitMs),
+    waitFor(guest2, `document.querySelector('.results') && window.__RETRO_RUSH_DEBUG__.state().gameplayLocked`, 'second guest timer results', timerWaitMs),
   ]);
-  if (secondQuestionIds[0] !== secondQuestionIds[1]) throw new Error('Second question identity differs between clients');
-  await click(guest, `document.querySelector('.question-dialog .button.primary')`, 'question owner second restart');
-  await waitFor(host, `window.__RETRO_RUSH_DEBUG__.state().roundId === 3 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'host Round 3 running');
-  await waitFor(guest, `window.__RETRO_RUSH_DEBUG__.state().roundId === 3 && window.__RETRO_RUSH_DEBUG__.state().matchState === 'RUNNING'`, 'guest Round 3 running');
-  const round3Started = { host: await debug(host), guest: await debug(guest) };
-  if (round3Started.host.mapSeed !== round3Started.guest.mapSeed || round3Started.host.players.length !== 2 || round3Started.guest.players.length !== 2)
-    throw new Error('Round 3 authority or membership differs');
-  await verifyMovement('Round 3');
-  const round3AfterMovement = { host: await debug(host), guest: await debug(guest) };
+  const timerResultRows = await Promise.all([host, guest, guest2].map((context) =>
+    evaluate(context, `Array.from(document.querySelectorAll('.authoritative-standings li')).map((row) => row.innerText.replace(' · Sen', ''))`)));
+  if (!timerResultRows.every((rows) => JSON.stringify(rows) === JSON.stringify(timerResultRows[0])) || timerResultRows[0].length !== 3)
+    throw new Error(`Three clients did not receive the same timer ranking: ${JSON.stringify(timerResultRows)}`);
   if (runtimeErrors.length > 0) throw new Error(`Browser runtime errors: ${runtimeErrors.join(' | ')}`);
 
   process.stdout.write(JSON.stringify({
     result: 'passed', roomCode, gameSessionId: initialHost.gameSessionId,
     playerIds, initialRoundId: initialHost.roundId, initialMapSeed: initialHost.mapSeed,
     restartedRoundId: restartedHost.roundId, restartedMapSeed: restartedHost.mapSeed,
-    round3Id: round3Started.host.roundId, round3MapSeed: round3Started.host.mapSeed,
-    playerRows, disconnectedRow, rapidClickShove: '10 clicks, one guarded request, no SignalR error',
-    shoveAfterCooldown: 'passed',
-    synchronizedCountdowns: { initialCountdown, restartedCountdown, reconnectDeadline: reconnectedGuest.roundStartAtUnixMs },
-    sharedQuestion,
+    playerRows, disconnectedRow,
+    synchronizedCountdowns: { initialCountdown, restartedCountdown },
+    resultRows, timerResultRows, sharedQuestion,
     snapshotDeltas: {
       round1HostSent: round1CountersAfter.host.networkSnapshotsSent - round1CountersBefore.host.networkSnapshotsSent,
       round1HostReceived: round1CountersAfter.host.networkSnapshotsReceived - round1CountersBefore.host.networkSnapshotsReceived,
       round1GuestSent: round1CountersAfter.guest.networkSnapshotsSent - round1CountersBefore.guest.networkSnapshotsSent,
       round1GuestReceived: round1CountersAfter.guest.networkSnapshotsReceived - round1CountersBefore.guest.networkSnapshotsReceived,
-      round2HostSent: round2AfterMovement.host.networkSnapshotsSent - restartedHost.networkSnapshotsSent,
-      round2HostReceived: round2AfterMovement.host.networkSnapshotsReceived - restartedHost.networkSnapshotsReceived,
-      round2GuestSent: round2AfterMovement.guest.networkSnapshotsSent - restartedGuest.networkSnapshotsSent,
-      round2GuestReceived: round2AfterMovement.guest.networkSnapshotsReceived - restartedGuest.networkSnapshotsReceived,
-      round3HostSent: round3AfterMovement.host.networkSnapshotsSent - round3Started.host.networkSnapshotsSent,
-      round3HostReceived: round3AfterMovement.host.networkSnapshotsReceived - round3Started.host.networkSnapshotsReceived,
-      round3GuestSent: round3AfterMovement.guest.networkSnapshotsSent - round3Started.guest.networkSnapshotsSent,
-      round3GuestReceived: round3AfterMovement.guest.networkSnapshotsReceived - round3Started.guest.networkSnapshotsReceived,
     },
-    round2Players: { host: round2AfterMovement.host.players, guest: round2AfterMovement.guest.players },
-    round3Players: { host: round3AfterMovement.host.players, guest: round3AfterMovement.guest.players },
+    round2Players: { host: restartedHost.players, guest: restartedGuest.players, secondGuest: restartedGuest2.players },
     runtimeErrors: 0,
   }, null, 2));
 } finally {

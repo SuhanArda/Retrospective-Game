@@ -53,6 +53,7 @@ export class DrawAndGuessRoomBridge {
       }),
       client.on('drawAndGuessStateChanged', (state) => this.applyState(state)),
       client.on('drawAndGuessGuessSubmitted', (result) => {
+        console.log('[DrawAndGuess] Guess broadcast received:', result);
         this.guessListeners.forEach((listener) => listener({
           playerId: result.playerId,
           displayName: result.displayName,

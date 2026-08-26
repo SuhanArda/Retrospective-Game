@@ -73,7 +73,7 @@ export interface CastImposterVoteRequest {
   targetPlayerId: string;
 }
 
-export type RetroRushPhase = 'COUNTDOWN' | 'RUNNING' | 'QUESTION' | 'RESTARTING';
+export type RetroRushPhase = 'COUNTDOWN' | 'RUNNING' | 'RESULTS' | 'QUESTION' | 'RESTARTING';
 export type RetroRushMovementState =
   | 'ACTIVE'
   | 'FALLEN'
@@ -127,6 +127,22 @@ export interface RetroRushRocketSnapshot {
   roundId: number;
 }
 
+export interface RetroRushEliminationSnapshot {
+  playerId: string;
+  eliminatedAtUnixMs: number;
+  order: number;
+}
+
+export interface RetroRushRankingEntry {
+  playerId: string;
+  displayName: string;
+  color: string;
+  place: number;
+  progressX: number;
+  eliminated: boolean;
+  eliminatedAtUnixMs?: number;
+}
+
 export interface RetroRushGameSnapshot {
   gameSessionId: string;
   roundId: number;
@@ -134,11 +150,16 @@ export interface RetroRushGameSnapshot {
   phase: RetroRushPhase;
   phaseStartedAtUtc: number;
   roundStartAtUnixMs: number;
+  roundDeadlineAtUnixMs: number;
+  resultsEndAtUnixMs: number;
   spawnX: number;
   spawnY: number;
   players: readonly RetroRushPlayerSnapshot[];
   collectedPickupIds: readonly string[];
   activeRockets: readonly RetroRushRocketSnapshot[];
+  eliminationOrder: readonly RetroRushEliminationSnapshot[];
+  ranking: readonly RetroRushRankingEntry[];
+  lastPlacePlayerId?: string;
   activeQuestion?: RetroRushQuestionSnapshot;
 }
 
@@ -167,7 +188,7 @@ export interface RetroRushRocketHitApplied { rocketId: string; roundId: number; 
 export interface RequestRetroRushPickupCollectionRequest { gameSessionId: string; roundId: number; pickupId: string; abilityId: AbilityId }
 export interface RetroRushPickupCollected { pickupId: string; roundId: number; playerId: string; abilityId: AbilityId }
 export interface RequestRetroRushPlayerEliminationRequest { gameSessionId: string; roundId: number; playerId: string }
-export interface RetroRushPlayerEliminated { roundId: number; playerId: string; question: RetroRushQuestionSnapshot }
+export interface RetroRushPlayerEliminated { roundId: number; playerId: string; eliminatedAtUnixMs: number; order: number }
 export interface CompleteRetroRushQuestionRequest { gameSessionId: string; roundId: number; questionId: string }
 export interface UseRetroRushAbilityRequest { gameSessionId: string; roundId: number; abilityId: AbilityId }
 export interface RequestRetroRushAskTargetRequest { gameSessionId: string; roundId: number; targetPlayerId: string }

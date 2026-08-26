@@ -20,6 +20,8 @@ const snapshot: RetroRushGameSnapshot = {
   phase: 'COUNTDOWN',
   phaseStartedAtUtc: 10_000,
   roundStartAtUnixMs: 13_500,
+  roundDeadlineAtUnixMs: 193_500,
+  resultsEndAtUnixMs: 0,
   spawnX: 180,
   spawnY: 540,
   players: [{
@@ -30,6 +32,8 @@ const snapshot: RetroRushGameSnapshot = {
   }],
   collectedPickupIds: [],
   activeRockets: [],
+  eliminationOrder: [],
+  ranking: [],
 };
 
 const room: RoomSnapshot = {

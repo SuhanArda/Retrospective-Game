@@ -11,7 +11,7 @@ interface Props {
 export function QuestionOverlay({ question, mode, onAnswered }: Props) {
   const confirmationRef = useRef<HTMLButtonElement>(null);
   useEffect(() => confirmationRef.current?.focus(), [question.id]);
-  const title = question.canConfirm || !question.ownerName ? 'Retrospektif sorusu' : `${question.ownerName} adlı oyuncunun sorusu`;
+  const title = question.canConfirm || !question.ownerName ? 'Son sıradaki oyuncunun sorusu' : `${question.ownerName} adlı oyuncunun sorusu`;
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -21,7 +21,7 @@ export function QuestionOverlay({ question, mode, onAnswered }: Props) {
         <p className="question-prompt">{question.prompt}</p>
         <p className="gentle-note">Bu soruyu ekibinle sözlü olarak yanıtla.</p>
         {question.canConfirm
-          ? <div className="dialog-actions"><button ref={confirmationRef} className="button primary" type="button" onClick={onAnswered}>CEVAPLADIM &mdash; YENİDEN BAŞLAT</button></div>
+          ? <div className="dialog-actions"><button ref={confirmationRef} className="button primary" type="button" onClick={onAnswered}>CEVAPLADIM &mdash; DEVAM ET</button></div>
           : <p className="gentle-note">{question.ownerName ?? 'Soru sahibi'} bekleniyor...</p>}
       </section>
     </div>
