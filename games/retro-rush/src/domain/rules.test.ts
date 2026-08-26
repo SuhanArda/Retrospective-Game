@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { abilityDefinitions } from '../data/abilityDefinitions';
-import { canRocketHit, canUseAbility, isBehindCamera, isEligibleTarget, selectSafeRespawn, validateQuestionResponse } from './rules';
+import { canRocketHit, canUseAbility, isBehindCamera, selectSafeRespawn, validateQuestionResponse } from './rules';
 import { transitionPlayer, type PlayerSnapshot, type RetroQuestion } from './types';
 import { sampleMap } from '../game/map/sampleMap';
 
@@ -21,14 +21,8 @@ describe('player state transitions', () => {
 describe('ability rules', () => {
   it('enforces cooldown completion', () => {
     expect(canUseAbility(abilityDefinitions.speed, undefined, 100)).toBe(true);
-    expect(canUseAbility(abilityDefinitions.speed, 100, 15_099)).toBe(false);
-    expect(canUseAbility(abilityDefinitions.speed, 100, 15_100)).toBe(true);
-  });
-  it('filters targets by identity, state, and protection', () => {
-    expect(isEligibleTarget(player(), 'local', 0, 100)).toBe(true);
-    expect(isEligibleTarget(player(), 'ada', 0, 100)).toBe(false);
-    expect(isEligibleTarget(player({ state: 'INVULNERABLE' }), 'local', 0, 100)).toBe(false);
-    expect(isEligibleTarget(player(), 'local', 200, 100)).toBe(false);
+    expect(canUseAbility(abilityDefinitions.speed, 100, 8_099)).toBe(false);
+    expect(canUseAbility(abilityDefinitions.speed, 100, 8_100)).toBe(true);
   });
   it('prevents rockets hitting the owner or protected states', () => {
     expect(canRocketHit('local', player())).toBe(true);

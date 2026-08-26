@@ -2,7 +2,7 @@ import { abilityDefinitions } from '../data/abilityDefinitions';
 import type { MatchSnapshot } from '../domain/types';
 import { matchStateLabels, playerStateLabels } from './retroRushLabels';
 
-interface Props { snapshot: MatchSnapshot; muted: boolean; onMute: () => void; onAbility: (id: 'speed' | 'rocket' | 'ask') => void }
+interface Props { snapshot: MatchSnapshot; muted: boolean; onMute: () => void; onAbility: (id: 'speed' | 'rocket' | 'pull') => void }
 
 function formatTime(milliseconds: number) {
   const total = Math.ceil(milliseconds / 1000);
@@ -25,10 +25,12 @@ export function Hud({ snapshot, muted, onMute, onAbility }: Props) {
         <div className="abilities" aria-label="Yetenekler">
           {Object.values(abilityDefinitions).map((ability, index) => {
             const cooldown = snapshot.cooldowns[ability.id];
-            const owned = snapshot.ownedAbilities.includes(ability.id);
-            const ready = owned && cooldown <= 0;
-            const status = !owned ? 'TOPLA' : ready ? 'HAZIR' : `${Math.ceil(cooldown / 1000)} sn`;
-            return <button type="button" key={ability.id} className="ability" disabled={!ready || snapshot.state !== 'RUNNING'} onClick={() => onAbility(ability.id)} aria-label={`${ability.name}: ${owned ? ability.description : 'Henüz toplanmadı'}`}><kbd>{index + 1}</kbd><span className="ability-icon">{owned ? ability.icon : '—'}</span><span><strong>{ability.name}</strong><small>{status}</small></span></button>;
+            const initiallyLocked = snapshot.abilityInitialLockRemainingMs > 0;
+            const ready = !initiallyLocked && cooldown <= 0;
+            const status = initiallyLocked
+              ? `KİLİTLİ ${Math.ceil(snapshot.abilityInitialLockRemainingMs / 1000)} sn`
+              : ready ? 'HAZIR' : `${Math.ceil(cooldown / 1000)} sn`;
+            return <button type="button" key={ability.id} className="ability" disabled={!ready || snapshot.state !== 'RUNNING'} onClick={() => onAbility(ability.id)} aria-label={`${ability.name}: ${ability.description}`}><kbd>{index + 1}</kbd><span className="ability-icon">{ability.icon}</span><span><strong>{ability.name}</strong><small>{status}</small></span></button>;
           })}
         </div>
         <div className="mode"><span className="status-dot online" /> DENEME MODU<small>YEREL SİMÜLASYON</small></div>

@@ -16,7 +16,7 @@ export type RetroQuestionCategory =
   | 'Next sprint'
   | 'Team mood';
 export type QuestionType = 'text' | 'singleChoice' | 'rating';
-export type AbilityId = 'speed' | 'rocket' | 'ask';
+export type AbilityId = 'speed' | 'rocket' | 'pull';
 
 export interface Point {
   x: number;
@@ -47,7 +47,7 @@ export interface RetroAnswer {
 export interface AbilityDefinition {
   id: AbilityId;
   name: string;
-  targetMode: 'self' | 'direction' | 'player';
+  targetMode: 'self' | 'direction' | 'automatic';
   cooldownMs: number;
   durationMs?: number;
   icon: string;
@@ -74,8 +74,8 @@ export interface MatchSnapshot {
   players: readonly PlayerSnapshot[];
   checkpointLabel: string;
   danger: boolean;
-  ownedAbilities: readonly AbilityId[];
   cooldowns: Readonly<Record<AbilityId, number>>;
+  abilityInitialLockRemainingMs: number;
 }
 
 export const playerTransitions: Readonly<Record<PlayerState, readonly PlayerState[]>> = {

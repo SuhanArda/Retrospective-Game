@@ -12,8 +12,7 @@ describe('Retro Rush player HUD', () => {
   it('renders names and connection states without player prefix glyphs', () => {
     const snapshot: MatchSnapshot = {
       state: 'RUNNING', timeRemainingMs: 60_000, countdown: 0, checkpointLabel: 'Başlangıç Noktası', danger: false,
-      ownedAbilities: [],
-      cooldowns: { speed: 0, rocket: 0, ask: 0 },
+      cooldowns: { speed: 0, rocket: 0, pull: 0 }, abilityInitialLockRemainingMs: 0,
       players: [
         player('arda', 'arda', 'ACTIVE', 'Ã¢â€”â€ '),
         player('acaeeac', 'acaeeac', 'DISCONNECTED', '◆'),
@@ -32,24 +31,25 @@ describe('Retro Rush player HUD', () => {
     expect(list).not.toHaveTextContent('◆');
   });
 
-  it('shows empty disabled slots until only the collected ability is unlocked', () => {
+  it('shows the initial lock, then makes all abilities available without pickups', () => {
     const onAbility = vi.fn();
     const snapshot: MatchSnapshot = {
       state: 'RUNNING', timeRemainingMs: 60_000, countdown: 0, checkpointLabel: 'Başlangıç Noktası', danger: false,
-      players: [player('arda', 'Arda', 'ACTIVE', '◆')], ownedAbilities: [],
-      cooldowns: { speed: 0, rocket: 0, ask: 0 },
+      players: [player('arda', 'Arda', 'ACTIVE', '◆')],
+      cooldowns: { speed: 7_000, rocket: 7_000, pull: 7_000 }, abilityInitialLockRemainingMs: 7_000,
     };
     const view = render(<Hud snapshot={snapshot} muted={false} onMute={() => undefined} onAbility={onAbility} />);
     const slots = within(view.getByLabelText('Yetenekler')).getAllByRole('button');
     expect(slots).toHaveLength(3);
     expect(slots.every((slot) => slot.hasAttribute('disabled'))).toBe(true);
-    expect(view.getAllByText('TOPLA')).toHaveLength(3);
+    expect(view.getAllByText('KİLİTLİ 7 sn')).toHaveLength(3);
     slots.forEach((slot) => fireEvent.click(slot));
     expect(onAbility).not.toHaveBeenCalled();
 
-    view.rerender(<Hud snapshot={{ ...snapshot, ownedAbilities: ['rocket'] }} muted={false} onMute={() => undefined} onAbility={onAbility} />);
+    view.rerender(<Hud snapshot={{ ...snapshot, cooldowns: { speed: 0, rocket: 0, pull: 0 }, abilityInitialLockRemainingMs: 0 }} muted={false} onMute={() => undefined} onAbility={onAbility} />);
     const rocket = view.getByRole('button', { name: /İtme roketi:/i });
     expect(rocket).toBeEnabled();
+    expect(view.getAllByText('HAZIR')).toHaveLength(3);
     fireEvent.click(rocket);
     expect(onAbility).toHaveBeenCalledWith('rocket');
   });

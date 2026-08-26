@@ -7,7 +7,7 @@ const neutral: RoundStartGameplayInput = {
   jump: false,
   speedAbility: false,
   rocketAbility: false,
-  askAbility: false,
+  pullAbility: false,
   developmentMovement: false,
 };
 
@@ -17,7 +17,7 @@ describe('round-start input gate', () => {
     ['held jump', { jump: true }],
     ['held speed ability', { speedAbility: true }],
     ['held rocket ability', { rocketAbility: true }],
-    ['held ask ability', { askAbility: true }],
+    ['held pull ability', { pullAbility: true }],
     ['held debug movement', { developmentMovement: true }],
   ] as const)('does not replay %s after the countdown', (_label, heldInput) => {
     const gate = new RoundStartInputGate();

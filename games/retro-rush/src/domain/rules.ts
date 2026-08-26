@@ -5,10 +5,6 @@ export function canUseAbility(definition: AbilityDefinition, lastUsedAt: number 
   return lastUsedAt === undefined || now - lastUsedAt >= definition.cooldownMs;
 }
 
-export function isEligibleTarget(player: PlayerSnapshot, actorId: string, protectedUntil = 0, now = Date.now()) {
-  return player.id !== actorId && player.state === 'ACTIVE' && protectedUntil <= now;
-}
-
 export function validateQuestionResponse(question: RetroQuestion, value: string): string | null {
   const normalized = value.trim();
   if (!normalized) return question.required ? 'Devam etmek için bir yanıt paylaş.' : null;

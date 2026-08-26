@@ -23,9 +23,8 @@ public interface IRoomClient
     Task RetroRushShoveApplied(RetroRushShoveApplied shove);
     Task RetroRushRocketSpawned(RetroRushRocketSnapshot rocket);
     Task RetroRushRocketHit(RetroRushRocketHitApplied hit);
-    Task RetroRushPickupCollected(RetroRushPickupCollected pickup);
+    Task RetroRushAbilityApplied(RetroRushAbilityApplied ability);
     Task RetroRushPlayerEliminated(RetroRushPlayerEliminated elimination);
     Task RetroRushRoundStarted(RetroRushGameSnapshot snapshot);
-    Task RetroRushTargetQuestioned(RetroRushTargetQuestioned question);
     Task ImposterStateChanged(ImposterStateChanged state);
 }

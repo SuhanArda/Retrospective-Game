@@ -101,7 +101,9 @@ export interface RetroRushPlayerSnapshot {
   sequence: number;
   clientTimestamp: number;
   roundId: number;
-  ownedAbilityIds: readonly AbilityId[];
+  ability1AvailableAtUnixMs: number;
+  ability2AvailableAtUnixMs: number;
+  ability3AvailableAtUnixMs: number;
 }
 
 export interface RetroRushQuestionSnapshot {
@@ -155,7 +157,6 @@ export interface RetroRushGameSnapshot {
   spawnX: number;
   spawnY: number;
   players: readonly RetroRushPlayerSnapshot[];
-  collectedPickupIds: readonly string[];
   activeRockets: readonly RetroRushRocketSnapshot[];
   eliminationOrder: readonly RetroRushEliminationSnapshot[];
   ranking: readonly RetroRushRankingEntry[];
@@ -185,16 +186,21 @@ export interface RetroRushShoveCommandResult { accepted: boolean; rejection?: Re
 export interface RequestRetroRushRocketFireRequest { gameSessionId: string; roundId: number }
 export interface RequestRetroRushRocketHitRequest { gameSessionId: string; roundId: number; rocketId: string }
 export interface RetroRushRocketHitApplied { rocketId: string; roundId: number; targetPlayerId: string; velocityX: number; hitStunMs: number }
-export interface RequestRetroRushPickupCollectionRequest { gameSessionId: string; roundId: number; pickupId: string; abilityId: AbilityId }
-export interface RetroRushPickupCollected { pickupId: string; roundId: number; playerId: string; abilityId: AbilityId }
 export interface RequestRetroRushPlayerEliminationRequest { gameSessionId: string; roundId: number; playerId: string }
 export interface RetroRushPlayerEliminated { roundId: number; playerId: string; eliminatedAtUnixMs: number; order: number }
 export interface CompleteRetroRushQuestionRequest { gameSessionId: string; roundId: number; questionId: string }
 export interface UseRetroRushAbilityRequest { gameSessionId: string; roundId: number; abilityId: AbilityId }
-export interface RequestRetroRushAskTargetRequest { gameSessionId: string; roundId: number; targetPlayerId: string }
-export interface RetroRushTargetQuestioned { roundId: number; sourcePlayerId: string; targetPlayerId: string }
+export interface RetroRushAbilityApplied {
+  roundId: number;
+  abilityId: AbilityId;
+  sourcePlayerId: string;
+  targetPlayerId?: string;
+  velocityX?: number;
+  hitStunMs?: number;
+  availableAtUnixMs: number;
+}
 
-export type AbilityId = 'speed' | 'rocket' | 'ask';
+export type AbilityId = 'speed' | 'rocket' | 'pull';
 
 export type SpinBottleStateStatus =
   | 'IDLE'

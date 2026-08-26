@@ -17,7 +17,9 @@ public sealed record RetroRushPlayerSnapshot(
     long Sequence,
     long ClientTimestamp,
     int RoundId,
-    IReadOnlyList<string> OwnedAbilityIds);
+    long Ability1AvailableAtUnixMs,
+    long Ability2AvailableAtUnixMs,
+    long Ability3AvailableAtUnixMs);
 
 public sealed record RetroRushQuestionSnapshot(
     string QuestionId,
@@ -66,7 +68,6 @@ public sealed record RetroRushGameSnapshot(
     double SpawnX,
     double SpawnY,
     IReadOnlyList<RetroRushPlayerSnapshot> Players,
-    IReadOnlyList<string> CollectedPickupIds,
     IReadOnlyList<RetroRushRocketSnapshot> ActiveRockets,
     IReadOnlyList<RetroRushEliminationSnapshot> EliminationOrder,
     IReadOnlyList<RetroRushRankingEntry> Ranking,
@@ -113,21 +114,15 @@ public sealed record RetroRushRocketHitApplied(
     double VelocityX,
     int HitStunMs);
 
-public sealed record RequestRetroRushPickupCollectionRequest(
-    string GameSessionId,
-    int RoundId,
-    string PickupId,
-    string AbilityId);
-
-public sealed record RetroRushPickupCollected(
-    string PickupId,
-    int RoundId,
-    string PlayerId,
-    string AbilityId);
-
 public sealed record RequestRetroRushPlayerEliminationRequest(string GameSessionId, int RoundId, string PlayerId);
 public sealed record RetroRushPlayerEliminated(int RoundId, string PlayerId, long EliminatedAtUnixMs, int Order);
 public sealed record CompleteRetroRushQuestionRequest(string GameSessionId, int RoundId, string QuestionId);
 public sealed record UseRetroRushAbilityRequest(string GameSessionId, int RoundId, string AbilityId);
-public sealed record RequestRetroRushAskTargetRequest(string GameSessionId, int RoundId, string TargetPlayerId);
-public sealed record RetroRushTargetQuestioned(int RoundId, string SourcePlayerId, string TargetPlayerId);
+public sealed record RetroRushAbilityApplied(
+    int RoundId,
+    string AbilityId,
+    string SourcePlayerId,
+    string? TargetPlayerId,
+    double? VelocityX,
+    int? HitStunMs,
+    long AvailableAtUnixMs);
