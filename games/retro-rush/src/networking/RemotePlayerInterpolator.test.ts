@@ -6,7 +6,7 @@ const snapshot = (sequence: number, x: number, roundId = 1): RetroRushPlayerSnap
   playerId: 'remote', displayName: 'Remote', color: '#ffffff', slot: 1, skinIndex: 1,
   connected: true, x, y: 100, velocityX: 20, velocityY: 0, facing: 'right',
   movementState: 'ACTIVE', animationState: 'running', sequence, clientTimestamp: sequence * 50, roundId,
-  ownedAbilityIds: [],
+  ability1AvailableAtUnixMs: 0, ability2AvailableAtUnixMs: 0, ability3AvailableAtUnixMs: 0,
 });
 
 describe('RemotePlayerInterpolator', () => {

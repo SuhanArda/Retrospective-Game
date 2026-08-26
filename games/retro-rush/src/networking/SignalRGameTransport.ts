@@ -1,12 +1,10 @@
 import type { GameLaunchContext, RetroRushGameSnapshot, RetroRushPlayerSnapshot } from '@retro-platform/contracts';
 import type { RoomRealtimeClient } from '@retro-platform/realtime-client';
-import type { AbilityId } from '../domain/types';
 import type { GameTransport } from './GameTransport';
 import type {
   GameTransportListener,
   JoinRoomRequest,
   PlayerInputMessage,
-  SelectTargetCommand,
   ShoveCommand,
   UseAbilityCommand,
 } from './transportMessages';
@@ -71,13 +69,6 @@ export class SignalRGameTransport implements GameTransport {
       gameSessionId: this.gameSessionId, roundId: this.currentRoundId, abilityId: command.abilityId,
     }));
   }
-  selectAbilityTarget(command: SelectTargetCommand) {
-    if (!this.canSendGameplay(this.currentRoundId)) return;
-    this.run(this.roomClient.requestRetroRushAskTarget({
-      gameSessionId: this.gameSessionId, roundId: this.currentRoundId, targetPlayerId: command.targetPlayerId,
-    }));
-  }
-
   sendPlayerSnapshot(snapshot: RetroRushPlayerSnapshot) {
     if (!this.canSendGameplay(snapshot.roundId)) return;
     this.run(this.roomClient.updateRetroRushPlayer({
@@ -113,13 +104,6 @@ export class SignalRGameTransport implements GameTransport {
     this.run(this.roomClient.requestRetroRushRocketHit({ gameSessionId: this.gameSessionId, roundId, rocketId }));
   }
 
-  requestPickupCollection(roundId: number, pickupId: string, abilityId: AbilityId) {
-    if (!this.canSendGameplay(roundId)) return;
-    this.run(this.roomClient.requestRetroRushPickupCollection({
-      gameSessionId: this.gameSessionId, roundId, pickupId, abilityId,
-    }));
-  }
-
   requestPlayerElimination(roundId: number) {
     if (!this.canSendGameplay(roundId)) return;
     this.run(this.roomClient.requestRetroRushPlayerElimination({
@@ -150,10 +134,9 @@ export class SignalRGameTransport implements GameTransport {
       this.roomClient.on('retroRushShoveApplied', (shove) => this.emit({ type: 'retroShoveApplied', shove })),
       this.roomClient.on('retroRushRocketSpawned', (rocket) => this.emit({ type: 'retroRocketSpawned', rocket })),
       this.roomClient.on('retroRushRocketHit', (hit) => this.emit({ type: 'retroRocketHit', hit })),
-      this.roomClient.on('retroRushPickupCollected', (pickup) => this.emit({ type: 'retroPickupCollected', pickup })),
+      this.roomClient.on('retroRushAbilityApplied', (ability) => this.emit({ type: 'retroAbilityApplied', ability })),
       this.roomClient.on('retroRushPlayerEliminated', (elimination) => this.emit({ type: 'retroPlayerEliminated', elimination })),
       this.roomClient.on('retroRushRoundStarted', (snapshot) => this.acceptSnapshot(snapshot, 'retroRoundStarted')),
-      this.roomClient.on('retroRushTargetQuestioned', (question) => this.emit({ type: 'retroTargetQuestioned', question })),
     );
   }
 

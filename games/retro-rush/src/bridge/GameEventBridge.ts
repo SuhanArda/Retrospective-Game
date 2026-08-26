@@ -4,7 +4,6 @@ export interface GameToUiEvents {
   snapshot: MatchSnapshot;
   questionOpened: PresentedRetroQuestion;
   roundReset: undefined;
-  targetSelectionOpened: { protectedTargets: Readonly<Record<string, number>> };
   announcement: string;
 }
 
@@ -12,8 +11,6 @@ export interface UiToGameEvents {
   startMatch: undefined;
   restartMatch: undefined;
   questionAnswered: { questionId: string };
-  targetSelected: { playerId: string };
-  targetSelectionCancelled: undefined;
   abilityRequested: { abilityId: AbilityId };
   audioMuted: { muted: boolean };
 }

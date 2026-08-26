@@ -75,7 +75,7 @@ export interface ProceduralMapState {
   recentExitLanes: readonly number[];
 }
 
-const ABILITIES: readonly AbilityId[] = ['speed', 'rocket', 'ask'];
+const ABILITIES: readonly AbilityId[] = ['speed', 'rocket', 'pull'];
 const DECORATION_PADDING = 56;
 export const MAX_FLAT_STREAK = 2;
 export const TERRAIN_RHYTHM_TAGS = ['flat', 'ascending', 'descending', 'gap', 'vertical', 'split', 'technical', 'recovery'] as const;
@@ -329,17 +329,13 @@ export class ProceduralMapGenerator {
     this.assertRouteReachable(template.mainRoute, platforms, `${template.id} main route`);
     if (template.optionalRoute) this.assertRouteReachable(template.optionalRoute, platforms, `${template.id} optional route`);
 
-    const pickups = template.pickups.flatMap((slot, pickupIndex): GeneratedPickup[] => {
-      if (slot.chance !== undefined && this.random.next() > slot.chance) return [];
-      const platform = platforms[slot.platformIndex]!;
-      return [{
-        id: `${id}-pickup-${pickupIndex}`,
-        ability: slot.type === 'random' ? ABILITIES[Math.floor(this.random.next() * ABILITIES.length)]! : slot.type,
-        x: platform.x + slot.localOffsetX,
-        y: platformTop(platform) - 32,
-        platformId: platform.id,
-      }];
-    });
+    // Retain the deterministic random stream consumed by legacy map definitions,
+    // but no longer materialize special-ability pickups into the generated course.
+    for (const slot of template.pickups) {
+      if (slot.chance !== undefined && this.random.next() > slot.chance) continue;
+      if (slot.type === 'random') void ABILITIES[Math.floor(this.random.next() * ABILITIES.length)];
+    }
+    const pickups: GeneratedPickup[] = [];
 
     const decorations = template.decorations.map((slot, decorationIndex): GeneratedDecoration => {
       const platform = platforms[slot.platformIndex]!;

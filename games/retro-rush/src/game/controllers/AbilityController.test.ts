@@ -2,34 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { AbilityController } from './AbilityController';
 
 describe('ability cooldown commitment', () => {
-  it('starts empty and ignores every ability until the matching pickup grants it', () => {
+  it('makes every ability available after the shared initial round lock', () => {
     const controller = new AbilityController();
-    expect(controller.ownedAbilities()).toEqual([]);
-    expect(controller.tryUse('speed', 100)).toBe(false);
-    expect(controller.tryUse('rocket', 100)).toBe(false);
-    expect(controller.tryUse('ask', 100)).toBe(false);
-
-    controller.grant('rocket');
-    expect(controller.ownedAbilities()).toEqual(['rocket']);
-    expect(controller.tryUse('speed', 100)).toBe(false);
-    expect(controller.tryUse('rocket', 100)).toBe(true);
+    controller.reset(7_100);
+    expect(controller.tryUse('speed', 7_099)).toBe(false);
+    expect(controller.tryUse('rocket', 7_099)).toBe(false);
+    expect(controller.tryUse('pull', 7_099)).toBe(false);
+    expect(controller.tryUse('speed', 7_100)).toBe(true);
+    expect(controller.tryUse('rocket', 7_100)).toBe(true);
+    expect(controller.tryUse('pull', 7_100)).toBe(true);
   });
 
   it('does not consume cooldown when readiness is checked without a valid target', () => {
     const controller = new AbilityController();
-    controller.grant('rocket');
     expect(controller.isReady('rocket', 100)).toBe(true);
     expect(controller.cooldowns(100).rocket).toBe(0);
     expect(controller.tryUse('rocket', 100)).toBe(true);
     expect(controller.cooldowns(100).rocket).toBeGreaterThan(0);
   });
 
-  it('clears ownership on round reset and restores it for a same-round reconnect', () => {
+  it('restores authoritative cooldown deadlines on reconnect and clears them for a new round', () => {
     const controller = new AbilityController();
-    controller.grant('ask');
-    controller.reset();
-    expect(controller.ownedAbilities()).toEqual([]);
-    controller.restore(['ask']);
-    expect(controller.isReady('ask', 100)).toBe(true);
+    controller.synchronize({ speed: 8_000, rocket: 10_000, pull: 12_000 });
+    expect(controller.cooldowns(2_000)).toEqual({ speed: 6_000, rocket: 8_000, pull: 10_000 });
+    controller.reset(20_000);
+    expect(controller.cooldowns(13_000)).toEqual({ speed: 7_000, rocket: 7_000, pull: 7_000 });
   });
 });

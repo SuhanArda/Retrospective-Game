@@ -209,8 +209,9 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public async Task RequestRetroRushRocketFire(RequestRetroRushRocketFireRequest request)
     {
         var mutation = rooms.RequestRetroRushRocketFire(Context.ConnectionId, request);
-        if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketSpawned(mutation.Event);
+        var clients = Clients.Group(GroupName(mutation.RoomCode));
+        await clients.RetroRushAbilityApplied(mutation.Ability);
+        await clients.RetroRushRocketSpawned(mutation.Rocket);
     }
 
     public async Task RequestRetroRushRocketHit(RequestRetroRushRocketHitRequest request)
@@ -218,13 +219,6 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         var mutation = rooms.RequestRetroRushRocketHit(Context.ConnectionId, request);
         if (mutation.Event is not null)
             await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketHit(mutation.Event);
-    }
-
-    public async Task RequestRetroRushPickupCollection(RequestRetroRushPickupCollectionRequest request)
-    {
-        var mutation = rooms.RequestRetroRushPickupCollection(Context.ConnectionId, request);
-        if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushPickupCollected(mutation.Event);
     }
 
     public async Task RequestRetroRushPlayerElimination(RequestRetroRushPlayerEliminationRequest request)
@@ -249,17 +243,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         }
     }
 
-    public Task UseRetroRushAbility(UseRetroRushAbilityRequest request)
+    public async Task UseRetroRushAbility(UseRetroRushAbilityRequest request)
     {
-        rooms.UseRetroRushAbility(Context.ConnectionId, request);
-        return Task.CompletedTask;
-    }
-
-    public async Task RequestRetroRushAskTarget(RequestRetroRushAskTargetRequest request)
-    {
-        var mutation = rooms.RequestRetroRushAskTarget(Context.ConnectionId, request);
+        var mutation = rooms.UseRetroRushAbility(Context.ConnectionId, request);
         if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushTargetQuestioned(mutation.Event);
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushAbilityApplied(mutation.Event);
     }
 
     public Task<ImposterGameSnapshot> GetImposterSnapshot(string gameSessionId) =>

@@ -21,21 +21,18 @@ import type {
   SpinBottleStateSnapshot,
   SpinResult,
   CompleteRetroRushQuestionRequest,
-  RequestRetroRushPickupCollectionRequest,
   RequestRetroRushPlayerEliminationRequest,
   RequestRetroRushRocketFireRequest,
   RequestRetroRushRocketHitRequest,
   RequestRetroRushShoveRequest,
-  RequestRetroRushAskTargetRequest,
+  RetroRushAbilityApplied,
   RetroRushGameSnapshot,
-  RetroRushPickupCollected,
   RetroRushPlayerEliminated,
   RetroRushPlayerSnapshot,
   RetroRushRocketHitApplied,
   RetroRushRocketSnapshot,
   RetroRushShoveApplied,
   RetroRushShoveCommandResult,
-  RetroRushTargetQuestioned,
   UpdateRetroRushPlayerRequest,
   UseRetroRushAbilityRequest,
 } from '@retro-platform/contracts';
@@ -75,10 +72,9 @@ type EventMap = {
   retroRushShoveApplied: RetroRushShoveApplied;
   retroRushRocketSpawned: RetroRushRocketSnapshot;
   retroRushRocketHit: RetroRushRocketHitApplied;
-  retroRushPickupCollected: RetroRushPickupCollected;
+  retroRushAbilityApplied: RetroRushAbilityApplied;
   retroRushPlayerEliminated: RetroRushPlayerEliminated;
   retroRushRoundStarted: RetroRushGameSnapshot;
-  retroRushTargetQuestioned: RetroRushTargetQuestioned;
   imposterStateChanged: ImposterStateChanged;
 };
 
@@ -178,9 +174,6 @@ export class RoomRealtimeClient {
   requestRetroRushRocketHit(request: RequestRetroRushRocketHitRequest): Promise<void> {
     return this.invoke('RequestRetroRushRocketHit', request);
   }
-  requestRetroRushPickupCollection(request: RequestRetroRushPickupCollectionRequest): Promise<void> {
-    return this.invoke('RequestRetroRushPickupCollection', request);
-  }
   requestRetroRushPlayerElimination(request: RequestRetroRushPlayerEliminationRequest): Promise<void> {
     return this.invoke('RequestRetroRushPlayerElimination', request);
   }
@@ -189,9 +182,6 @@ export class RoomRealtimeClient {
   }
   useRetroRushAbility(request: UseRetroRushAbilityRequest): Promise<void> {
     return this.invoke('UseRetroRushAbility', request);
-  }
-  requestRetroRushAskTarget(request: RequestRetroRushAskTargetRequest): Promise<void> {
-    return this.invoke('RequestRetroRushAskTarget', request);
   }
   getImposterSnapshot(gameSessionId: string): Promise<ImposterGameSnapshot> {
     return this.invoke('GetImposterSnapshot', gameSessionId);
@@ -238,10 +228,9 @@ export class RoomRealtimeClient {
     connection.on('RetroRushShoveApplied', (shove: RetroRushShoveApplied) => this.emit('retroRushShoveApplied', shove));
     connection.on('RetroRushRocketSpawned', (rocket: RetroRushRocketSnapshot) => this.emit('retroRushRocketSpawned', rocket));
     connection.on('RetroRushRocketHit', (hit: RetroRushRocketHitApplied) => this.emit('retroRushRocketHit', hit));
-    connection.on('RetroRushPickupCollected', (pickup: RetroRushPickupCollected) => this.emit('retroRushPickupCollected', pickup));
+    connection.on('RetroRushAbilityApplied', (ability: RetroRushAbilityApplied) => this.emit('retroRushAbilityApplied', ability));
     connection.on('RetroRushPlayerEliminated', (elimination: RetroRushPlayerEliminated) => this.emit('retroRushPlayerEliminated', elimination));
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
-    connection.on('RetroRushTargetQuestioned', (question: RetroRushTargetQuestioned) => this.emit('retroRushTargetQuestioned', question));
     connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {

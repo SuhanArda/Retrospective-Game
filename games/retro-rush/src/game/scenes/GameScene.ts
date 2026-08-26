@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { gameplayConfig } from '../../data/gameplayConfig';
+import { abilityDefinitions } from '../../data/abilityDefinitions';
 import { retroQuestions } from '../../data/retroQuestions';
 import type { AbilityId, MatchSnapshot, PlayerSnapshot, PlayerState, Point, RetroQuestion } from '../../domain/types';
 import { transitionPlayer } from '../../domain/types';
-import { isBehindCamera, isEligibleTarget } from '../../domain/rules';
+import { isBehindCamera } from '../../domain/rules';
 import type { GameEventBridge } from '../../bridge/GameEventBridge';
 import type { GameTransport } from '../../networking/GameTransport';
 import { sampleMap } from '../map/sampleMap';
@@ -13,7 +14,6 @@ import { SeededRandom } from '../../testing/bot/SeededRandom';
 import { AudioManager } from '../../audio/AudioManager';
 import { calculateHomingVelocity, findNearestRocketTarget, resolveRocketHit, velocityTowards, type PositionedPlayer, type RocketState } from '../controllers/RocketLifecycle';
 import { applyJumpCut, clampDeltaSeconds, createJumpState, recordJumpPress, resetJumpState, tryStartJump, updateGroundedState, type JumpState } from '../controllers/PlayerMovementController';
-import { collectPickup, type PickupState } from '../systems/PickupSystem';
 import { segmentIntersectsExpandedAabb } from '../controllers/RocketCollision';
 import { ParallaxBackgroundSystem } from '../visuals/ParallaxBackgroundSystem';
 import { TerrainRenderer } from '../visuals/TerrainRenderer';
@@ -28,7 +28,7 @@ import { RoundStartInputGate, type RoundStartGameplayInput } from '../controller
 import { ProceduralMapGenerator, RoundSeedSequence, type GeneratedChunk } from '../systems/ProceduralMapGenerator';
 import type {
   RetroRushGameSnapshot,
-  RetroRushPickupCollected,
+  RetroRushAbilityApplied,
   RetroRushPlayerEliminated,
   RetroRushPlayerSnapshot,
   RetroRushRocketHitApplied,
@@ -55,19 +55,9 @@ interface PlayerRuntime {
   interpolation?: RemotePlayerInterpolator;
 }
 
-interface PickupRuntime extends PickupState {
-  id: string;
-  ability: AbilityId;
-  zone: Phaser.GameObjects.Zone;
-  visuals: Array<Phaser.GameObjects.Arc | Phaser.GameObjects.Text>;
-  overlaps: Phaser.Physics.Arcade.Collider[];
-  pending: boolean;
-}
-
 interface ChunkRuntime {
   bodies: Phaser.Physics.Arcade.Sprite[];
   visuals: Phaser.GameObjects.GameObject[];
-  pickups: PickupRuntime[];
 }
 
 export class GameScene extends Phaser.Scene {
@@ -78,7 +68,6 @@ export class GameScene extends Phaser.Scene {
   private playerBodies!: Phaser.Physics.Arcade.Group;
   private rockets!: Phaser.Physics.Arcade.Group;
   private readonly rocketsToDispose = new Set<Phaser.Physics.Arcade.Sprite>();
-  private pickups: PickupRuntime[] = [];
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys!: Record<'a' | 'd' | 'w' | 'one' | 'two' | 'three', Phaser.Input.Keyboard.Key>;
   private readonly cameraController = new CameraController();
@@ -100,7 +89,6 @@ export class GameScene extends Phaser.Scene {
   private questionPool: readonly RetroQuestion[];
   private activeQuestionId: string | null = null;
   private activeOnlineQuestion: NonNullable<RetroRushGameSnapshot['activeQuestion']> | null = null;
-  private targetProtectedUntil: Record<string, number> = {};
   private inputSequence = 0;
   private readonly temporaryEffects = new Set<Phaser.GameObjects.GameObject>();
   // Mock authority owns this seed sequence. Production SignalR should distribute
@@ -119,7 +107,8 @@ export class GameScene extends Phaser.Scene {
   private roundDeadlineAtUnixMs = 0;
   private authoritativeRoundSpawn: Point = roundSpawnPosition(sampleMap.spawn);
   private eliminationPending = false;
-  private readonly collectedPickupIds = new Set<string>();
+  private readonly pendingAbilities = new Set<AbilityId>();
+  private abilityInitialUnlockAt = 0;
   private readonly appliedShoveIds = new Set<string>();
   private readonly resolvedRocketIds = new Set<string>();
   private developmentDebugApi?: NonNullable<Window['__RETRO_RUSH_DEBUG__']>;
@@ -141,7 +130,6 @@ export class GameScene extends Phaser.Scene {
     this.matchState = 'WAITING';
     this.countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
     this.elapsedMs = 0;
-    this.targetProtectedUntil = {};
     this.inputSequence = 0;
     this.abilityController.reset();
     this.shoveController.reset();
@@ -191,7 +179,6 @@ export class GameScene extends Phaser.Scene {
       this.bridge.on('restartMatch', () => { if (this.transport.mode === 'standalone') this.resetRound(); }),
       this.bridge.on('questionAnswered', ({ questionId }) => this.handleQuestionAnswered(questionId)),
       this.bridge.on('abilityRequested', ({ abilityId }) => this.useAbility(abilityId)),
-      this.bridge.on('targetSelected', ({ playerId }) => this.chooseTarget(playerId)),
       this.bridge.on('audioMuted', ({ muted }) => this.audio.setMuted(muted)),
       this.transport.subscribe((event) => this.handleTransportEvent(event)),
     );
@@ -201,7 +188,6 @@ export class GameScene extends Phaser.Scene {
       this.unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
       this.players = [];
       this.playersById.clear();
-      this.pickups = [];
       this.chunkRuntimes.clear();
       if (import.meta.env.DEV && window.__RETRO_RUSH_DEBUG__ === this.developmentDebugApi)
         delete window.__RETRO_RUSH_DEBUG__;
@@ -260,10 +246,6 @@ export class GameScene extends Phaser.Scene {
           id: chunk.id, templateId: chunk.templateId,
           platforms: chunk.platforms.map(({ x, y, width, height }) => ({ x, y, width, height })),
         })),
-        pickups: this.pickups.map((pickup) => ({
-          id: pickup.id, ability: pickup.ability, active: pickup.active, x: pickup.zone.x, y: pickup.zone.y,
-        })),
-        ownedAbilities: this.abilityController.ownedAbilities(),
         rockets: this.rockets.getChildren().map((child) => {
           const rocket = child as Phaser.Physics.Arcade.Sprite;
           return { id: String(rocket.getData('rocketId')), ownerId: String(rocket.getData('ownerId')), targetId: String(rocket.getData('targetId')) };
@@ -297,7 +279,6 @@ export class GameScene extends Phaser.Scene {
       gameplayConfig.player,
       gameplayConfig.world.floorY,
     );
-    this.pickups = [];
     this.mapGenerator.createInitialChunks().forEach((chunk) => this.appendChunk(chunk));
     this.updateWorldBounds();
   }
@@ -313,29 +294,7 @@ export class GameScene extends Phaser.Scene {
       ...chunk.decorations.map((decoration) => this.propPlacement.render(this, decoration)),
       ...(import.meta.env.DEV && gameplayConfig.proceduralMap.debugChunks ? this.chunkDebugRenderer.render(this, chunk) : []),
     ];
-    const pickups = chunk.pickups.map((pickup): PickupRuntime => {
-      const color = pickup.ability === 'speed' ? 0xc98b55 : pickup.ability === 'rocket' ? forestPalette.lantern : 0xb69ac8;
-      const circle = this.add.circle(pickup.x, pickup.y, 18, color, 0.3).setStrokeStyle(3, color).setDepth(5);
-      const glow = this.add.circle(pickup.x, pickup.y, 30, color, 0.08).setDepth(4.9);
-      const icon = this.add.text(pickup.x, pickup.y, pickup.ability === 'speed' ? '»' : pickup.ability === 'rocket' ? '➜' : '?', { fontFamily: 'monospace', fontSize: '20px', color: '#fff0c9' }).setOrigin(0.5).setDepth(5.1);
-      const zone = this.add.zone(pickup.x, pickup.y, 50, 50);
-      this.physics.add.existing(zone, true);
-      const collected = this.collectedPickupIds.has(pickup.id);
-      if (collected) {
-        (zone.body as Phaser.Physics.Arcade.StaticBody).enable = false;
-        circle.setVisible(false); glow.setVisible(false); icon.setVisible(false);
-      }
-      return { id: pickup.id, active: !collected, pending: false, ability: pickup.ability, zone, visuals: [circle, glow, icon], overlaps: [] };
-    });
-    this.pickups.push(...pickups);
-    this.chunkRuntimes.set(chunk.id, { bodies, visuals, pickups });
-    if (this.players.length > 0) {
-      for (const pickup of pickups) for (const player of this.players) this.registerPickupOverlap(player, pickup);
-    }
-  }
-
-  private registerPickupOverlap(player: PlayerRuntime, pickup: PickupRuntime) {
-    pickup.overlaps.push(this.physics.add.overlap(player.sprite, pickup.zone, () => this.tryCollectPickup(player, pickup)));
+    this.chunkRuntimes.set(chunk.id, { bodies, visuals });
   }
 
   private maintainProceduralMap() {
@@ -358,21 +317,13 @@ export class GameScene extends Phaser.Scene {
   private destroyChunk(chunkId: string) {
     const runtime = this.chunkRuntimes.get(chunkId);
     if (!runtime) return;
-    for (const pickup of runtime.pickups) {
-      pickup.overlaps.forEach((overlap) => overlap.destroy());
-      pickup.zone.destroy();
-      pickup.visuals.forEach((visual) => visual.destroy());
-    }
     for (const body of runtime.bodies) this.platforms.remove(body, true, true);
     runtime.visuals.forEach((visual) => visual.destroy());
-    const removed = new Set(runtime.pickups);
-    this.pickups = this.pickups.filter((pickup) => !removed.has(pickup));
     this.chunkRuntimes.delete(chunkId);
   }
 
   private destroyProceduralMap() {
     for (const chunkId of [...this.chunkRuntimes.keys()]) this.destroyChunk(chunkId);
-    this.pickups = [];
     this.mapGenerator = undefined;
   }
 
@@ -401,7 +352,6 @@ export class GameScene extends Phaser.Scene {
     this.local = this.players[0]!;
     for (const player of this.players) {
       this.physics.add.overlap(this.rockets, player.sprite, (rocket) => this.hitByRocket(rocket as Phaser.Physics.Arcade.Sprite, player));
-      for (const pickup of this.pickups) this.registerPickupOverlap(player, pickup);
     }
   }
 
@@ -444,7 +394,6 @@ export class GameScene extends Phaser.Scene {
     this.playersById.set(runtime.snapshot.id, runtime);
     if (isLocal) this.local = runtime;
     this.physics.add.overlap(this.rockets, sprite, (rocket) => this.hitByRocket(rocket as Phaser.Physics.Arcade.Sprite, runtime));
-    for (const pickup of this.pickups) this.registerPickupOverlap(runtime, pickup);
     return runtime;
   }
 
@@ -464,9 +413,9 @@ export class GameScene extends Phaser.Scene {
       case 'retroShoveApplied': this.applyOnlineShove(event.shove); break;
       case 'retroRocketSpawned': this.spawnOnlineRocket(event.rocket); break;
       case 'retroRocketHit': this.applyOnlineRocketHit(event.hit); break;
-      case 'retroPickupCollected': this.applyOnlinePickup(event.pickup); break;
+      case 'retroAbilityApplied': this.applyOnlineAbility(event.ability); break;
       case 'retroPlayerEliminated': this.applyOnlineElimination(event.elimination); break;
-      case 'retroTargetQuestioned': this.applyOnlineTargetQuestion(event.question.roundId, event.question.sourcePlayerId, event.question.targetPlayerId); break;
+      case 'error': this.pendingAbilities.clear(); break;
       default: break;
     }
   }
@@ -478,6 +427,7 @@ export class GameScene extends Phaser.Scene {
     this.networkMapSeed = snapshot.mapSeed;
     this.roundStartAtUnixMs = snapshot.roundStartAtUnixMs;
     this.roundDeadlineAtUnixMs = snapshot.roundDeadlineAtUnixMs;
+    this.abilityInitialUnlockAt = snapshot.roundStartAtUnixMs + gameplayConfig.abilities.initialLockMs;
     this.authoritativeRoundSpawn = { x: snapshot.spawnX, y: snapshot.spawnY };
     if (newRound) this.prepareOnlineRound(snapshot.mapSeed);
 
@@ -515,12 +465,10 @@ export class GameScene extends Phaser.Scene {
     }
     this.players.sort((left, right) => left.slot - right.slot);
     const localPlayer = snapshot.players.find((player) => player.playerId === this.transport.localPlayerId);
-    this.abilityController.restore(localPlayer?.ownedAbilityIds ?? []);
-
-    this.collectedPickupIds.clear();
-    snapshot.collectedPickupIds.forEach((pickupId) => this.collectedPickupIds.add(pickupId));
-    this.pickups.forEach((pickup) => {
-      if (this.collectedPickupIds.has(pickup.id)) this.disablePickup(pickup);
+    if (localPlayer) this.abilityController.synchronize({
+      speed: localPlayer.ability1AvailableAtUnixMs,
+      rocket: localPlayer.ability2AvailableAtUnixMs,
+      pull: localPlayer.ability3AvailableAtUnixMs,
     });
     for (const rocket of snapshot.activeRockets) this.spawnOnlineRocket(rocket);
 
@@ -547,7 +495,7 @@ export class GameScene extends Phaser.Scene {
     this.activeOnlineQuestion = null;
     this.appliedShoveIds.clear();
     this.resolvedRocketIds.clear();
-    this.collectedPickupIds.clear();
+    this.pendingAbilities.clear();
     this.abilityController.reset();
     this.shoveController.reset();
     this.roundStartInputGate.lock();
@@ -634,25 +582,29 @@ export class GameScene extends Phaser.Scene {
     beginHitStun(target.hitState, this.time.now, shove.hitStunMs);
   }
 
-  private applyOnlinePickup(pickup: RetroRushPickupCollected) {
-    if (!this.isGameplayRunning() || pickup.roundId !== this.networkRoundId) return;
-    this.collectedPickupIds.add(pickup.pickupId);
-    const runtime = this.pickups.find((candidate) => candidate.id === pickup.pickupId);
-    if (runtime) this.disablePickup(runtime);
-    if (pickup.playerId === this.transport.localPlayerId) {
-      this.abilityController.grant(pickup.abilityId);
-      const pickupName = pickup.abilityId === 'speed' ? 'İvme' : pickup.abilityId === 'rocket' ? 'İtme roketi' : 'Soru';
-      this.bridge.emit('announcement', `${pickupName} hazır`);
+  private applyOnlineAbility(ability: RetroRushAbilityApplied) {
+    if (!this.isGameplayRunning() || ability.roundId !== this.networkRoundId) return;
+    if (ability.sourcePlayerId === this.transport.localPlayerId) {
+      this.pendingAbilities.delete(ability.abilityId);
+      this.abilityController.accept(ability.abilityId, ability.availableAtUnixMs);
+      if (ability.abilityId === 'speed') {
+        this.local.speedUntil = this.time.now + (abilityDefinitions.speed.durationMs ?? 0);
+        this.local.sprite.setTint(0xfff1a8);
+      }
     }
+    if (ability.abilityId === 'pull' && ability.targetPlayerId === this.transport.localPlayerId &&
+        ability.velocityX !== undefined && ability.hitStunMs !== undefined) {
+      this.applyLeaderPull(this.local, ability.velocityX, ability.hitStunMs);
+    }
+    this.audio.play('ability');
     this.publishSnapshot(true);
   }
 
-  private disablePickup(pickup: PickupRuntime) {
-    collectPickup(pickup);
-    pickup.pending = false;
-    const body = pickup.zone.body as Phaser.Physics.Arcade.StaticBody;
-    body.enable = false;
-    pickup.visuals.forEach((visual) => visual.setVisible(false).setActive(false));
+  private applyLeaderPull(target: PlayerRuntime, velocityX: number, hitStunMs: number) {
+    target.sprite.setAccelerationX(0)
+      .setMaxVelocity(Math.max(Math.abs(velocityX), gameplayConfig.player.maxRunSpeed), gameplayConfig.player.maximumFallSpeed)
+      .setVelocityX(velocityX);
+    beginHitStun(target.hitState, this.time.now, hitStunMs);
   }
 
   private applyOnlineElimination(elimination: RetroRushPlayerEliminated) {
@@ -829,7 +781,10 @@ export class GameScene extends Phaser.Scene {
       this.publishSnapshot(true);
       if (this.countdown === 0) {
         this.time.delayedCall(450, () => { this.countdownText?.destroy(); this.countdownText = undefined; });
-        this.matchState = 'RUNNING'; this.cameraController.start(); this.publishSnapshot(true);
+        this.matchState = 'RUNNING';
+        this.abilityInitialUnlockAt = this.time.now + gameplayConfig.abilities.initialLockMs;
+        this.abilityController.reset(this.abilityInitialUnlockAt);
+        this.cameraController.start(); this.publishSnapshot(true);
       }
     }});
   }
@@ -883,7 +838,7 @@ export class GameScene extends Phaser.Scene {
     if (cutVelocity !== body.velocity.y) player.sprite.setVelocityY(cutVelocity);
     if (Phaser.Input.Keyboard.JustDown(this.keys.one)) this.useAbility('speed');
     if (Phaser.Input.Keyboard.JustDown(this.keys.two)) this.useAbility('rocket');
-    if (Phaser.Input.Keyboard.JustDown(this.keys.three)) this.useAbility('ask');
+    if (Phaser.Input.Keyboard.JustDown(this.keys.three)) this.useAbility('pull');
     if (this.transport.mode === 'standalone')
       this.transport.sendPlayerInput({ sequence: ++this.inputSequence, left: hitStunned ? false : left, right: hitStunned ? false : right, jump: jumpDown, sentAt: Date.now() });
   }
@@ -900,7 +855,7 @@ export class GameScene extends Phaser.Scene {
       jump: this.cursors.up.isDown || this.cursors.space.isDown || this.keys.w.isDown,
       speedAbility: this.keys.one.isDown,
       rocketAbility: this.keys.two.isDown,
-      askAbility: this.keys.three.isDown,
+      pullAbility: this.keys.three.isDown,
       developmentMovement: this.developmentMoveDirection !== 0,
     };
   }
@@ -987,7 +942,7 @@ export class GameScene extends Phaser.Scene {
     this.countdown = gameplayConfig.roundStart.countdownDisplaySeconds;
     this.activeQuestionId = null;
     this.activeOnlineQuestion = null;
-    this.targetProtectedUntil = {};
+    this.pendingAbilities.clear();
     this.abilityController.reset();
     this.shoveController.reset();
     this.random.reset(20260806);
@@ -1034,21 +989,35 @@ export class GameScene extends Phaser.Scene {
 
   private useAbility(id: AbilityId) {
     if (!this.isGameplayRunning() || !['ACTIVE', 'INVULNERABLE'].includes(this.local.snapshot.state)) return;
-    if (!this.abilityController.isOwned(id)) return;
-    const now = this.time.now;
+    const now = this.abilityNow();
     if (!this.abilityController.isReady(id, now)) { this.bridge.emit('announcement', 'Bu yetenek henüz yeniden doluyor'); return; }
+    if (this.transport.mode === 'online') {
+      if (this.pendingAbilities.has(id)) return;
+      this.pendingAbilities.add(id);
+      if (id === 'rocket') this.transport.requestRocketFire(this.networkRoundId);
+      else this.transport.useAbility({ abilityId: id, direction: this.local.facing, clientTime: Date.now() });
+      return;
+    }
+
     const rocketTarget = id === 'rocket' ? this.findRocketTarget(this.local) : undefined;
     if (id === 'rocket' && !rocketTarget) { this.bridge.emit('announcement', 'Yakında uygun hedef yok'); return; }
+    const pullTarget = id === 'pull' ? this.findPullLeaderTarget(this.local) : undefined;
+    if (id === 'pull' && !pullTarget) { this.bridge.emit('announcement', 'Önünde çekilebilecek bir lider yok'); return; }
     if (!this.abilityController.tryUse(id, now)) return;
     this.transport.useAbility({ abilityId: id, direction: this.local.facing, clientTime: Date.now() });
     this.audio.play('ability');
-    if (id === 'speed') { this.local.speedUntil = now + 3_000; this.local.sprite.setTint(0xfff1a8); }
-    if (id === 'rocket' && rocketTarget) {
-      if (this.transport.mode === 'online') this.transport.requestRocketFire(this.networkRoundId);
-      else this.fireRocket(this.local, rocketTarget);
+    if (id === 'speed') { this.local.speedUntil = this.time.now + (abilityDefinitions.speed.durationMs ?? 0); this.local.sprite.setTint(0xfff1a8); }
+    if (id === 'rocket' && rocketTarget) this.fireRocket(this.local, rocketTarget);
+    if (id === 'pull' && pullTarget) {
+      this.applyLeaderPull(pullTarget, gameplayConfig.abilities.pullLeaderVelocityX, gameplayConfig.abilities.pullLeaderHitStunMs);
     }
-    if (id === 'ask') this.bridge.emit('targetSelectionOpened', { protectedTargets: this.targetProtectedUntil });
     this.publishSnapshot(true);
+  }
+
+  private findPullLeaderTarget(source: PlayerRuntime) {
+    return this.players
+      .filter((candidate) => candidate !== source && candidate.snapshot.state === 'ACTIVE' && candidate.sprite.x > source.sprite.x)
+      .sort((left, right) => right.sprite.x - left.sprite.x || left.snapshot.id.localeCompare(right.snapshot.id))[0];
   }
 
   private fireRocket(owner: PlayerRuntime, target: PlayerRuntime) {
@@ -1126,26 +1095,6 @@ export class GameScene extends Phaser.Scene {
   private showRocketWarning(target: PlayerRuntime) {
     const marker = this.trackTemporaryEffect(this.add.text(target.sprite.x, target.sprite.y - 76, '!', { fontFamily: 'monospace', fontSize: '28px', color: '#ff4d6d', stroke: '#100d25', strokeThickness: 5 }).setOrigin(0.5).setDepth(10));
     this.tweens.add({ targets: marker, alpha: 0, y: marker.y - 12, duration: 650, onComplete: () => this.destroyTemporaryEffect(marker) });
-  }
-
-  private tryCollectPickup(player: PlayerRuntime, pickup: PickupRuntime) {
-    if (!this.isGameplayRunning() || !player.snapshot.isLocal || player.snapshot.state !== 'ACTIVE' || !pickup.active) return;
-    if (this.transport.mode === 'online') {
-      if (pickup.pending || this.collectedPickupIds.has(pickup.id)) return;
-      pickup.pending = true;
-      this.transport.requestPickupCollection(this.networkRoundId, pickup.id, pickup.ability);
-      return;
-    }
-    if (!collectPickup(pickup)) return;
-    const body = pickup.zone.body as Phaser.Physics.Arcade.StaticBody;
-    body.enable = false;
-    pickup.visuals.forEach((visual) => visual.setVisible(false).setActive(false));
-    this.abilityController.grant(pickup.ability);
-    if (player.snapshot.isLocal) {
-      const pickupName = pickup.ability === 'speed' ? 'İvme' : pickup.ability === 'rocket' ? 'İtme roketi' : 'Soru';
-      this.bridge.emit('announcement', `${pickupName} hazır`);
-    }
-    this.publishSnapshot(true);
   }
 
   private hitByRocket(rocket: Phaser.Physics.Arcade.Sprite, target: PlayerRuntime) {
@@ -1231,31 +1180,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private chooseTarget(playerId: string) {
-    if (!this.isGameplayRunning()) return;
-    const target = this.players.find((player) => player.snapshot.id === playerId);
-    if (!target || !isEligibleTarget(target.snapshot, this.local.snapshot.id, this.targetProtectedUntil[playerId], Date.now())) {
-      this.bridge.emit('announcement', 'Bu ekip arkadaşı şu anda kullanılamıyor'); return;
-    }
-    this.targetProtectedUntil[playerId] = Date.now() + 20_000;
-    this.transport.selectAbilityTarget({ abilityId: 'ask', targetPlayerId: playerId, clientTime: Date.now() });
-    if (this.transport.mode === 'online') return;
-    this.showTargetQuestion(playerId);
-  }
-
-  private applyOnlineTargetQuestion(roundId: number, sourcePlayerId: string, targetPlayerId: string) {
-    if (!this.isGameplayRunning() || roundId !== this.networkRoundId || !this.playersById.has(sourcePlayerId)) return;
-    this.showTargetQuestion(targetPlayerId);
-  }
-
-  private showTargetQuestion(playerId: string) {
-    const target = this.playersById.get(playerId) ?? this.players.find((player) => player.snapshot.id === playerId);
-    if (!target) return;
-    const marker = this.trackTemporaryEffect(this.add.text(target.sprite.x, target.sprite.y - 82, '?', { fontFamily: 'monospace', fontSize: '36px', color: '#ffd166', stroke: '#100d25', strokeThickness: 6 }).setOrigin(0.5).setDepth(9));
-    this.tweens.add({ targets: marker, y: marker.y - 28, alpha: 0, duration: 1_600, onComplete: () => this.destroyTemporaryEffect(marker) });
-    this.bridge.emit('announcement', `${target.snapshot.name} adlı oyuncuya değerlendirme sorusu geldi`);
-  }
-
   private updateLabels() {
     for (const player of this.players) {
       player.label.setPosition(player.sprite.x, player.sprite.y - 44);
@@ -1286,8 +1210,8 @@ export class GameScene extends Phaser.Scene {
       players: this.players.map((player) => ({ ...player.snapshot })),
       checkpointLabel: 'Başlangıç Noktası',
       danger: this.local ? this.local.sprite.x < this.cameraController.dangerX(this.cameras.main) + 220 : false,
-      ownedAbilities: this.abilityController.ownedAbilities(),
-      cooldowns: this.abilityController.cooldowns(this.time.now),
+      cooldowns: this.abilityController.cooldowns(this.abilityNow()),
+      abilityInitialLockRemainingMs: Math.max(0, this.abilityInitialUnlockAt - this.abilityNow()),
     });
   }
 
@@ -1321,7 +1245,9 @@ export class GameScene extends Phaser.Scene {
       sequence: ++this.networkSequence,
       clientTimestamp: Date.now(),
       roundId: this.networkRoundId,
-      ownedAbilityIds: this.abilityController.ownedAbilities(),
+      ability1AvailableAtUnixMs: 0,
+      ability2AvailableAtUnixMs: 0,
+      ability3AvailableAtUnixMs: 0,
     });
     this.networkSnapshotsSent++;
   }
@@ -1329,6 +1255,8 @@ export class GameScene extends Phaser.Scene {
   private setPlayerState(player: PlayerRuntime, next: PlayerState) {
     player.snapshot = { ...player.snapshot, state: transitionPlayer(player.snapshot.state, next) };
   }
+
+  private abilityNow() { return this.transport.mode === 'online' ? Date.now() : this.time.now; }
 
   private trackTemporaryEffect<T extends Phaser.GameObjects.GameObject>(effect: T) {
     this.temporaryEffects.add(effect);

@@ -4,7 +4,7 @@ export interface RoundStartGameplayInput {
   jump: boolean;
   speedAbility: boolean;
   rocketAbility: boolean;
-  askAbility: boolean;
+  pullAbility: boolean;
   developmentMovement: boolean;
 }
 
@@ -14,7 +14,7 @@ const isNeutral = (input: RoundStartGameplayInput) =>
   !input.jump &&
   !input.speedAbility &&
   !input.rocketAbility &&
-  !input.askAbility &&
+  !input.pullAbility &&
   !input.developmentMovement;
 
 /**
