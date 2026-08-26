@@ -637,16 +637,20 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 if (room.Status == RoomPhase.Playing)
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
 
-                if (gameStarted || spinStateChanged || retroRushSnapshot is not null)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, retroRushSnapshot));
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
                     AdvanceDrawAndGuessRound(room);
                     drawAndGuessStateChanged = true;
                 }
 
-                if (gameStarted || spinStateChanged || drawAndGuessStateChanged)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, drawAndGuessStateChanged));
+                if (gameStarted || spinStateChanged || retroRushSnapshot is not null || drawAndGuessStateChanged)
+                    changes.Add(new TimedRoomChange(
+                        room.Code,
+                        Snapshot(room),
+                        gameStarted,
+                        spinStateChanged,
+                        retroRushSnapshot,
+                        drawAndGuessStateChanged));
             }
         }
         return changes;
@@ -1054,8 +1058,8 @@ public sealed record TimedRoomChange(
     RoomSnapshot Snapshot,
     bool GameStarted,
     bool SpinStateChanged,
-    RetroRushGameSnapshot? RetroRushSnapshot);
-public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged, bool DrawAndGuessStateChanged);
+    RetroRushGameSnapshot? RetroRushSnapshot,
+    bool DrawAndGuessStateChanged);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions
