@@ -110,7 +110,8 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       }),
       bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
       bridge.onWordReveal((revealedWord) => {
-        setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
+        const messageId = `online-reveal-${nextMessageIdRef.current++}`;
+        setMessages((msgs) => [...msgs, { id: messageId, playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
       }),
     ];
 

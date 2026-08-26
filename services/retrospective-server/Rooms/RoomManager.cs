@@ -667,8 +667,6 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 if (room.Status == RoomPhase.Playing)
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
 
-                if (gameStarted || spinStateChanged || retroRushSnapshot is not null)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, retroRushSnapshot));
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
                     // Herkes zaten bildi — kelimeyi ayrıca açıklamaya gerek yok.
@@ -683,8 +681,17 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     drawAndGuessStateChanged = true;
                 }
 
-                if (gameStarted || spinStateChanged || drawAndGuessStateChanged)
-                    changes.Add(new TimedRoomChange(room.Code, Snapshot(room), gameStarted, spinStateChanged, drawAndGuessStateChanged, drawAndGuessWordReveal));
+                if (gameStarted || spinStateChanged || retroRushSnapshot is not null || drawAndGuessStateChanged)
+                {
+                    changes.Add(new TimedRoomChange(
+                        RoomCode: room.Code,
+                        Snapshot: Snapshot(room),
+                        GameStarted: gameStarted,
+                        SpinStateChanged: spinStateChanged,
+                        DrawAndGuessStateChanged: drawAndGuessStateChanged,
+                        DrawAndGuessWordReveal: drawAndGuessWordReveal,
+                        RetroRushSnapshot: retroRushSnapshot));
+                }
             }
         }
         return changes;
@@ -1096,7 +1103,14 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
 public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
-public sealed record TimedRoomChange(string RoomCode, RoomSnapshot Snapshot, bool GameStarted, bool SpinStateChanged, bool DrawAndGuessStateChanged, DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
+public sealed record TimedRoomChange(
+    string RoomCode,
+    RoomSnapshot Snapshot,
+    bool GameStarted,
+    bool SpinStateChanged,
+    bool DrawAndGuessStateChanged,
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
+    RetroRushGameSnapshot? RetroRushSnapshot = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions
