@@ -20,14 +20,18 @@ function contentSecurityPolicy(apiUrl) {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // import.meta.dirname keeps this independent of where the command was run
   // from, and avoids reaching for Node globals in a config ESLint lints as
   // browser code.
   const env = loadEnv(mode, import.meta.dirname, '')
+  const isProductionBuild = command === 'build' && mode === 'production'
   const publicValue = (name, developmentValue) => {
     const value = env[name] || (mode !== 'production' ? developmentValue : '')
-    if (mode === 'production' && value) {
+    if (isProductionBuild && !value) {
+      throw new Error(`Missing required build-time environment variable: ${name}`)
+    }
+    if (isProductionBuild && value) {
       try {
         if (new URL(value).protocol !== 'https:') throw new Error()
       } catch {

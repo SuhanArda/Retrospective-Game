@@ -6,6 +6,7 @@ import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { tallyVotes } from '../domain/voting'
 import { gameSelectionSecondsRemaining } from '../domain/gameSelectionTimer'
 import { useRoom } from '../hooks/useRoom'
+import { roomJoinPath } from '../utils/roomInvite'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
 import TieBreakRoll from '../components/TieBreakRoll.jsx'
@@ -100,7 +101,7 @@ function GameVote() {
     return (
       <div className="page"><div className="page-content">
         <h1 className="title title-sm">{t('lobby.roomNotFoundTitle')}</h1>
-        <button className="btn btn-primary" onClick={() => navigate('/room/join')}>{t('nav.joinRoom')}</button>
+        <button className="btn btn-primary" onClick={() => navigate(roomJoinPath(roomCode))}>{t('nav.joinRoom')}</button>
       </div></div>
     )
   }
