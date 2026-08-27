@@ -30,6 +30,17 @@ export interface StrokeEvent {
   isEraser: boolean;
 }
 
+export interface ShapeEvent {
+  playerId: string;
+  shapeType: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  color: string;
+  filled: boolean;
+}
+
 /**
  * Wraps a `RoomRealtimeClient` down to the small event-driven shape the
  * React UI actually needs, the same way `RouletteRoomBridge` decouples
@@ -41,6 +52,7 @@ export class DrawAndGuessRoomBridge {
   private readonly stateListeners = new Set<(state: DrawAndGuessBridgeState) => void>();
   private readonly guessListeners = new Set<(event: GuessEvent) => void>();
   private readonly strokeListeners = new Set<(event: StrokeEvent) => void>();
+  private readonly shapeListeners = new Set<(event: ShapeEvent) => void>();
   private readonly clearListeners = new Set<() => void>();
   private readonly wordRevealListeners = new Set<(word: string) => void>();
   private readonly disposers: Array<() => void> = [];
@@ -71,6 +83,18 @@ export class DrawAndGuessRoomBridge {
           newStroke: stroke.newStroke,
           color: stroke.color,
           isEraser: stroke.isEraser,
+        }));
+      }),
+      client.on('drawAndGuessShapeReceived', (shape) => {
+        this.shapeListeners.forEach((listener) => listener({
+          playerId: shape.playerId,
+          shapeType: shape.shapeType,
+          x0: shape.x0,
+          y0: shape.y0,
+          x1: shape.x1,
+          y1: shape.y1,
+          color: shape.color,
+          filled: shape.filled,
         }));
       }),
       client.on('drawAndGuessCanvasCleared', () => {
@@ -113,6 +137,11 @@ export class DrawAndGuessRoomBridge {
     return () => this.strokeListeners.delete(listener);
   }
 
+  onShape(listener: (event: ShapeEvent) => void): () => void {
+    this.shapeListeners.add(listener);
+    return () => this.shapeListeners.delete(listener);
+  }
+
   onCanvasCleared(listener: () => void): () => void {
     this.clearListeners.add(listener);
     return () => this.clearListeners.delete(listener);
@@ -152,6 +181,11 @@ export class DrawAndGuessRoomBridge {
   /** Fire-and-forget — the server relays it to everyone else without acknowledging back. */
   sendStroke(points: readonly number[], newStroke: boolean, color: string, isEraser: boolean): void {
     void this.client.sendDrawAndGuessStroke(points, newStroke, color, isEraser).catch(() => undefined);
+  }
+
+  /** Fire-and-forget — bir "şekil damgası" tek mesaj, tıpkı fırça darbesi gibi güvenilir sayılır. */
+  sendShape(shapeType: string, x0: number, y0: number, x1: number, y1: number, color: string, filled: boolean): void {
+    void this.client.sendDrawAndGuessShape(shapeType, x0, y0, x1, y1, color, filled).catch(() => undefined);
   }
 
   clearCanvas(): void {

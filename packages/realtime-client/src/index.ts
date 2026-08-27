@@ -6,6 +6,7 @@ import {
 } from '@microsoft/signalr';
 import type {
   DrawAndGuessGuessResult,
+  DrawAndGuessShapeEvent,
   DrawAndGuessStateSnapshot,
   DrawAndGuessStrokeEvent,
   DrawAndGuessWordReveal,
@@ -63,6 +64,7 @@ type EventMap = {
   drawAndGuessStateChanged: DrawAndGuessStateSnapshot;
   drawAndGuessGuessSubmitted: DrawAndGuessGuessResult;
   drawAndGuessStrokeReceived: DrawAndGuessStrokeEvent;
+  drawAndGuessShapeReceived: DrawAndGuessShapeEvent;
   drawAndGuessCanvasCleared: undefined;
   drawAndGuessWordRevealed: DrawAndGuessWordReveal;
   reaction: RoomReactionEvent;
@@ -156,6 +158,17 @@ export class RoomRealtimeClient {
   sendDrawAndGuessStroke(points: readonly number[], newStroke: boolean, color: string, isEraser: boolean): Promise<void> {
     return this.invoke('SendDrawAndGuessStroke', points, newStroke, color, isEraser);
   }
+  sendDrawAndGuessShape(
+    shapeType: string,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    color: string,
+    filled: boolean,
+  ): Promise<void> {
+    return this.invoke('SendDrawAndGuessShape', shapeType, x0, y0, x1, y1, color, filled);
+  }
   clearDrawAndGuessCanvas(): Promise<void> { return this.invoke('ClearDrawAndGuessCanvas'); }
   leaveRoom(): Promise<void> { return this.invoke('LeaveRoom'); }
   sendReaction(emoji: string): Promise<void> { return this.invoke('SendReaction', emoji); }
@@ -219,6 +232,7 @@ export class RoomRealtimeClient {
     connection.on('RussianRouletteStateChanged', (state: RussianRouletteStateSnapshot) => this.emit('russianRouletteStateChanged', state));
     connection.on('DrawAndGuessStateChanged', (state: DrawAndGuessStateSnapshot) => this.emit('drawAndGuessStateChanged', state));
     connection.on('DrawAndGuessGuessSubmitted', (result: DrawAndGuessGuessResult) => this.emit('drawAndGuessGuessSubmitted', result));
+    connection.on('DrawAndGuessShapeReceived', (shape: DrawAndGuessShapeEvent) => this.emit('drawAndGuessShapeReceived', shape));
     connection.on('DrawAndGuessStrokeReceived', (stroke: DrawAndGuessStrokeEvent) => this.emit('drawAndGuessStrokeReceived', stroke));
     connection.on('DrawAndGuessCanvasCleared', () => this.emit('drawAndGuessCanvasCleared', undefined));
     connection.on('DrawAndGuessWordRevealed', (reveal: DrawAndGuessWordReveal) => this.emit('drawAndGuessWordRevealed', reveal));

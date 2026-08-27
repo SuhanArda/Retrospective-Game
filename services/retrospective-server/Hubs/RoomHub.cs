@@ -156,6 +156,15 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             new DrawAndGuessStrokeEvent(player.PlayerId, points, newStroke, color, isEraser));
     }
 
+    /// <summary>Pure relay, same trust model as <see cref="SendDrawAndGuessStroke"/> — one bounding box instead of a point stream.</summary>
+    public async Task SendDrawAndGuessShape(string shapeType, double x0, double y0, double x1, double y1, string color, bool filled)
+    {
+        if (shapeType.Length > 32 || color.Length > 16) return;
+        var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessShapeReceived(
+            new DrawAndGuessShapeEvent(player.PlayerId, shapeType, x0, y0, x1, y1, color, filled));
+    }
+
     public async Task ClearDrawAndGuessCanvas()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);

@@ -120,6 +120,20 @@ public sealed record DrawAndGuessStrokeEvent(
     string Color,
     bool IsEraser);
 
+/// <summary>
+/// A ready-made shape stamp (circle, star, …) — same pure-relay trust model as
+/// <see cref="DrawAndGuessStrokeEvent"/>, just one bounding box instead of a point stream.
+/// </summary>
+public sealed record DrawAndGuessShapeEvent(
+    string PlayerId,
+    string ShapeType,
+    double X0,
+    double Y0,
+    double X1,
+    double Y1,
+    string Color,
+    bool Filled);
+
 public sealed record FireResult(
     string GameSessionId,
     string RoundId,

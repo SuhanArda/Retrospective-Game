@@ -293,6 +293,18 @@ export interface DrawAndGuessStrokeEvent {
   isEraser: boolean;
 }
 
+/** A ready-made shape stamp (circle, star, …), relayed as-is — same trust model as strokes. */
+export interface DrawAndGuessShapeEvent {
+  playerId: string;
+  shapeType: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  color: string;
+  filled: boolean;
+}
+
 export interface RoomSnapshot {
   id: string;
   code: string;
