@@ -18,7 +18,8 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
                 if (change.SpinStateChanged) await clients.SpinBottleStateChanged(change.Snapshot.SpinBottleState!);
                 if (change.DrawAndGuessWordReveal is { } reveal) await clients.DrawAndGuessWordRevealed(reveal);
                 if (change.RetroRushSnapshot is not null) await clients.RetroRushSnapshot(change.RetroRushSnapshot);
-                if (change.DrawAndGuessStateChanged) await clients.DrawAndGuessStateChanged(change.Snapshot.DrawAndGuessState!);
+                if (change.DrawAndGuessStateChanged && change.Snapshot.DrawAndGuessState is { } drawAndGuessState)
+                    await clients.DrawAndGuessStateChanged(drawAndGuessState);
             }
             foreach (var change in rooms.SweepDisconnected())
             {
