@@ -4,6 +4,8 @@ export interface RoomPlayer {
   id: string;
   displayName: string;
   color: string;
+  /** A picked pixel-art portrait id (see utils/avatarOptions.js); absent means the initials avatar is shown instead. */
+  avatarId?: string;
   isHost: boolean;
   isReady: boolean;
   isConnected?: boolean;
@@ -52,6 +54,7 @@ export interface RetroRoom {
 export interface CreateRoomRequest {
   displayName: string;
   color: string;
+  avatarId?: string;
   roomName: string;
   maxParticipants: number;
   questionTimeSeconds: number;
@@ -64,6 +67,7 @@ export interface JoinRoomRequest {
   roomCode: string;
   displayName: string;
   color: string;
+  avatarId?: string;
 }
 
 export interface CreateRoomResult {

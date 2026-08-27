@@ -130,7 +130,7 @@ function RoomLobby() {
               {room.players.map((player) => (
                 <div className="participant" style={{ borderLeft: `4px solid ${player.color}` }} key={player.id}>
                   <span className="participant-name">
-                    <Avatar name={player.displayName} color={player.color} size={24} />
+                    <Avatar name={player.displayName} color={player.color} avatarId={player.avatarId} size={24} />
                     {player.displayName}
                     {player.id === me?.id ? ` ${t('lobby.youSuffix')}` : ''}
                     {player.isHost && <span className="host-badge">{t('lobby.hostSuffix')}</span>}

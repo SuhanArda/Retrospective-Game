@@ -101,7 +101,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
         lock (room.Gate)
         {
-            var admission = AddPlayer(room, request.DisplayName, request.Color);
+            var admission = AddPlayer(room, request.DisplayName, request.Color, request.AvatarId);
             room.HostPlayerId = admission.PlayerId;
             return admission with { IsHost = true, Room = Snapshot(room), Player = PlayerSnapshot(room, room.Players[admission.PlayerId]) };
         }
@@ -115,7 +115,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         {
             if (room.Status == RoomPhase.Playing) throw new RoomException("ROOM_ALREADY_STARTED");
             if (room.Players.Count >= room.MaxParticipants) throw new RoomException("ROOM_FULL");
-            return AddPlayer(room, request.DisplayName, request.Color);
+            return AddPlayer(room, request.DisplayName, request.Color, request.AvatarId);
         }
     }
 
@@ -829,12 +829,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         return new DrawAndGuessState(drawer.Id, word, roundNumber, scores, recentWords, now + DrawAndGuessRoundDurationMs, 1, now);
     }
 
-    private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
+    private RoomAdmission AddPlayer(GameRoom room, string displayName, string color, string? avatarId)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var admittedAt = timeProvider.GetUtcNow();
         var player = new RoomPlayer(Guid.NewGuid().ToString("N"), displayName.Trim(), NormalizeColor(color), HashToken(token),
-            admittedAt.ToUnixTimeMilliseconds())
+            admittedAt.ToUnixTimeMilliseconds(), NormalizeAvatarId(avatarId))
         {
             // HTTP admission happens just before SignalR attachment. If the tab
             // disappears between those two steps, this membership still gets
@@ -944,6 +944,19 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         (int)Math.Round(targetIndex * 360d / playerCount, MidpointRounding.AwayFromZero);
     private static byte[] HashToken(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));
     private static string NormalizeColor(string color) => System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9A-Fa-f]{6}$") ? color : "#6C5CE7";
+
+    // Mirrors the option set in apps/retro-platform-web/src/utils/avatarOptions.js —
+    // update both together. Anything else (a tampered client, a stale option) is silently
+    // dropped rather than stored, same spirit as NormalizeColor above.
+    private static readonly HashSet<string> KnownAvatarIds = new(StringComparer.Ordinal)
+    {
+        "viking", "angel", "devil", "princess", "wizard", "elf", "pirate", "knight",
+        "mermaid", "fairy", "vampire", "werewolf", "ninja", "ninja-2", "kunoichi",
+        "archer", "superhero", "superheroine", "superheroine-2",
+    };
+
+    private static string? NormalizeAvatarId(string? avatarId) =>
+        avatarId is not null && KnownAvatarIds.Contains(avatarId) ? avatarId : null;
     private static void ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 24) throw new RoomException("INVALID_DISPLAY_NAME");
@@ -989,7 +1002,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
-        player.ConnectionId is not null, player.JoinedAt);
+        player.ConnectionId is not null, player.JoinedAt, player.AvatarId);
 
     private sealed class GameRoom(string id, string code, string roomName, int maxParticipants,
         int questionTimeSeconds, int votingTimeSeconds, string? fileName, string? description, long createdAt)
@@ -1022,11 +1035,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }
 
-    private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt)
+    private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt, string? avatarId = null)
     {
         public string Id { get; } = id;
         public string DisplayName { get; } = displayName;
         public string Color { get; } = color;
+        public string? AvatarId { get; } = avatarId;
         public byte[] TokenHash { get; } = tokenHash;
         public long JoinedAt { get; } = joinedAt;
         public string? ConnectionId { get; set; }
