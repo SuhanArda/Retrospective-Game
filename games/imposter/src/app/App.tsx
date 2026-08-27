@@ -163,6 +163,8 @@ export function App() {
     : localRound.players[Object.keys(localRound.votes).length];
   const localResult = !isOnline && phase === 'RESULTS' ? resolveVotes(localRound) : null;
   const result = onlineGame?.result ?? localResult;
+  const imposterPlayerId = onlineGame?.result?.imposterPlayerId ?? (localResult ? localRound.imposterId : undefined);
+  const imposterPlayer = players.find((player) => player.id === imposterPlayerId);
   const roundNumber = onlineGame?.roundNumber ?? localRound.roundNumber;
   const secretWord = isOnline ? onlineGame?.secretWord : localRound.pack.secretWord;
   const retroQuestion = isOnline ? onlineGame?.retroQuestion : localRound.pack.retroQuestion;
@@ -410,6 +412,9 @@ export function App() {
               <>
                 <p className="panel-kicker">TUR SONUCU</p>
                 <h2>{result.imposterCaught ? 'İmposter yakalandı!' : 'İmposter aradan sıyrıldı!'}</h2>
+                {imposterPlayer && (
+                  <p className="imposter-reveal">İmposter: <strong>{imposterPlayer.displayName}</strong></p>
+                )}
                 <p className="reveal-word">Gizli kelime: <strong>{secretWord}</strong></p>
                 <p className="retro-question">{retroQuestion}</p>
                 {(!isOnline || launchContext?.isHost) ? (
