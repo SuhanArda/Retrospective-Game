@@ -11,13 +11,12 @@ export interface RoomService {
   leaveRoom(): Promise<void>;
 
   /**
-   * Resolves the room, connecting and re-attaching this browser's session
-   * first if that has not happened yet. Pages await this on mount so a slow
-   * connection reads as "loading" instead of "room not found".
+   * Resolves the room by connecting and re-attaching this browser's admitted
+   * session. A public room snapshot is never treated as player membership.
    */
   ensureRoom(roomCode: string): Promise<RetroRoom | null>;
 
-  /** Last known snapshot. Null before {@link ensureRoom} has resolved. */
+  /** Last known snapshot for the admitted local player. */
   getRoom(roomCode: string): RetroRoom | null;
   getCurrentRoom(): RetroRoom | null;
   getCurrentPlayer(): RoomPlayer | null;

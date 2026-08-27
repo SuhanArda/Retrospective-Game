@@ -5,6 +5,7 @@ import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { findGame, gameRegistry } from '../games/gameRegistry'
 import { useRoom } from '../hooks/useRoom'
 import { deleteRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
+import { buildRoomInviteUrl, roomJoinPath } from '../utils/roomInvite'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
@@ -21,6 +22,12 @@ function RoomLobby() {
   const me = roomService.getCurrentPlayer()
   const isHost = me?.isHost ?? false
   const connectionStatus = roomService.getConnectionStatus()
+
+  useEffect(() => {
+    if (!loading && !roomService.getCurrentPlayer()) {
+      navigate(roomJoinPath(roomCode), { replace: true })
+    }
+  }, [loading, room, roomCode, navigate])
 
   // Everyone follows the room's phase, not just the host who triggered it —
   // otherwise guests sit in the lobby while the vote runs without them.
@@ -76,7 +83,7 @@ function RoomLobby() {
   }
 
   const canonicalCode = room.code
-  const roomUrl = `${window.location.origin}/room/${canonicalCode}`
+  const roomUrl = buildRoomInviteUrl(window.location.origin, canonicalCode)
   const selectedGame = room.selectedGameId ? findGame(room.selectedGameId) : null
 
   return (
