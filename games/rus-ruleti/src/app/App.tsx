@@ -28,6 +28,26 @@ export function App() {
   const [roomSettled, setRoomSettled] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(launchContext?.isHost ?? false);
   const [announcement, setAnnouncement] = useState('');
+  // Remembered per-browser so a Teams-call regular doesn't have to re-mute
+  // every time they open the game again.
+  const [muted, setMuted] = useState(() => {
+    try {
+      return window.localStorage.getItem('rus-ruleti-muted') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleMuted = () => {
+    setMuted((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem('rus-ruleti-muted', next ? '1' : '0');
+      } catch {
+        // Private-browsing or storage-disabled — the toggle still works for this tab, it just won't be remembered.
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!launchContext) { setRoomSettled(true); return; }
@@ -112,6 +132,7 @@ export function App() {
           opponents={launchContext ? opponents : null}
           localPlayerId={launchContext?.playerId ?? null}
           youSprite={launchContext ? youSprite : null}
+          muted={muted}
         />
       )}
       <aside className="sidebar">
@@ -123,6 +144,9 @@ export function App() {
               : 'Yerel prototip — örnek oyuncularla.'}
           </p>
         </div>
+        <button className="button sound-toggle" type="button" onClick={toggleMuted} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>
+          {muted ? 'SES KAPALI' : 'SES AÇIK'}
+        </button>
         {roster && (
           <ul className="sidebar-players">
             {roster.map((player) => (
