@@ -519,7 +519,9 @@ input {
   font-size: 7px;
 }
 
+.imposter-reveal,
 .reveal-word { margin: 0 0 12px; font-size: 24px; }
+.imposter-reveal { color: #8a2447; }
 .retro-question { margin: 0 0 18px; padding: 12px; background: #ffe9a8; border: 3px dashed #9d6f35; font-size: 23px; }
 
 .toast {
