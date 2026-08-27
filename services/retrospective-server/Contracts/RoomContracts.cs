@@ -8,9 +8,10 @@ public sealed record CreateRoomRequest(
     int QuestionTimeSeconds = 30,
     int VotingTimeSeconds = 30,
     string? FileName = null,
-    string? Description = null);
+    string? Description = null,
+    string? AvatarId = null);
 
-public sealed record JoinRoomRequest(string DisplayName, string Color);
+public sealed record JoinRoomRequest(string DisplayName, string Color, string? AvatarId = null);
 
 public sealed record RoomAdmission(
     string RoomCode,
@@ -28,7 +29,8 @@ public sealed record RoomPlayerSnapshot(
     bool IsHost,
     bool IsReady,
     bool IsConnected,
-    long JoinedAt);
+    long JoinedAt,
+    string? AvatarId = null);
 
 public sealed record GameSessionSnapshot(
     string GameSessionId,

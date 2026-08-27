@@ -7,6 +7,8 @@ export interface RoomPlayerSnapshot {
   id: string;
   displayName: string;
   color: string;
+  /** A picked pixel-art portrait id; absent means no avatar was picked (platform UI falls back to initials). */
+  avatarId?: string;
   isHost: boolean;
   isReady: boolean;
   isConnected: boolean;

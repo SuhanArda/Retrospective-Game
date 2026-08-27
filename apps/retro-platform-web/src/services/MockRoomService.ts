@@ -108,6 +108,7 @@ export class MockRoomService implements RoomService {
       id: this.createId(),
       displayName: request.displayName.trim(),
       color: request.color,
+      ...(request.avatarId ? { avatarId: request.avatarId } : {}),
       isHost: true,
       isReady: true,
     };
@@ -144,6 +145,7 @@ export class MockRoomService implements RoomService {
       id: this.createId(),
       displayName: request.displayName.trim(),
       color: request.color,
+      ...(request.avatarId ? { avatarId: request.avatarId } : {}),
       isHost: false,
       isReady: false,
     };

@@ -44,6 +44,7 @@ function CreateRoom() {
     const { room, player, reconnectToken } = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
+      avatarId: user.avatarId,
       roomName,
       maxParticipants: Number(maxParticipants),
       questionTimeSeconds: questionTime,
@@ -138,7 +139,7 @@ function CreateRoom() {
           </div>
 
           <div className="field">
-            <label htmlFor="roomPrompt">Kısa prompt (opsiyonel)</label>
+            <label htmlFor="roomPrompt">Kısa prompt (zorunlu)</label>
             <textarea id="roomPrompt" className="input textarea" value={contextPrompt} onChange={(event) => setContextPrompt(event.target.value)} maxLength={1000} rows={3} placeholder="Örn. Son sprintte yaşanan iletişim sorunlarına odaklan." />
           </div>
 

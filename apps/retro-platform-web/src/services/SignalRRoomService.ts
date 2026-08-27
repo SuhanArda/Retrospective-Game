@@ -38,7 +38,7 @@ export class SignalRRoomService implements RoomService {
     try {
       const admission = await this.post<RoomAdmission>(
         `/api/rooms/${normalizeRoomCode(request.roomCode)}/join`,
-        { displayName: request.displayName, color: request.color },
+        { displayName: request.displayName, color: request.color, avatarId: request.avatarId },
       );
       await this.admit(admission);
       return { ok: true, room: admission.room as RetroRoom, player: admission.player as RoomPlayer, reconnectToken: admission.reconnectToken };
