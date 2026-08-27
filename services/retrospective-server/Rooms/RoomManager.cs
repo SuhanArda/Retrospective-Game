@@ -166,6 +166,30 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    public bool TryRememberAiQuestionSet(
+        string rawCode,
+        string roomInstanceId,
+        AiRoomQuestionSet questionSet)
+    {
+        var code = Normalize(rawCode);
+        if (!_rooms.TryGetValue(code, out var room)) return false;
+        lock (room.Gate)
+        {
+            if (room.Id != roomInstanceId ||
+                !string.Equals(questionSet.RoomId, room.Code, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.RoomInstanceId, room.Id, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.Provider, "gemini", StringComparison.Ordinal) ||
+                !string.Equals(questionSet.GenerationStatus, "ready", StringComparison.Ordinal) ||
+                questionSet.Questions.Count != 20)
+            {
+                return false;
+            }
+
+            room.AiQuestionSet = questionSet;
+            return true;
+        }
+    }
+
     public RoomSnapshot Attach(string rawCode, string playerId, string token, string connectionId)
     {
         var room = Find(rawCode);
@@ -995,6 +1019,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public RussianRouletteState? RussianRouletteState { get; set; }
         public DrawAndGuessState? DrawAndGuessState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
+        public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }
 
     private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt)

@@ -45,15 +45,23 @@ export function App() {
       return;
     }
     let cancelled = false;
-    loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
-      .then((questions) => {
-        if (!cancelled && questions.length > 0) setSessionQuestions(questions);
-      })
-      .catch((cause) => {
-        if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
-      });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const load = () => {
+      loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+        .then((questions) => {
+          if (!cancelled && questions.length > 0) setSessionQuestions(questions);
+        })
+        .catch((cause) => {
+          attempt++;
+          if (!cancelled && attempt < 25) retryTimer = setTimeout(load, 2_000);
+          else if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
+        });
+    };
+    load();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [launchContext]);
 

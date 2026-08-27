@@ -56,3 +56,23 @@ test("tekrarlanan ve biçimsiz soruları reddeder", () => {
   parsed.questions[1]!.text = "Soru işareti yok";
   assert.throws(() => parseQuestions(JSON.stringify(parsed)), /şemasına/u);
 });
+
+test("Imposter için tekrarlanan gizli kelimeleri reddeder", () => {
+  const parsed = JSON.parse(envelope()) as { questions: Array<Record<string, unknown>> };
+  parsed.questions[1]!.answer = parsed.questions[0]!.answer;
+  assert.throws(() => parseQuestions(JSON.stringify(parsed)), /gizli kelimeler/u);
+});
+
+test("kaynakta geçmeyen genel Imposter kelimesini reddedip yeniden dener", async () => {
+  let calls = 0;
+  const unrelated = JSON.parse(envelope()) as { questions: Array<Record<string, unknown>> };
+  unrelated.questions[0]!.answer = "dayanisma";
+  const client: GeminiContentClient = {
+    generateContent: async () => ({ text: ++calls === 1 ? JSON.stringify(unrelated) : envelope() }),
+  };
+  const response = await generateQuestions(
+    { ...request, topic: "Ryan Gosling ile alakalı sorular" }, client, "model", { maximumRetries: 1 },
+  );
+  assert.equal(calls, 2);
+  assert.equal(response.questions.length, 20);
+});
