@@ -86,7 +86,7 @@ export const gameRegistry: readonly GameDefinition[] = [
     detailKey: 'games.draw-and-guess.detail',
     stepsKey: 'games.draw-and-guess.steps',
     status: 'available',
-    minPlayers: 3,
+    minPlayers: 1,
     visualLabel: 'DG',
     screenshotUrl: '/screenshots/draw-and-guess.jpg',
     voteScreenshotUrl: '/screenshots/draw-and-guess-wide.jpg',

@@ -74,7 +74,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// <summary>Herkes bildikten sonra sıradaki tura otomatik geçmeden önceki bekleme — son tahmini/kutlamayı görsünler diye.</summary>
     private const int DrawAndGuessRoundCompleteDelayMs = 2500;
     /// <summary>Her turun süresi — kimse (ya da herkes) bilemezse bu süre dolunca kelime açıklanıp tur ilerler.</summary>
-    private const int DrawAndGuessRoundDurationMs = 30_000;
+    private const int DrawAndGuessRoundDurationMs = 60_000;
     private const int SpinBottleMaxPlayers = 10;
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
