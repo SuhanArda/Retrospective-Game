@@ -39,7 +39,10 @@ describe('Retro Rush player HUD', () => {
       cooldowns: { speed: 7_000, rocket: 7_000, pull: 7_000 }, abilityInitialLockRemainingMs: 7_000,
     };
     const view = render(<Hud snapshot={snapshot} muted={false} onMute={() => undefined} onAbility={onAbility} />);
-    const slots = within(view.getByLabelText('Yetenekler')).getAllByRole('button');
+    const abilityBar = view.getByLabelText('Yetenekler');
+    expect(abilityBar.closest('.top-hud')).not.toBeNull();
+    expect(view.container.querySelectorAll('.abilities')).toHaveLength(1);
+    const slots = within(abilityBar).getAllByRole('button');
     expect(slots).toHaveLength(3);
     expect(slots.every((slot) => slot.hasAttribute('disabled'))).toBe(true);
     expect(view.getAllByText('KİLİTLİ 7 sn')).toHaveLength(3);
