@@ -34,6 +34,16 @@ vi.mock('@microsoft/signalr', () => ({
 
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { SignalRRoomService } from './SignalRRoomService';
+import { loadPlatformSession, savePlatformSession } from '../session/platformSession';
+
+function roomWithPlayers(...players: Array<{ id: string; displayName: string; isHost: boolean }>) {
+  return {
+    id: 'room-1', code: 'ABC123', roomName: 'Sprint Retro', hostPlayerId: 'player-1',
+    players: players.map(player => ({ ...player, color: '#654321', isReady: true, isConnected: true, joinedAt: 1 })),
+    status: 'LOBBY', maxParticipants: 10, questionTimeSeconds: 30, votingTimeSeconds: 45, createdAt: 1,
+    votes: {}, candidateGameIds: [],
+  };
+}
 
 describe('RoomRealtimeClient reconnect handling', () => {
   beforeEach(() => {
@@ -55,6 +65,98 @@ describe('RoomRealtimeClient reconnect handling', () => {
       'RejoinRoom', 'ABC123', 'player-1', 'secret-token',
     );
     expect(signalR.builder.withAutomaticReconnect).toHaveBeenCalled();
+  });
+
+  it('does not treat a public room snapshot as membership without a local admission', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new SignalRRoomService('http://localhost:5281', new MemoryStorage());
+
+    await expect(service.ensureRoom('ABC123')).resolves.toBeNull();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(signalR.connection.invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse credentials belonging to another room', async () => {
+    const storage = new MemoryStorage();
+    savePlatformSession(storage, {
+      roomCode: 'ZZZ999', playerId: 'other-player', displayName: 'Other', isHost: false, reconnectToken: 'other-token',
+    });
+    const service = new SignalRRoomService('http://localhost:5281', storage);
+
+    await expect(service.ensureRoom('ABC123')).resolves.toBeNull();
+
+    expect(loadPlatformSession(storage)?.roomCode).toBe('ZZZ999');
+    expect(signalR.connection.invoke).not.toHaveBeenCalled();
+  });
+
+  it('clears a stale same-room admission and permits a fresh authoritative join', async () => {
+    const storage = new MemoryStorage();
+    savePlatformSession(storage, {
+      roomCode: 'ABC123', playerId: 'stale-player', displayName: 'Guest', isHost: false, reconnectToken: 'stale-token',
+    });
+    const joinedRoom = roomWithPlayers(
+      { id: 'player-1', displayName: 'Host', isHost: true },
+      { id: 'guest-2', displayName: 'Guest', isHost: false },
+    );
+    signalR.connection.invoke.mockImplementation(async (...args: unknown[]) => {
+      if (args[0] !== 'RejoinRoom') return joinedRoom;
+      return args[2] === 'stale-player'
+        ? { ok: false, error: 'INVALID_RECONNECT_TOKEN' }
+        : { ok: true, room: joinedRoom };
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        roomCode: 'ABC123', playerId: 'guest-2', displayName: 'Guest', isHost: false,
+        reconnectToken: 'fresh-token', room: joinedRoom, player: joinedRoom.players[1],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new SignalRRoomService('http://localhost:5281', storage);
+
+    await expect(service.ensureRoom('ABC123')).resolves.toBeNull();
+    await expect(service.joinRoom({ roomCode: 'ABC123', displayName: 'Guest', color: '#654321' }))
+      .resolves.toMatchObject({ ok: true, room: { players: [{ id: 'player-1' }, { id: 'guest-2' }] } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loadPlatformSession(storage)).toMatchObject({
+      roomCode: 'ABC123', playerId: 'guest-2', reconnectToken: 'fresh-token',
+    });
+    expect(signalR.connection.invoke).toHaveBeenLastCalledWith(
+      'RejoinRoom', 'ABC123', 'guest-2', 'fresh-token',
+    );
+  });
+
+  it('publishes the authoritative roster update to an already attached host', async () => {
+    const hostRoom = roomWithPlayers({ id: 'player-1', displayName: 'Host', isHost: true });
+    signalR.connection.invoke.mockImplementation(async () => ({ ok: true, room: hostRoom }));
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        roomCode: 'ABC123', playerId: 'player-1', displayName: 'Host', isHost: true,
+        reconnectToken: 'host-token', room: hostRoom, player: hostRoom.players[0],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new SignalRRoomService('http://localhost:5281', new MemoryStorage());
+    await service.createRoom({
+      displayName: 'Host', color: '#654321', roomName: 'Sprint Retro', maxParticipants: 10,
+      questionTimeSeconds: 30, votingTimeSeconds: 45,
+    });
+    const snapshots: unknown[] = [];
+    service.subscribe('ABC123', room => snapshots.push(room));
+    const joinedRoom = roomWithPlayers(
+      { id: 'player-1', displayName: 'Host', isHost: true },
+      { id: 'guest-2', displayName: 'Guest', isHost: false },
+    );
+
+    signalR.handlers.get('RoomSnapshot')?.(joinedRoom);
+
+    expect(snapshots.at(-1)).toMatchObject({
+      players: [{ displayName: 'Host' }, { displayName: 'Guest' }],
+    });
   });
 
   it('uses the explicit authoritative voting commands', async () => {

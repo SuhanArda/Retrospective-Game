@@ -1,22 +1,47 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { colorForName } from '../utils/avatarColor.js'
-import { normalizeRoomCode } from '../utils/roomCode'
+import { isValidRoomCode, normalizeRoomCode } from '../utils/roomCode'
 import { validateJoinRoom } from '../validation/joinRoomValidation'
 import { roomService } from '../services/roomServiceInstance'
 import '../App.css'
 
 function JoinRoom() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useUser()
   const { t } = useLanguage()
-  const [code, setCode] = useState('')
+  const inviteRoomCode = normalizeRoomCode(searchParams.get('roomCode') ?? '')
+  const [code, setCode] = useState(inviteRoomCode)
   const [displayName, setDisplayName] = useState(user?.name ?? '')
   const [errors, setErrors] = useState({})
   const [serviceError, setServiceError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [resuming, setResuming] = useState(() => isValidRoomCode(inviteRoomCode))
+
+  useEffect(() => {
+    setCode(inviteRoomCode)
+    if (!isValidRoomCode(inviteRoomCode)) {
+      setResuming(false)
+      return undefined
+    }
+
+    let active = true
+    setResuming(true)
+    roomService.ensureRoom(inviteRoomCode)
+      .then((room) => {
+        if (active && room && roomService.getCurrentPlayer()) {
+          navigate(`/room/${room.code}`, { replace: true })
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setResuming(false)
+      })
+    return () => { active = false }
+  }, [inviteRoomCode, navigate])
 
   function handleCodeChange(event) {
     const value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
@@ -107,7 +132,7 @@ function JoinRoom() {
             )}
           </div>
 
-          <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
+          <button className="btn btn-primary btn-block" type="submit" disabled={submitting || resuming}>
             <span className="btn-content">
               {submitting && <span className="spinner" />}
               {submitting ? t('joinRoom.submitting') : t('joinRoom.submit')}
