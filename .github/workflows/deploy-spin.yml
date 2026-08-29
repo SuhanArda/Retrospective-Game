@@ -1,0 +1,54 @@
+name: Deploy - Spin the Bottle
+
+# Manual only, for the same reason as the backend: a restart drops the rooms
+# that are mid-game on this origin.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: app-retro-game-spin-dev-001
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      VITE_API_URL: ${{ vars.PUBLIC_API_URL }}
+      VITE_PLATFORM_URL: ${{ vars.PUBLIC_PLATFORM_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - name: Require public build configuration
+        run: test -n "$VITE_API_URL" && test -n "$VITE_PLATFORM_URL"
+      - run: npm ci
+      - run: npm run test:spin-the-bottle
+      - run: npm run build:spin-the-bottle
+      # dist/ alone cannot start: `vinext start` is the only production
+      # entrypoint and vinext is a workspace devDependency. This step emits a
+      # package that pins it as a real dependency.
+      - run: npm run package:spin-the-bottle
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.APP_NAME }}
+          package: artifacts/spin-the-bottle
+          startup-command: npm start
+      - name: Verify the app answers
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${APP_NAME}.azurewebsites.net/" || true)
+            if [ "$code" = "200" ]; then echo "serving"; exit 0; fi
+            echo "attempt $attempt: HTTP ${code:-none}"; sleep 10
+          done
+          echo "Site never returned 200."; exit 1

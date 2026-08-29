@@ -1,0 +1,108 @@
+name: Deploy - Static frontends
+
+# Manual, with a target selector so one game can be redeployed without
+# rebuilding the others. "all" fans out across every static frontend.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which frontend to deploy
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - platform
+          - retro-rush
+          - rus-ruleti
+          - draw-and-guess
+          - imposter
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    strategy:
+      # One failing frontend must not cancel the others mid-fan-out.
+      fail-fast: false
+      matrix:
+        include:
+          - key: platform
+            build: build:web
+            output: apps/retro-platform-web/dist
+            token_secret: AZURE_SWA_TOKEN_PLATFORM
+          - key: retro-rush
+            build: build:retro-rush
+            output: games/retro-rush/dist
+            token_secret: AZURE_SWA_TOKEN_RETRO_RUSH
+          - key: rus-ruleti
+            build: build:rus-ruleti
+            output: games/rus-ruleti/dist
+            token_secret: AZURE_SWA_TOKEN_RUS_RULETI
+          - key: draw-and-guess
+            build: build:draw-and-guess
+            output: games/draw-and-guess/dist
+            token_secret: AZURE_SWA_TOKEN_DRAW_AND_GUESS
+          - key: imposter
+            build: build:imposter
+            output: games/imposter/dist
+            token_secret: AZURE_SWA_TOKEN_IMPOSTER
+    steps:
+      - uses: actions/checkout@v6
+        if: inputs.target == 'all' || inputs.target == matrix.key
+      - uses: actions/setup-node@v6
+        if: inputs.target == 'all' || inputs.target == matrix.key
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      # Rus Ruleti, Draw and Guess and Imposter fall back to localhost when a
+      # URL is missing instead of failing their build, which would ship a bundle
+      # that cannot reach the backend. Guard every variable for every target.
+      - name: Require public build configuration
+        if: inputs.target == 'all' || inputs.target == matrix.key
+        env:
+          VITE_API_URL: ${{ vars.PUBLIC_API_URL }}
+          VITE_PLATFORM_URL: ${{ vars.PUBLIC_PLATFORM_URL }}
+          VITE_RETRO_RUSH_URL: ${{ vars.PUBLIC_RETRO_RUSH_URL }}
+          VITE_SPIN_THE_BOTTLE_URL: ${{ vars.PUBLIC_SPIN_URL }}
+          VITE_RUS_RULETI_URL: ${{ vars.PUBLIC_RUS_RULETI_URL }}
+          VITE_DRAW_AND_GUESS_URL: ${{ vars.PUBLIC_DRAW_AND_GUESS_URL }}
+          VITE_IMPOSTER_URL: ${{ vars.PUBLIC_IMPOSTER_URL }}
+        run: |
+          for name in VITE_API_URL VITE_PLATFORM_URL VITE_RETRO_RUSH_URL \
+                      VITE_SPIN_THE_BOTTLE_URL VITE_RUS_RULETI_URL \
+                      VITE_DRAW_AND_GUESS_URL VITE_IMPOSTER_URL; do
+            test -n "${!name}" || { echo "Missing repository variable for $name"; exit 1; }
+          done
+
+      - name: Install
+        if: inputs.target == 'all' || inputs.target == matrix.key
+        run: npm ci
+
+      - name: Build ${{ matrix.key }}
+        if: inputs.target == 'all' || inputs.target == matrix.key
+        env:
+          VITE_API_URL: ${{ vars.PUBLIC_API_URL }}
+          VITE_PLATFORM_URL: ${{ vars.PUBLIC_PLATFORM_URL }}
+          VITE_RETRO_RUSH_URL: ${{ vars.PUBLIC_RETRO_RUSH_URL }}
+          VITE_SPIN_THE_BOTTLE_URL: ${{ vars.PUBLIC_SPIN_URL }}
+          VITE_RUS_RULETI_URL: ${{ vars.PUBLIC_RUS_RULETI_URL }}
+          VITE_DRAW_AND_GUESS_URL: ${{ vars.PUBLIC_DRAW_AND_GUESS_URL }}
+          VITE_IMPOSTER_URL: ${{ vars.PUBLIC_IMPOSTER_URL }}
+          VITE_ROOM_SERVICE: real
+          VITE_TRANSPORT_MODE: signalr
+        run: npm run ${{ matrix.build }}
+
+      - name: Deploy ${{ matrix.key }}
+        if: inputs.target == 'all' || inputs.target == matrix.key
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets[matrix.token_secret] }}
+          action: upload
+          app_location: ${{ matrix.output }}
+          skip_app_build: true
+          skip_api_build: true
