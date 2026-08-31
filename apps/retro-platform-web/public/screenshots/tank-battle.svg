@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" shape-rendering="crispEdges">
-  <rect width="800" height="800" fill="#17243c"/><rect y="640" width="800" height="160" fill="#315b7d"/>
-  <path d="M0 510h80v-40h80v20h80v-100h80v30h80v-150h80v80h80v-40h80v100h80v-20h80v120H0z" fill="#573f32"/>
-  <path d="M0 500h80v-40h80v20h80v-100h80v30h80v-150h80v80h80v-40h80v100h80v-20h80" fill="none" stroke="#73834b" stroke-width="20"/>
-  <g fill="#e64e55"><rect x="105" y="416" width="120" height="44"/><rect x="135" y="382" width="65" height="34"/><rect x="184" y="365" width="100" height="14"/></g>
-  <g fill="#3c8ed9"><rect x="575" y="336" width="120" height="44"/><rect x="600" y="302" width="65" height="34"/><rect x="515" y="285" width="100" height="14"/></g>
-  <rect x="370" y="190" width="14" height="14" fill="#ffdf6f"/><rect x="390" y="215" width="20" height="20" fill="#ff8b3d"/>
-  <text x="400" y="735" text-anchor="middle" fill="#ffedaa" font-family="monospace" font-weight="bold" font-size="58">TANK BATTLE</text>
-</svg>

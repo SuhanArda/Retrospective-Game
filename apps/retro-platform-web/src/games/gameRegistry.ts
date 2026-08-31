@@ -61,8 +61,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     status: 'available',
     minPlayers: 2,
     visualLabel: 'TB',
-    screenshotUrl: '/screenshots/tank-battle.svg',
-    voteScreenshotUrl: '/screenshots/tank-battle-wide.svg',
+    screenshotUrl: '/screenshots/tank-battle.jpg',
+    voteScreenshotUrl: '/screenshots/tank-battle-wide.jpg',
     getLaunchUrl: (config) => config.tankBattleUrl,
   },
   {
