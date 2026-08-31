@@ -36,6 +36,10 @@ import type {
   RetroRushShoveCommandResult,
   UpdateRetroRushPlayerRequest,
   UseRetroRushAbilityRequest,
+  CompleteTankBattleQuestionRequest,
+  FireTankBattleShotRequest,
+  MoveTankBattleTankRequest,
+  TankBattleGameSnapshot,
 } from '@retro-platform/contracts';
 
 export { RoomQuestionProvider, parseRoomQuestionSet, questionForStableKey } from './roomQuestionProvider';
@@ -78,6 +82,7 @@ type EventMap = {
   retroRushPlayerEliminated: RetroRushPlayerEliminated;
   retroRushRoundStarted: RetroRushGameSnapshot;
   imposterStateChanged: ImposterStateChanged;
+  tankBattleSnapshot: TankBattleGameSnapshot;
 };
 
 type Listener<K extends keyof EventMap> = (event: EventMap[K]) => void;
@@ -193,6 +198,18 @@ export class RoomRealtimeClient {
   completeRetroRushQuestion(request: CompleteRetroRushQuestionRequest): Promise<void> {
     return this.invoke('CompleteRetroRushQuestion', request);
   }
+  getTankBattleSnapshot(gameSessionId: string): Promise<TankBattleGameSnapshot> {
+    return this.invoke('GetTankBattleSnapshot', gameSessionId);
+  }
+  moveTankBattleTank(request: MoveTankBattleTankRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('MoveTankBattleTank', request);
+  }
+  fireTankBattleShot(request: FireTankBattleShotRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('FireTankBattleShot', request);
+  }
+  completeTankBattleQuestion(request: CompleteTankBattleQuestionRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('CompleteTankBattleQuestion', request);
+  }
   useRetroRushAbility(request: UseRetroRushAbilityRequest): Promise<void> {
     return this.invoke('UseRetroRushAbility', request);
   }
@@ -246,6 +263,7 @@ export class RoomRealtimeClient {
     connection.on('RetroRushPlayerEliminated', (elimination: RetroRushPlayerEliminated) => this.emit('retroRushPlayerEliminated', elimination));
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
     connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
+    connection.on('TankBattleSnapshot', (snapshot: TankBattleGameSnapshot) => this.emit('tankBattleSnapshot', snapshot));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {
       this.emit('connectionChanged', 'connected');

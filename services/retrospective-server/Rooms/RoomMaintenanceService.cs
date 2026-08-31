@@ -18,6 +18,7 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
                 if (change.SpinStateChanged) await clients.SpinBottleStateChanged(change.Snapshot.SpinBottleState!);
                 if (change.DrawAndGuessWordReveal is { } reveal) await clients.DrawAndGuessWordRevealed(reveal);
                 if (change.RetroRushSnapshot is not null) await clients.RetroRushSnapshot(change.RetroRushSnapshot);
+                if (change.TankBattleSnapshot is not null) await clients.TankBattleSnapshot(change.TankBattleSnapshot);
                 if (change.DrawAndGuessStateChanged && change.Snapshot.DrawAndGuessState is { } drawAndGuessState)
                     await clients.DrawAndGuessStateChanged(drawAndGuessState);
             }
@@ -34,6 +35,8 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
                     await clients.RoomSnapshot(change.Snapshot);
                     if (rooms.GetRetroRushSnapshotForRoom(change.RoomCode) is { } retroRush)
                         await clients.RetroRushSnapshot(retroRush);
+                    if (rooms.GetTankBattleSnapshotForRoom(change.RoomCode) is { } tankBattle)
+                        await clients.TankBattleSnapshot(tankBattle);
                 }
             }
         }

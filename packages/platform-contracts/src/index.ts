@@ -202,6 +202,94 @@ export interface RetroRushAbilityApplied {
   availableAtUnixMs: number;
 }
 
+export type TankBattleTeam = 'RED' | 'BLUE';
+export type TankBattlePhase = 'RUNNING' | 'QUESTION' | 'RESULTS';
+
+export interface TankBattlePoint { x: number; y: number }
+
+export interface TankBattlePlayerSnapshot {
+  playerId: string;
+  displayName: string;
+  color: string;
+  team: TankBattleTeam;
+  connected: boolean;
+  x: number;
+  y: number;
+  health: number;
+  alive: boolean;
+  facing: 'LEFT' | 'RIGHT';
+  turretAngle: number;
+  velocityX: number;
+  velocityY: number;
+  airborne: boolean;
+}
+
+export interface TankBattleShotSnapshot {
+  shotId: string;
+  ownerPlayerId: string;
+  angle: number;
+  power: number;
+  launch: TankBattlePoint;
+  velocity: TankBattlePoint;
+  gravity: number;
+  path: readonly TankBattlePoint[];
+  impact: TankBattlePoint;
+  firedAtUnixMs: number;
+  impactAtUnixMs: number;
+  status: 'ACTIVE' | 'IMPACTED' | 'MISSED';
+  impactType: 'TERRAIN' | 'TANK' | 'WATER' | 'OUT_OF_BOUNDS';
+}
+
+export interface TankBattleResultSnapshot {
+  winnerTeam: TankBattleTeam;
+  loserTeam: TankBattleTeam;
+  survivingPlayerIds: readonly string[];
+  eliminatedPlayerIds: readonly string[];
+}
+
+export interface TankBattleQuestionSnapshot {
+  questionId: string;
+  questionIndex: number;
+  loserTeam: TankBattleTeam;
+  answeredPlayerIds: readonly string[];
+}
+
+export interface TankBattleGameSnapshot {
+  gameSessionId: string;
+  roundNumber: number;
+  revision: number;
+  serverTimeUnixMs: number;
+  phase: TankBattlePhase;
+  mapSeed: number;
+  mapWidth: number;
+  mapHeight: number;
+  waterY: number;
+  terrainStep: number;
+  terrainHeights: readonly number[];
+  players: readonly TankBattlePlayerSnapshot[];
+  projectiles: readonly TankBattleShotSnapshot[];
+  lastShot?: TankBattleShotSnapshot;
+  result?: TankBattleResultSnapshot;
+  activeQuestion?: TankBattleQuestionSnapshot;
+}
+
+export interface MoveTankBattleTankRequest {
+  gameSessionId: string;
+  direction: -1 | 1;
+}
+
+export interface FireTankBattleShotRequest {
+  gameSessionId: string;
+  facing: 'LEFT' | 'RIGHT';
+  angle: number;
+  power: number;
+}
+
+export interface CompleteTankBattleQuestionRequest {
+  gameSessionId: string;
+  questionId: string;
+}
+
 export type AbilityId = 'speed' | 'rocket' | 'pull';
 
 export type SpinBottleStateStatus =
