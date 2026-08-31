@@ -1172,8 +1172,7 @@ public sealed record TimedRoomChange(
     RetroRushGameSnapshot? RetroRushSnapshot,
     TankBattleGameSnapshot? TankBattleSnapshot,
     bool DrawAndGuessStateChanged,
-    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
-    RetroRushGameSnapshot? RetroRushSnapshot = null);
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions
