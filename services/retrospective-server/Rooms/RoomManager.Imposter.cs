@@ -89,7 +89,7 @@ public sealed partial class RoomManager
                 session.Id,
                 current.RoundNumber + 1,
                 current.Revision + 1,
-                current.PackIndex,
+                current.Pack.SecretWord,
                 current.BackgroundId,
                 current.AvatarIndicesByPlayerId);
             return Mutation(room, session.Imposter);
@@ -119,7 +119,7 @@ public sealed partial class RoomManager
         string gameSessionId,
         int roundNumber,
         int revision,
-        int? previousPackIndex,
+        string? previousSecretWord,
         string backgroundId,
         IReadOnlyDictionary<string, int>? previousAvatarIndices)
     {
@@ -130,9 +130,12 @@ public sealed partial class RoomManager
         if (playerIds.Count is < ImposterMinPlayers or > ImposterMaxPlayers)
             throw new RoomException("IMPOSTER_PLAYER_COUNT_OUT_OF_RANGE");
 
-        var packIndex = previousPackIndex is null
-            ? roomRandom.Next(ImposterDemoCatalog.Words.Count)
-            : (previousPackIndex.Value + 1 + roomRandom.Next(ImposterDemoCatalog.Words.Count - 1)) % ImposterDemoCatalog.Words.Count;
+        var packs = ImposterPacks(room);
+        IReadOnlyList<ImposterWordDefinition> candidatePacks = previousSecretWord is null
+            ? packs
+            : packs.Where(pack => !string.Equals(pack.SecretWord, previousSecretWord, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (candidatePacks.Count == 0) candidatePacks = packs;
+        var pack = candidatePacks[roomRandom.Next(candidatePacks.Count)];
         var imposterPlayerId = playerIds[roomRandom.Next(playerIds.Count)];
         var avatarIndices = previousAvatarIndices is null
             ? RandomAvatarIndices(playerIds)
@@ -146,12 +149,57 @@ public sealed partial class RoomManager
             gameSessionId,
             roundNumber,
             revision,
-            packIndex,
+            pack,
             playerIds,
             clueOrderPlayerIds,
             avatarIndices,
             imposterPlayerId,
             backgroundId);
+    }
+
+    private static IReadOnlyList<ImposterWordDefinition> ImposterPacks(GameRoom room)
+    {
+        if (room.AiQuestionSet is not { Questions.Count: 20 } set) return ImposterDemoCatalog.Words;
+        var packs = set.Questions
+            .Where(question => IsUsableImposterWord(question.Answer) && !string.IsNullOrWhiteSpace(question.Text))
+            .GroupBy(question => question.Answer.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(question => new ImposterWordDefinition(
+                string.IsNullOrWhiteSpace(question.Category) ? "AI" : question.Category.Trim(),
+                question.Answer.Trim(),
+                question.Text.Trim()))
+            .ToArray();
+        return packs.Length == 20 ? packs : ImposterDemoCatalog.Words;
+    }
+
+    public ImposterMutation? RefreshWaitingImposterQuestionPack(string rawCode, string roomInstanceId)
+    {
+        var room = Find(rawCode);
+        lock (room.Gate)
+        {
+            if (room.Id != roomInstanceId || room.AiQuestionSet is not { Questions.Count: 20 }) return null;
+            var state = room.CurrentGameSession?.Imposter;
+            if (state is null || state.Phase != "ROLE_REVEAL" || state.ReadyPlayerIds.Count > 0) return null;
+
+            var packs = ImposterPacks(room);
+            if (packs.Count != 20) return null;
+            var candidates = packs
+                .Where(pack => !string.Equals(pack.SecretWord, state.Pack.SecretWord, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (candidates.Length == 0) candidates = packs.ToArray();
+            state.Pack = candidates[roomRandom.Next(candidates.Length)];
+            state.Revision++;
+            return Mutation(room, state);
+        }
+    }
+
+    private static bool IsUsableImposterWord(string value)
+    {
+        var word = value.Trim();
+        if (word.Length is < 2 or > 48) return false;
+        var parts = word.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length is >= 1 and <= 3 &&
+            word.All(character => char.IsLetterOrDigit(character) || character is ' ' or '-' or '\'');
     }
 
     private Dictionary<string, int> RandomAvatarIndices(IReadOnlyList<string> playerIds)
@@ -211,7 +259,7 @@ public sealed partial class RoomManager
 
     private static ImposterGameSnapshot Snapshot(GameRoom room, ImposterState state, string playerId)
     {
-        var pack = ImposterDemoCatalog.Words[state.PackIndex];
+        var pack = state.Pack;
         var isImposter = state.ImposterPlayerId == playerId;
         var revealSecrets = state.Phase == "RESULTS";
         var players = state.PlayerIds.Select(id =>
@@ -309,7 +357,7 @@ public sealed partial class RoomManager
         string gameSessionId,
         int roundNumber,
         int revision,
-        int packIndex,
+        ImposterWordDefinition pack,
         List<string> playerIds,
         List<string> clueOrderPlayerIds,
         Dictionary<string, int> avatarIndicesByPlayerId,
@@ -319,7 +367,7 @@ public sealed partial class RoomManager
         public string GameSessionId { get; } = gameSessionId;
         public int RoundNumber { get; } = roundNumber;
         public int Revision { get; set; } = revision;
-        public int PackIndex { get; } = packIndex;
+        public ImposterWordDefinition Pack { get; set; } = pack;
         public List<string> PlayerIds { get; } = playerIds;
         public List<string> ClueOrderPlayerIds { get; } = clueOrderPlayerIds;
         public Dictionary<string, int> AvatarIndicesByPlayerId { get; } = avatarIndicesByPlayerId;

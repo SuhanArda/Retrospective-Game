@@ -8,6 +8,7 @@ import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
 const VOTING_TIME_OPTIONS = [15, 30, 45, 60]
+const QUESTION_PREPARATION_GRACE_MS = 2000
 
 function CreateRoom() {
   const navigate = useNavigate()
@@ -44,21 +45,27 @@ function CreateRoom() {
     const { room, player, reconnectToken } = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
+      avatarId: user.avatarId,
       roomName,
       maxParticipants: Number(maxParticipants),
       questionTimeSeconds: questionTime,
       votingTimeSeconds: votingTime,
     })
-    void prepareRoomQuestions({
+    const questionPreparation = prepareRoomQuestions({
       roomCode: room.code,
       style: questionStyle,
       contextPrompt: contextPrompt.trim(),
       reportFile,
       playerId: player.id,
       reconnectToken,
-    }).catch((cause) => {
-      if (import.meta.env.DEV) console.warn('[AIQuestion] room preparation failed; games will use authoritative defaults', cause)
     })
+      .catch((cause) => {
+        if (import.meta.env.DEV) console.warn('[AIQuestion] room preparation failed; games will use authoritative defaults', cause)
+      })
+    await Promise.race([
+      questionPreparation,
+      new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
+    ])
     setSubmitting(false)
     navigate(`/room/${room.code}`)
   }
@@ -138,7 +145,7 @@ function CreateRoom() {
           </div>
 
           <div className="field">
-            <label htmlFor="roomPrompt">Kısa prompt (opsiyonel)</label>
+            <label htmlFor="roomPrompt">Kısa prompt (zorunlu)</label>
             <textarea id="roomPrompt" className="input textarea" value={contextPrompt} onChange={(event) => setContextPrompt(event.target.value)} maxLength={1000} rows={3} placeholder="Örn. Son sprintte yaşanan iletişim sorunlarına odaklan." />
           </div>
 

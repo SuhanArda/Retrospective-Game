@@ -1,9 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { findShape, SHAPES, SHAPE_CATEGORIES, type ShapeCategory } from '../domain/shapes';
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
 const STROKE_WIDTH = 4;
 const ERASER_WIDTH = 24;
+/** Sürükleme neredeyse yoksa (tek tık) şekil bu boyutta, tıklanan noktayı merkez alarak basılır. */
+const DEFAULT_SHAPE_SIZE = 48;
+const MIN_DRAG_DISTANCE = 4;
 
 /** Kalem paleti — herkesin ekranında aynı sırayla görünsün diye sabit liste. */
 const PEN_COLORS = [
@@ -20,6 +24,8 @@ const PEN_COLORS = [
 export interface DrawingCanvasHandle {
   /** Draws one point from a remote drawer's stroke — same coordinate space as the local canvas. */
   applyRemotePoint: (x: number, y: number, newStroke: boolean, color: string, isEraser: boolean) => void;
+  /** Stamps one ready-made shape from a remote drawer — same bounding-box space as the local canvas. */
+  applyRemoteShape: (shapeType: string, x0: number, y0: number, x1: number, y1: number, color: string, filled: boolean) => void;
   clearRemote: () => void;
 }
 
@@ -29,12 +35,47 @@ interface DrawingCanvasProps {
   /** Online modda her yerel çizim noktasını odaya yayınlamak için. */
   onStroke?: (x: number, y: number, newStroke: boolean, color: string, isEraser: boolean) => void;
   onClear?: () => void;
+  /** Online modda tamamlanan bir şekil damgasını odaya yayınlamak için. */
+  onShape?: (shapeType: string, x0: number, y0: number, x1: number, y1: number, color: string, filled: boolean) => void;
 }
 
 function applyToolStyle(context: CanvasRenderingContext2D, color: string, isEraser: boolean) {
   context.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
   context.strokeStyle = color;
   context.lineWidth = isEraser ? ERASER_WIDTH : STROKE_WIDTH;
+}
+
+/** Hazır şekli (dolu ya da kontur) verilen kutuya göre tuvale işler — yerel önizleme, kesinleştirme ve uzaktan gelen damgalar hep bu fonksiyondan geçer. */
+function renderShape(
+  context: CanvasRenderingContext2D,
+  shapeType: string,
+  x0: number, y0: number, x1: number, y1: number,
+  color: string,
+  filled: boolean,
+) {
+  const shape = findShape(shapeType);
+  if (!shape) return;
+  const path = shape.buildPath(x0, y0, x1, y1);
+  context.globalCompositeOperation = 'source-over';
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+  context.lineWidth = STROKE_WIDTH;
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  if (!shape.strokeOnly && filled) {
+    context.fill(path);
+  } else {
+    context.stroke(path);
+  }
+}
+
+/** Sürükleme neredeyse yoksa (tek tık — "basa basa ekle" kullanımı) tıklanan noktayı merkez alan sabit boyutlu bir kutuya dönüştürür. */
+function normalizeShapeBox(startX: number, startY: number, endX: number, endY: number) {
+  if (Math.abs(endX - startX) < MIN_DRAG_DISTANCE && Math.abs(endY - startY) < MIN_DRAG_DISTANCE) {
+    const half = DEFAULT_SHAPE_SIZE / 2;
+    return { x0: startX - half, y0: startY - half, x1: startX + half, y1: startY + half };
+  }
+  return { x0: startX, y0: startY, x1: endX, y1: endY };
 }
 
 /**
@@ -46,7 +87,7 @@ function applyToolStyle(context: CanvasRenderingContext2D, color: string, isEras
  * her zaman beyaz olmayabilir.
  */
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
-  function DrawingCanvas({ canDraw = true, onStroke, onClear }, ref) {
+  function DrawingCanvas({ canDraw = true, onStroke, onClear, onShape }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const isDrawingRef = useRef(false);
     const [isEmpty, setIsEmpty] = useState(true);
@@ -56,6 +97,19 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const isEraserRef = useRef(isEraser);
     colorRef.current = color;
     isEraserRef.current = isEraser;
+
+    // Kalem/şekil aracı seçimi — şekil modunda silgi anlamsız, onun yerine
+    // dolu/kontur seçeneği çıkar.
+    const [tool, setTool] = useState<'pen' | 'shape'>('pen');
+    const [activeShapeId, setActiveShapeId] = useState<string | null>(null);
+    const [filled, setFilled] = useState(true);
+    const [shapePanelOpen, setShapePanelOpen] = useState(false);
+    const [activeCategory, setActiveCategory] = useState<ShapeCategory>('basic');
+    const activeShapeDef = activeShapeId ? findShape(activeShapeId) : undefined;
+    // Sürüklerken her karede tuvali bu anlık görüntüye geri döndürüp üstüne
+    // önizlemeyi çiziyoruz — bırakınca son hali kalıcı oluyor.
+    const shapeStartRef = useRef<{ x: number; y: number } | null>(null);
+    const shapeSnapshotRef = useRef<ImageData | null>(null);
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -88,6 +142,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           context.stroke();
         }
       },
+      applyRemoteShape(shapeType, x0, y0, x1, y1, remoteColor, remoteFilled) {
+        const context = canvasRef.current?.getContext('2d');
+        if (!context) return;
+        setIsEmpty(false);
+        renderShape(context, shapeType, x0, y0, x1, y1, remoteColor, remoteFilled);
+      },
       clearRemote() {
         const canvas = canvasRef.current;
         const context = canvas?.getContext('2d');
@@ -105,12 +165,22 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     function handlePointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
       if (!canDraw) return;
-      const context = canvasRef.current?.getContext('2d');
-      if (!context) return;
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext('2d');
+      if (!canvas || !context) return;
+      const { x, y } = getPoint(event);
+
+      if (tool === 'shape') {
+        if (!activeShapeId) return;
+        isDrawingRef.current = true;
+        shapeStartRef.current = { x, y };
+        shapeSnapshotRef.current = context.getImageData(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
       isDrawingRef.current = true;
       setIsEmpty(false);
       applyToolStyle(context, colorRef.current, isEraserRef.current);
-      const { x, y } = getPoint(event);
       context.beginPath();
       context.moveTo(x, y);
       onStroke?.(x, y, true, colorRef.current, isEraserRef.current);
@@ -120,14 +190,41 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       if (!isDrawingRef.current) return;
       const context = canvasRef.current?.getContext('2d');
       if (!context) return;
-      applyToolStyle(context, colorRef.current, isEraserRef.current);
       const { x, y } = getPoint(event);
+
+      if (tool === 'shape') {
+        if (!activeShapeId || !shapeStartRef.current || !shapeSnapshotRef.current) return;
+        context.putImageData(shapeSnapshotRef.current, 0, 0);
+        const { x0, y0, x1, y1 } = normalizeShapeBox(shapeStartRef.current.x, shapeStartRef.current.y, x, y);
+        renderShape(context, activeShapeId, x0, y0, x1, y1, colorRef.current, filled);
+        return;
+      }
+
+      applyToolStyle(context, colorRef.current, isEraserRef.current);
       context.lineTo(x, y);
       context.stroke();
       onStroke?.(x, y, false, colorRef.current, isEraserRef.current);
     }
 
-    function stopDrawing() {
+    /** Şekil sürüklemesini bırakılan noktaya göre kesinleştirir — bir tık sonrası pointerup/pointerleave'in ikisinden de gelebilir. */
+    function finishShape(endX: number, endY: number) {
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext('2d');
+      if (!canvas || !context || !activeShapeId || !shapeStartRef.current || !shapeSnapshotRef.current) return;
+      context.putImageData(shapeSnapshotRef.current, 0, 0);
+      const { x0, y0, x1, y1 } = normalizeShapeBox(shapeStartRef.current.x, shapeStartRef.current.y, endX, endY);
+      renderShape(context, activeShapeId, x0, y0, x1, y1, colorRef.current, filled);
+      setIsEmpty(false);
+      onShape?.(activeShapeId, x0, y0, x1, y1, colorRef.current, filled);
+      shapeStartRef.current = null;
+      shapeSnapshotRef.current = null;
+    }
+
+    function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
+      if (tool === 'shape' && isDrawingRef.current) {
+        const { x, y } = getPoint(event);
+        finishShape(x, y);
+      }
       isDrawingRef.current = false;
     }
 
@@ -157,14 +254,70 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
                 />
               ))}
             </div>
+            {tool === 'pen' ? (
+              <button
+                type="button"
+                className={`btn-secondary tool-button${isEraser ? ' is-selected' : ''}`}
+                aria-pressed={isEraser}
+                onClick={() => setIsEraser((current) => !current)}
+              >
+                🧹 Silgi
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary tool-button"
+                onClick={() => setFilled((current) => !current)}
+                disabled={activeShapeDef?.strokeOnly}
+              >
+                {filled ? '🪣 Dolu' : '⭕ Kontur'}
+              </button>
+            )}
             <button
               type="button"
-              className={`btn-secondary tool-button${isEraser ? ' is-selected' : ''}`}
-              aria-pressed={isEraser}
-              onClick={() => setIsEraser((current) => !current)}
+              className={`btn-secondary tool-button${tool === 'pen' ? ' is-selected' : ''}`}
+              onClick={() => { setTool('pen'); setShapePanelOpen(false); }}
             >
-              🧹 Silgi
+              ✏️ Kalem
             </button>
+            <button
+              type="button"
+              className={`btn-secondary tool-button${tool === 'shape' ? ' is-selected' : ''}`}
+              aria-expanded={shapePanelOpen}
+              onClick={() => setShapePanelOpen((open) => !open)}
+            >
+              {tool === 'shape' && activeShapeDef ? `${activeShapeDef.icon} ${activeShapeDef.label}` : '🔷 Şekiller'}
+            </button>
+          </div>
+        )}
+        {canDraw && shapePanelOpen && (
+          <div className="shape-panel">
+            <div className="shape-tabs">
+              {SHAPE_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`shape-tab${activeCategory === cat.id ? ' is-selected' : ''}`}
+                  onClick={() => setActiveCategory(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <div className="shape-grid">
+              {SHAPES.filter((shape) => shape.category === activeCategory).map((shape) => (
+                <button
+                  key={shape.id}
+                  type="button"
+                  title={shape.label}
+                  aria-label={shape.label}
+                  className={`shape-swatch${tool === 'shape' && activeShapeId === shape.id ? ' is-selected' : ''}`}
+                  onClick={() => { setTool('shape'); setActiveShapeId(shape.id); setShapePanelOpen(false); }}
+                >
+                  {shape.icon}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <canvas

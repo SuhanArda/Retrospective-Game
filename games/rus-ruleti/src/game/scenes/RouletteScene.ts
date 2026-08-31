@@ -61,13 +61,13 @@ const CAMPFIRE_DISPLAY_WIDTH = 100;
  * birds do, the way an outdoor ambience actually shifts instead of sitting
  * at a fixed mix.
  */
-const AMBIENT_FIRE_VOLUME_RANGE: readonly [number, number] = [0.06, 0.18];
+const AMBIENT_FIRE_VOLUME_RANGE: readonly [number, number] = [0.02, 0.06];
 const AMBIENT_FIRE_CYCLE_MS = 14000;
-const AMBIENT_BIRDS_VOLUME_RANGE: readonly [number, number] = [0.09, 0.26];
+const AMBIENT_BIRDS_VOLUME_RANGE: readonly [number, number] = [0.03, 0.09];
 const AMBIENT_BIRDS_CYCLE_MS = 19000;
 const AMBIENT_BIRDS_START_DELAY_MS = 4000;
-const GUNSHOT_VOLUME = 0.5;
-const MISS_CLICK_VOLUME = 0.4;
+const GUNSHOT_VOLUME = 0.95;
+const MISS_CLICK_VOLUME = 0.75;
 
 /** Only used standalone — an online room's questions come from the server, never invented here. */
 const SAMPLE_QUESTIONS = [
@@ -199,6 +199,15 @@ export class RouletteScene extends Phaser.Scene {
     // real line by hand, closer to the bottom of the frame than any of that
     // measuring found.
     this.rowY = Math.round(height * 0.87);
+
+    // Phaser's WebAudio sound manager suspends its whole AudioContext on
+    // window blur by default and resumes it on focus. Screen-sharing this
+    // game in a Teams/Meet call triggers blur constantly (clicking the
+    // meeting controls, a notification, alt-tabbing) — every one of those
+    // was cutting the audio out and back in. Table games like this one have
+    // no gameplay reason to punish an unfocused tab, so just leave audio
+    // running regardless of window focus.
+    this.sound.pauseOnBlur = false;
 
     this.drawBackground();
     this.buildSeats();
@@ -335,14 +344,15 @@ export class RouletteScene extends Phaser.Scene {
     // covered rather than letterboxed — so whichever edge ends up tighter
     // gets cropped. 64px clears that in any reasonable window; 40px didn't.
     this.turnBannerBackdrop = this.add.graphics().setDepth(19);
-    // Same pixel font as the sidebar chrome (see global.css), so the banner
-    // reads as part of the same UI language instead of a plain system font
-    // pasted over the scene. Sized well below the sidebar's 18px heading —
-    // Press Start 2P's glyphs are wide enough that a full sentence at that
-    // size would blow past the panel.
+    // Deliberately NOT the sidebar's "Press Start 2P" pixel font: that font
+    // has no glyph for Turkish ş/ğ, and this banner's text always has both
+    // ("Bağlanıyor...", "... nişan alıyor...", player names) — Canvas was
+    // rendering the missing glyph as a broken stray mark instead of falling
+    // back cleanly. Plain monospace has full Turkish coverage, so this
+    // banner loses the pixel-font look but always renders correctly.
     this.turnBanner = this.add
       .text(this.centerX, 64, '', {
-        fontFamily: '"Press Start 2P", monospace', fontSize: '13px', color: '#fff0ce',
+        fontFamily: 'monospace', fontSize: '13px', color: '#fff0ce',
       })
       .setOrigin(0.5)
       .setDepth(20);

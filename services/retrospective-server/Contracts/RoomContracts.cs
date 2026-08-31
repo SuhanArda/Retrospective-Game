@@ -8,9 +8,10 @@ public sealed record CreateRoomRequest(
     int QuestionTimeSeconds = 30,
     int VotingTimeSeconds = 30,
     string? FileName = null,
-    string? Description = null);
+    string? Description = null,
+    string? AvatarId = null);
 
-public sealed record JoinRoomRequest(string DisplayName, string Color);
+public sealed record JoinRoomRequest(string DisplayName, string Color, string? AvatarId = null);
 
 public sealed record RoomAdmission(
     string RoomCode,
@@ -28,7 +29,8 @@ public sealed record RoomPlayerSnapshot(
     bool IsHost,
     bool IsReady,
     bool IsConnected,
-    long JoinedAt);
+    long JoinedAt,
+    string? AvatarId = null);
 
 public sealed record GameSessionSnapshot(
     string GameSessionId,
@@ -87,7 +89,8 @@ public sealed record DrawAndGuessStateSnapshot(
     long UpdatedAtUtc,
     long RoundEndsAtUtc,
     int WordLength,
-    IReadOnlyDictionary<int, char> RevealedLetters);
+    IReadOnlyDictionary<int, char> RevealedLetters,
+    int? LastRevealedIndex);
 
 /// <summary>
 /// A correct guess never carries the word back to the room — only who got
@@ -116,6 +119,20 @@ public sealed record DrawAndGuessStrokeEvent(
     bool NewStroke,
     string Color,
     bool IsEraser);
+
+/// <summary>
+/// A ready-made shape stamp (circle, star, …) — same pure-relay trust model as
+/// <see cref="DrawAndGuessStrokeEvent"/>, just one bounding box instead of a point stream.
+/// </summary>
+public sealed record DrawAndGuessShapeEvent(
+    string PlayerId,
+    string ShapeType,
+    double X0,
+    double Y0,
+    double X1,
+    double Y1,
+    string Color,
+    bool Filled);
 
 public sealed record FireResult(
     string GameSessionId,

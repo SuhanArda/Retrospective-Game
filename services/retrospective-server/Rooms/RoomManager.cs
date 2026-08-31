@@ -74,7 +74,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// <summary>Herkes bildikten sonra sıradaki tura otomatik geçmeden önceki bekleme — son tahmini/kutlamayı görsünler diye.</summary>
     private const int DrawAndGuessRoundCompleteDelayMs = 2500;
     /// <summary>Her turun süresi — kimse (ya da herkes) bilemezse bu süre dolunca kelime açıklanıp tur ilerler.</summary>
-    private const int DrawAndGuessRoundDurationMs = 30_000;
+    private const int DrawAndGuessRoundDurationMs = 60_000;
     private const int SpinBottleMaxPlayers = 10;
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PlayerConnection> _connections = new(StringComparer.Ordinal);
@@ -101,7 +101,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
         lock (room.Gate)
         {
-            var admission = AddPlayer(room, request.DisplayName, request.Color);
+            var admission = AddPlayer(room, request.DisplayName, request.Color, request.AvatarId);
             room.HostPlayerId = admission.PlayerId;
             return admission with { IsHost = true, Room = Snapshot(room), Player = PlayerSnapshot(room, room.Players[admission.PlayerId]) };
         }
@@ -115,7 +115,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         {
             if (room.Status == RoomPhase.Playing) throw new RoomException("ROOM_ALREADY_STARTED");
             if (room.Players.Count >= room.MaxParticipants) throw new RoomException("ROOM_FULL");
-            return AddPlayer(room, request.DisplayName, request.Color);
+            return AddPlayer(room, request.DisplayName, request.Color, request.AvatarId);
         }
     }
 
@@ -163,6 +163,30 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 ReportFile = source.ReportFile,
                 Style = source.Style,
             };
+        }
+    }
+
+    public bool TryRememberAiQuestionSet(
+        string rawCode,
+        string roomInstanceId,
+        AiRoomQuestionSet questionSet)
+    {
+        var code = Normalize(rawCode);
+        if (!_rooms.TryGetValue(code, out var room)) return false;
+        lock (room.Gate)
+        {
+            if (room.Id != roomInstanceId ||
+                !string.Equals(questionSet.RoomId, room.Code, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.RoomInstanceId, room.Id, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.Provider, "gemini", StringComparison.Ordinal) ||
+                !string.Equals(questionSet.GenerationStatus, "ready", StringComparison.Ordinal) ||
+                questionSet.Questions.Count != 20)
+            {
+                return false;
+            }
+
+            room.AiQuestionSet = questionSet;
+            return true;
         }
     }
 
@@ -394,7 +418,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 .Where(index => !state.RevealedLetterIndices.Contains(index))
                 .ToArray();
             if (hiddenIndices.Length == 0) throw new RoomException("ALL_LETTERS_REVEALED");
-            state.RevealedLetterIndices.Add(hiddenIndices[roomRandom.Next(hiddenIndices.Length)]);
+            var revealedIndex = hiddenIndices[roomRandom.Next(hiddenIndices.Length)];
+            state.RevealedLetterIndices.Add(revealedIndex);
+            state.LastRevealedIndex = revealedIndex;
             state.Revision++;
             state.UpdatedAtUtc = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             return Snapshot(room);
@@ -446,17 +472,18 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     /// <summary>
-    /// Host-only, like moving on in every other game here — a manual
-    /// "skip ahead" for when the drawer's picture is hopeless. Everyone
-    /// guessing correctly instead advances automatically, via
-    /// <see cref="AdvanceTimedStates"/>.
+    /// Drawer-only, not host — it's their round to give up on, not whoever
+    /// happens to be running the room. A manual "skip ahead" for when the
+    /// picture is hopeless; everyone guessing correctly instead advances
+    /// automatically, via <see cref="AdvanceTimedStates"/>.
     /// </summary>
     public RoomSnapshot NextDrawAndGuessRound(string connectionId)
     {
-        var (room, _) = Authorize(connectionId, hostRequired: true);
+        var (room, player) = Authorize(connectionId, hostRequired: false);
         lock (room.Gate)
         {
-            _ = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
+            if (state.DrawerPlayerId != player.Id) throw new RoomException("NOT_DRAWER");
             AdvanceDrawAndGuessRound(room);
             return Snapshot(room);
         }
@@ -822,12 +849,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         return new DrawAndGuessState(drawer.Id, word, roundNumber, scores, recentWords, now + DrawAndGuessRoundDurationMs, 1, now);
     }
 
-    private RoomAdmission AddPlayer(GameRoom room, string displayName, string color)
+    private RoomAdmission AddPlayer(GameRoom room, string displayName, string color, string? avatarId)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var admittedAt = timeProvider.GetUtcNow();
         var player = new RoomPlayer(Guid.NewGuid().ToString("N"), displayName.Trim(), NormalizeColor(color), HashToken(token),
-            admittedAt.ToUnixTimeMilliseconds())
+            admittedAt.ToUnixTimeMilliseconds(), NormalizeAvatarId(avatarId))
         {
             // HTTP admission happens just before SignalR attachment. If the tab
             // disappears between those two steps, this membership still gets
@@ -937,6 +964,19 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         (int)Math.Round(targetIndex * 360d / playerCount, MidpointRounding.AwayFromZero);
     private static byte[] HashToken(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));
     private static string NormalizeColor(string color) => System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9A-Fa-f]{6}$") ? color : "#6C5CE7";
+
+    // Mirrors the option set in apps/retro-platform-web/src/utils/avatarOptions.js —
+    // update both together. Anything else (a tampered client, a stale option) is silently
+    // dropped rather than stored, same spirit as NormalizeColor above.
+    private static readonly HashSet<string> KnownAvatarIds = new(StringComparer.Ordinal)
+    {
+        "viking", "angel", "devil", "princess", "wizard", "elf", "pirate", "knight",
+        "mermaid", "fairy", "vampire", "werewolf", "ninja", "ninja-2", "kunoichi",
+        "archer", "superhero", "superheroine", "superheroine-2",
+    };
+
+    private static string? NormalizeAvatarId(string? avatarId) =>
+        avatarId is not null && KnownAvatarIds.Contains(avatarId) ? avatarId : null;
     private static void ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 24) throw new RoomException("INVALID_DISPLAY_NAME");
@@ -978,11 +1018,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             new Dictionary<string, int>(room.DrawAndGuessState.Scores),
             room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc,
             room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
-            room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index])));
+            room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index]),
+            room.DrawAndGuessState.LastRevealedIndex));
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
-        player.ConnectionId is not null, player.JoinedAt);
+        player.ConnectionId is not null, player.JoinedAt, player.AvatarId);
 
     private sealed class GameRoom(string id, string code, string roomName, int maxParticipants,
         int questionTimeSeconds, int votingTimeSeconds, string? fileName, string? description, long createdAt)
@@ -1012,13 +1053,15 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public RussianRouletteState? RussianRouletteState { get; set; }
         public DrawAndGuessState? DrawAndGuessState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
+        public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }
 
-    private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt)
+    private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt, string? avatarId = null)
     {
         public string Id { get; } = id;
         public string DisplayName { get; } = displayName;
         public string Color { get; } = color;
+        public string? AvatarId { get; } = avatarId;
         public byte[] TokenHash { get; } = tokenHash;
         public long JoinedAt { get; } = joinedAt;
         public string? ConnectionId { get; set; }
@@ -1113,6 +1156,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public long RoundEndsAtUtc { get; } = roundEndsAtUtc;
         /// <summary>Çizenin açtığı harflerin kelime içindeki index'leri — her yeni turda sıfırdan başlar.</summary>
         public HashSet<int> RevealedLetterIndices { get; } = [];
+        /// <summary>En son açılan harfin index'i — client bunu vurgulayıp "Harf Ver"in bir şey yaptığını hissettirir.</summary>
+        public int? LastRevealedIndex { get; set; }
     }
 }
 
@@ -1127,7 +1172,8 @@ public sealed record TimedRoomChange(
     RetroRushGameSnapshot? RetroRushSnapshot,
     TankBattleGameSnapshot? TankBattleSnapshot,
     bool DrawAndGuessStateChanged,
-    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
+    RetroRushGameSnapshot? RetroRushSnapshot = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

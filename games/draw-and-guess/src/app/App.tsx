@@ -108,9 +108,13 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
         if (x === undefined || y === undefined) return;
         canvasRef.current?.applyRemotePoint(x, y, event.newStroke, event.color, event.isEraser);
       }),
+      bridge.onShape((event) => {
+        canvasRef.current?.applyRemoteShape(event.shapeType, event.x0, event.y0, event.x1, event.y1, event.color, event.filled);
+      }),
       bridge.onCanvasCleared(() => canvasRef.current?.clearRemote()),
       bridge.onWordReveal((revealedWord) => {
-        setMessages((msgs) => [...msgs, { id: crypto.randomUUID(), playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
+        const messageId = `online-reveal-${nextMessageIdRef.current++}`;
+        setMessages((msgs) => [...msgs, { id: messageId, playerId: '', playerName: '', kind: 'reveal', text: revealedWord }]);
       }),
     ];
 
@@ -147,6 +151,14 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isYouDrawing, bridgeState?.roundNumber]);
 
+  // Yeni tur başladığında tuval herkeste otomatik temizlensin — Temizle
+  // butonu manuel kullanım için hâlâ duruyor, bu sadece tur geçişini kapsar.
+  const roundNumber = bridgeState?.roundNumber;
+  useEffect(() => {
+    if (roundNumber === undefined) return;
+    canvasRef.current?.clearRemote();
+  }, [roundNumber]);
+
   const displayPlayers: DisplayPlayer[] = useMemo(
     () => (roster ?? []).map((player) => ({
       id: player.id,
@@ -174,6 +186,10 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 
   function handleClear() {
     bridgeRef.current?.clearCanvas();
+  }
+
+  function handleShape(shapeType: string, x0: number, y0: number, x1: number, y1: number, color: string, filled: boolean) {
+    bridgeRef.current?.sendShape(shapeType, x0, y0, x1, y1, color, filled);
   }
 
   function handleNextRound() {
@@ -219,25 +235,36 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
                   <span className="word-panel-label">Çizilecek kelime</span>
                   <span className="word-panel-word">{word ?? '…'}</span>
                   {bridgeState && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleRequestLetterHint}
-                      disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
-                    >
-                      Harf Ver
-                    </button>
+                    <>
+                      <WordHint
+                        wordLength={bridgeState.wordLength}
+                        revealedLetters={bridgeState.revealedLetters}
+                        lastRevealedIndex={bridgeState.lastRevealedIndex}
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={handleRequestLetterHint}
+                        disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
+                      >
+                        Harf Ver
+                      </button>
+                    </>
                   )}
                 </>
               ) : (
                 <>
                   <span className="word-panel-hidden">{drawerName} çiziyor — tahmin etmeye çalış</span>
                   {bridgeState && (
-                    <WordHint wordLength={bridgeState.wordLength} revealedLetters={bridgeState.revealedLetters} />
+                    <WordHint
+                      wordLength={bridgeState.wordLength}
+                      revealedLetters={bridgeState.revealedLetters}
+                      lastRevealedIndex={bridgeState.lastRevealedIndex}
+                    />
                   )}
                 </>
               )}
-              {roomIsHost && (
+              {isYouDrawing && (
                 <button type="button" className="btn-secondary" onClick={handleNextRound}>
                   Sıradaki tur
                 </button>
@@ -245,7 +272,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
             </div>
 
             <div className="game-area">
-              <DrawingCanvas ref={canvasRef} canDraw={isYouDrawing} onStroke={handleStroke} onClear={handleClear} />
+              <DrawingCanvas ref={canvasRef} canDraw={isYouDrawing} onStroke={handleStroke} onClear={handleClear} onShape={handleShape} />
               <div className="game-area-side">
                 <GuessChat
                   messages={messages}
@@ -284,6 +311,7 @@ function StandaloneGame() {
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [scorePop, setScorePop] = useState<{ id: string; points: number } | null>(null);
+  const canvasRef = useRef<DrawingCanvasHandle | null>(null);
 
   const isYouDrawing = drawerId === YOU_ID;
   const youAlreadyCorrect = correctGuesserIds.includes(YOU_ID);
@@ -320,6 +348,9 @@ function StandaloneGame() {
     setMessages([]);
     correctGuesserIdsRef.current = [];
     setCorrectGuesserIds([]);
+    // Yeni tur başladığında tuval otomatik temizlensin — Temizle butonu
+    // manuel kullanım için hâlâ duruyor, bu sadece tur geçişini kapsar.
+    canvasRef.current?.clearRemote();
 
     const guessers = MOCK_PLAYERS.filter((player) => player.id !== drawerId && player.id !== YOU_ID);
     const timers = guessers.map((bot) => {
@@ -375,7 +406,7 @@ function StandaloneGame() {
         </div>
 
         <div className="game-area">
-          <DrawingCanvas canDraw={isYouDrawing} />
+          <DrawingCanvas ref={canvasRef} canDraw={isYouDrawing} />
           <div className="game-area-side">
             <GuessChat
               messages={messages}

@@ -42,7 +42,7 @@ function Header() {
         <div className="header-actions">
           <LangSwitch />
           <ThemeToggle />
-          {user && <Avatar name={user.name} color={user.color} size={34} />}
+          {user && <Avatar name={user.name} color={user.color} avatarId={user.avatarId} size={34} />}
           <button
             className="menu-btn"
             onClick={() => setOpen(true)}
@@ -76,7 +76,7 @@ function Header() {
 
             {user && (
               <div className="drawer-profile">
-                <Avatar name={user.name} color={user.color} size={42} />
+                <Avatar name={user.name} color={user.color} avatarId={user.avatarId} size={42} />
                 <div>
                   <div className="name">{user.name}</div>
                   <button

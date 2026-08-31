@@ -62,6 +62,7 @@ function JoinRoom() {
       roomCode: normalizeRoomCode(code),
       displayName: displayName.trim(),
       color: colorForName(displayName),
+      avatarId: user?.avatarId,
     })
     setSubmitting(false)
 

@@ -21,6 +21,92 @@ public sealed class ImposterRoomManagerTests
     }
 
     [Fact]
+    public void GeminiRoomQuestionsDriveImposterAfterSwitchingGames()
+    {
+        var manager = new RoomManager(
+            TimeProvider.System,
+            Options.Create(new RoomOptions { DisconnectGraceSeconds = 25, QuestionLoadingMilliseconds = 1800 }),
+            new FixedRoomRandom());
+        var host = manager.Create(new CreateRoomRequest("Yagmur", "#654321", "AI Room", 10, 30, 30));
+        var firstGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        var secondGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ece", "#abcdef"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, firstGuest.PlayerId, firstGuest.ReconnectToken, "guest-1");
+        manager.Attach(host.RoomCode, secondGuest.PlayerId, secondGuest.ReconnectToken, "guest-2");
+
+        var questions = Enumerable.Range(1, 20)
+            .Select(index => new AiRoomQuestion(
+                $"ai-{index}",
+                $"Iletisim konusunda {index}. tur sonu sorusu?",
+                $"Kavram {index}",
+                "reflection",
+                "work"))
+            .ToArray();
+        Assert.True(manager.TryRememberAiQuestionSet(host.RoomCode, host.Room.Id, new AiRoomQuestionSet(
+            host.RoomCode, host.Room.Id, "set-1", "gemini", "ready", questions, 1, 1)));
+
+        manager.BeginGameSelection("host", ["retro-rush", "imposter"]);
+        manager.CastVote("host", "retro-rush");
+        manager.ResolveVote("host");
+        manager.ReturnToGameSelection("host");
+        manager.CastVote("host", "imposter");
+        var resolution = manager.ResolveVote("host");
+
+        var sessionId = resolution.Snapshot.CurrentGameSession!.GameSessionId;
+        Assert.Equal("Kavram 1", manager.GetImposterSnapshot("guest-1", sessionId).SecretWord);
+        manager.ReadyImposterRole("host", sessionId);
+        manager.ReadyImposterRole("guest-1", sessionId);
+        manager.ReadyImposterRole("guest-2", sessionId);
+        manager.CompleteImposterClue("host", sessionId);
+        manager.CompleteImposterClue("guest-1", sessionId);
+        manager.CompleteImposterClue("guest-2", sessionId);
+        manager.CastImposterVote("host", new CastImposterVoteRequest(sessionId, firstGuest.PlayerId));
+        manager.CastImposterVote("guest-1", new CastImposterVoteRequest(sessionId, host.PlayerId));
+        manager.CastImposterVote("guest-2", new CastImposterVoteRequest(sessionId, host.PlayerId));
+
+        var result = manager.GetImposterSnapshot("guest-1", sessionId);
+        Assert.Equal("Iletisim konusunda 1. tur sonu sorusu?", result.RetroQuestion);
+    }
+
+    [Fact]
+    public void DemoProviderDoesNotReplaceImposterDemoCatalog()
+    {
+        var manager = new RoomManager(
+            TimeProvider.System,
+            Options.Create(new RoomOptions { DisconnectGraceSeconds = 25, QuestionLoadingMilliseconds = 1800 }),
+            new FixedRoomRandom());
+        var host = manager.Create(new CreateRoomRequest("Yagmur", "#654321", "Demo Room", 10, 30, 30));
+        var questions = Enumerable.Range(1, 20)
+            .Select(index => new AiRoomQuestion($"demo-{index}", $"Demo soru {index}?", "Ortak cevap", "reflection", "work"))
+            .ToArray();
+
+        Assert.False(manager.TryRememberAiQuestionSet(host.RoomCode, host.Room.Id, new AiRoomQuestionSet(
+            host.RoomCode, host.Room.Id, "set-demo", "demo", "ready", questions, 1, 1)));
+    }
+
+    [Fact]
+    public void LateGeminiQuestionsReplaceDemoPackWhileRoleRevealIsWaiting()
+    {
+        var game = CreateStartedGame();
+        Assert.Equal("Sprint", game.Manager.GetImposterSnapshot("guest-1", game.SessionId).SecretWord);
+        var questions = Enumerable.Range(1, 20)
+            .Select(index => new AiRoomQuestion(
+                $"ai-{index}",
+                $"Ryan Gosling ile ilgili {index}. tur sonu sorusu?",
+                $"Gosling {index}",
+                "fun",
+                "entertainment"))
+            .ToArray();
+
+        Assert.True(game.Manager.TryRememberAiQuestionSet(game.RoomCode, game.RoomInstanceId, new AiRoomQuestionSet(
+            game.RoomCode, game.RoomInstanceId, "set-late", "gemini", "ready", questions, 1, 1)));
+        var mutation = game.Manager.RefreshWaitingImposterQuestionPack(game.RoomCode, game.RoomInstanceId);
+
+        Assert.NotNull(mutation);
+        Assert.Equal("Gosling 1", game.Manager.GetImposterSnapshot("guest-1", game.SessionId).SecretWord);
+    }
+
+    [Fact]
     public void ImposterIsExcludedWhenRoomHasFewerThanThreePlayers()
     {
         var manager = new RoomManager(
@@ -245,6 +331,8 @@ public sealed class ImposterRoomManagerTests
         return new StartedImposterGame(
             manager,
             resolution.Snapshot.CurrentGameSession!.GameSessionId,
+            resolution.Snapshot.Code,
+            resolution.Snapshot.Id,
             host.PlayerId,
             firstGuest.PlayerId,
             secondGuest.PlayerId);
@@ -253,6 +341,8 @@ public sealed class ImposterRoomManagerTests
     private sealed record StartedImposterGame(
         RoomManager Manager,
         string SessionId,
+        string RoomCode,
+        string RoomInstanceId,
         string HostId,
         string FirstGuestId,
         string SecondGuestId);

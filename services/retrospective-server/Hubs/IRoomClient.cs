@@ -15,6 +15,7 @@ public interface IRoomClient
     Task DrawAndGuessStateChanged(DrawAndGuessStateSnapshot state);
     Task DrawAndGuessGuessSubmitted(DrawAndGuessGuessResult result);
     Task DrawAndGuessStrokeReceived(DrawAndGuessStrokeEvent stroke);
+    Task DrawAndGuessShapeReceived(DrawAndGuessShapeEvent shape);
     Task DrawAndGuessCanvasCleared();
     Task DrawAndGuessWordRevealed(DrawAndGuessWordReveal reveal);
     Task ReactionReceived(RoomReaction reaction);

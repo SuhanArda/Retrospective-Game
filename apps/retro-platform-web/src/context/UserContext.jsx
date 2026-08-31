@@ -39,10 +39,10 @@ export function UserProvider({ children }) {
     }
   }, [user])
 
-  function saveUser(name) {
+  function saveUser(name, avatarId) {
     const trimmed = name.trim()
     if (trimmed.length < 2) return
-    setUser({ name: trimmed, color: colorForName(trimmed) })
+    setUser({ name: trimmed, color: colorForName(trimmed), avatarId: avatarId ?? user?.avatarId })
     setIsEditing(false)
   }
 
@@ -50,10 +50,17 @@ export function UserProvider({ children }) {
     setIsEditing(true)
   }
 
+  // Only meaningful while editing an *existing* identity — first-time setup
+  // has no valid user to fall back to, so it stays non-dismissible.
+  function closeEditor() {
+    setIsEditing(false)
+  }
+
   const value = {
     user,
     saveUser,
     openEditor,
+    closeEditor,
     needsIdentity: !user || isEditing,
   }
 

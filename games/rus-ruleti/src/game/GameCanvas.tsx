@@ -11,6 +11,8 @@ interface Props {
   localPlayerId: string | null;
   /** The local player's own sprite, resolved against the same room so it never collides with an opponent's. Null means the local bot demo picks its own. */
   youSprite: string | null;
+  /** Mirrored onto Phaser's own SoundManager below — one flag silences every sound the scene plays (ambience, gunshot, miss click) without the scene having to know about it. */
+  muted: boolean;
 }
 
 /**
@@ -19,11 +21,11 @@ interface Props {
  * table. The caller settles the room before mounting this, same as
  * retro-rush's GameCanvas.
  */
-export function GameCanvas({ bridge, opponents, localPlayerId, youSprite }: Props) {
+export function GameCanvas({ bridge, opponents, localPlayerId, youSprite, muted }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const propsRef = useRef({ bridge, opponents, localPlayerId, youSprite });
-  propsRef.current = { bridge, opponents, localPlayerId, youSprite };
+  const propsRef = useRef({ bridge, opponents, localPlayerId, youSprite, muted });
+  propsRef.current = { bridge, opponents, localPlayerId, youSprite, muted };
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -33,14 +35,22 @@ export function GameCanvas({ bridge, opponents, localPlayerId, youSprite }: Prop
     // canvas can land right next to the first — clearing the host directly
     // makes the remount safe no matter how destroy() times out.
     hostRef.current.replaceChildren();
-    const { bridge: initialBridge, opponents: initialOpponents, localPlayerId: initialLocalPlayerId, youSprite: initialYouSprite } = propsRef.current;
+    const { bridge: initialBridge, opponents: initialOpponents, localPlayerId: initialLocalPlayerId, youSprite: initialYouSprite, muted: initialMuted } = propsRef.current;
     const game = createPhaserGame(hostRef.current, initialBridge, initialOpponents, initialLocalPlayerId, initialYouSprite);
+    game.sound.mute = initialMuted;
     gameRef.current = game;
     return () => {
       game.destroy(true);
       if (gameRef.current === game) gameRef.current = null;
     };
   }, []);
+
+  // The game itself is only ever built once (see above), but the mute
+  // toggle has to keep working across the whole session — Phaser's own
+  // SoundManager flag covers every sound the scene plays in one place.
+  useEffect(() => {
+    if (gameRef.current) gameRef.current.sound.mute = muted;
+  }, [muted]);
 
   return <div ref={hostRef} className="table-canvas-host" />;
 }

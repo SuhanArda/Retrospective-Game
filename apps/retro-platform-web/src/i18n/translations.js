@@ -10,7 +10,7 @@ export const translations = {
       games: 'Oyunlar',
       createRoom: 'Oda Kur',
       joinRoom: 'Odaya Katıl',
-      editName: 'İsmini değiştir',
+      editName: 'İsim ve profili düzenle',
       language: 'Dil',
       theme: 'Tema',
     },
@@ -23,6 +23,7 @@ export const translations = {
       helper: 'İsmin, katıldığın odalarda diğer oyunculara görünecek.',
       placeholder: 'Adın',
       error: 'En az 2 karakter gir.',
+      avatarHint: 'Bir görünüm seç (opsiyonel)',
       submit: 'Devam Et',
     },
     home: {
@@ -287,7 +288,7 @@ export const translations = {
       games: 'Games',
       createRoom: 'Create Room',
       joinRoom: 'Join Room',
-      editName: 'Edit your name',
+      editName: 'Edit name & profile',
       language: 'Language',
       theme: 'Theme',
     },
@@ -300,6 +301,7 @@ export const translations = {
       helper: 'Your name will be visible to other players in the rooms you join.',
       placeholder: 'Your name',
       error: 'Enter at least 2 characters.',
+      avatarHint: 'Pick a look (optional)',
       submit: 'Continue',
     },
     home: {

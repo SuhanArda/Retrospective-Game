@@ -107,6 +107,18 @@
   text-transform: uppercase;
   border-bottom: 2px solid #c9bde0;
   color: #5b2a86;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.word-hint-letter.is-latest {
+  color: #e63946;
+  border-color: #e63946;
+  animation: word-hint-pop 0.4s ease-out;
+}
+
+@keyframes word-hint-pop {
+  0% { transform: scale(1.8); }
+  100% { transform: scale(1); }
 }
 
 .round-timer {
@@ -169,6 +181,71 @@
   background: #5b2a86;
   border-color: #5b2a86;
   color: #ffffff;
+}
+
+.tool-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.shape-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border: 1px solid #e4dbf2;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.shape-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.shape-tab {
+  border: 1px solid #e4dbf2;
+  background: #f5f4f8;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6f6480;
+}
+
+.shape-tab.is-selected {
+  background: #5b2a86;
+  border-color: #5b2a86;
+  color: #ffffff;
+}
+
+.shape-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.shape-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  font-size: 18px;
+  border: 1px solid #e4dbf2;
+  background: #f5f4f8;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.shape-swatch:hover {
+  background: #eeeafa;
+}
+
+.shape-swatch.is-selected {
+  border-color: #5b2a86;
+  box-shadow: 0 0 0 2px rgba(91, 42, 134, 0.2);
 }
 
 .drawing-canvas {

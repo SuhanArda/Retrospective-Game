@@ -11,5 +11,8 @@ export function loadRoomQuestions(baseUrl: string, roomCode: string, playerId: s
     .getForRoom(roomCode, playerId, reconnectToken)
     .then((set) => adaptRetroRushQuestions(set.questions));
   roomQuestionRequests.set(cacheKey, request);
+  void request.catch(() => {
+    if (roomQuestionRequests.get(cacheKey) === request) roomQuestionRequests.delete(cacheKey);
+  });
   return request;
 }

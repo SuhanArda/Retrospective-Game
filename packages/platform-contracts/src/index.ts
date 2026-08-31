@@ -7,6 +7,8 @@ export interface RoomPlayerSnapshot {
   id: string;
   displayName: string;
   color: string;
+  /** A picked pixel-art portrait id; absent means no avatar was picked (platform UI falls back to initials). */
+  avatarId?: string;
   isHost: boolean;
   isReady: boolean;
   isConnected: boolean;
@@ -350,6 +352,8 @@ export interface DrawAndGuessStateSnapshot {
   wordLength: number;
   /** index → açılan harf. Sadece çizen açabilir, hepsi herkese aynı görünür. */
   revealedLetters: Record<number, string>;
+  /** En son açılan harfin index'i — "Harf Ver"in az önce bir şey yaptığını vurgulamak için. */
+  lastRevealedIndex?: number;
 }
 
 /** Süre dolunca (kimse ya da herkes bilemediyse) sohbete düşen kelime açıklaması. */
@@ -375,6 +379,18 @@ export interface DrawAndGuessStrokeEvent {
   newStroke: boolean;
   color: string;
   isEraser: boolean;
+}
+
+/** A ready-made shape stamp (circle, star, …), relayed as-is — same trust model as strokes. */
+export interface DrawAndGuessShapeEvent {
+  playerId: string;
+  shapeType: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  color: string;
+  filled: boolean;
 }
 
 export interface RoomSnapshot {
