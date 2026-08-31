@@ -13,12 +13,14 @@ describe('game runtime configuration', () => {
       VITE_RUS_RULETI_URL: '/games/rus-ruleti/',
       VITE_DRAW_AND_GUESS_URL: '/games/draw-and-guess/',
       VITE_IMPOSTER_URL: '/games/imposter/',
+      VITE_TANK_BATTLE_URL: '/games/tank-battle/',
     })).toEqual({
       retroRushUrl: '/games/retro-rush/',
       spinTheBottleUrl: '/games/spin-the-bottle/',
       rusRuletiUrl: '/games/rus-ruleti/',
       drawAndGuessUrl: '/games/draw-and-guess/',
       imposterUrl: '/games/imposter/',
+      tankBattleUrl: '/games/tank-battle/',
     });
   });
 });

@@ -5,7 +5,7 @@ describe('game registry', () => {
   it('registers every playable game with a unique ID', () => {
     const available = gameRegistry.filter((game) => game.status === 'available');
     expect(available.map((game) => game.id)).toEqual([
-      'retro-rush', 'spin-the-bottle', 'rus-ruleti', 'draw-and-guess', 'imposter',
+      'retro-rush', 'tank-battle', 'spin-the-bottle', 'rus-ruleti', 'draw-and-guess', 'imposter',
     ]);
     expect(new Set(gameRegistry.map((game) => game.id)).size).toBe(gameRegistry.length);
     expect(findGame('retro-rush')?.name).toBe('Retro Rush');
@@ -13,6 +13,7 @@ describe('game registry', () => {
     expect(findGame('rus-ruleti')?.name).toBe('Rus Ruleti');
     expect(findGame('draw-and-guess')?.name).toBe('Draw & Guess');
     expect(findGame('imposter')?.name).toBe('Imposter');
+    expect(findGame('tank-battle')?.name).toBe('Tank Battle');
     expect(available.every((game) => game.screenshotUrl && game.voteScreenshotUrl)).toBe(true);
   });
 
