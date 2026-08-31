@@ -714,22 +714,22 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 }
 
                 if (gameStarted ||
-              spinStateChanged ||
-              retroRushSnapshot is not null ||
-              tankBattleSnapshot is not null ||
-              drawAndGuessStateChanged ||
-              drawAndGuessWordReveal is not null)
-          {
-              changes.Add(new TimedRoomChange(
-                  RoomCode: room.Code,
-                  Snapshot: Snapshot(room),
-                   GameStarted: gameStarted,
-                   SpinStateChanged: spinStateChanged,
-                   RetroRushSnapshot: retroRushSnapshot,
-                   TankBattleSnapshot: tankBattleSnapshot,
-                   DrawAndGuessStateChanged: drawAndGuessStateChanged,
-                  DrawAndGuessWordReveal: drawAndGuessWordReveal));
-          } 
+                    spinStateChanged ||
+                    retroRushSnapshot is not null ||
+                    tankBattleSnapshot is not null ||
+                    drawAndGuessStateChanged ||
+                    drawAndGuessWordReveal is not null)
+                {
+                    changes.Add(new TimedRoomChange(
+                        RoomCode: room.Code,
+                        Snapshot: Snapshot(room),
+                        GameStarted: gameStarted,
+                        SpinStateChanged: spinStateChanged,
+                        RetroRushSnapshot: retroRushSnapshot,
+                        TankBattleSnapshot: tankBattleSnapshot,
+                        DrawAndGuessStateChanged: drawAndGuessStateChanged,
+                        DrawAndGuessWordReveal: drawAndGuessWordReveal));
+                }
             }
         }
         return changes;
