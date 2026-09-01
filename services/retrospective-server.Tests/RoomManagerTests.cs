@@ -633,6 +633,22 @@ public sealed class RoomManagerTests
         Assert.Equal("GAME_SELECTION", manager.ReturnToGameSelection("guest").Status);
     }
 
+    [Fact]
+    public void UpdateAvatarChangesTheStoredPortraitAndNormalizesUnknownIds()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+
+        var updated = manager.UpdateAvatar("host", "wizard");
+        Assert.Equal("wizard", updated.Players.Single(player => player.Id == host.PlayerId).AvatarId);
+
+        // Same normalization as at join time — a tampered client or a stale
+        // option silently clears the avatar rather than being rejected.
+        var cleared = manager.UpdateAvatar("host", "not-a-real-avatar");
+        Assert.Null(cleared.Players.Single(player => player.Id == host.PlayerId).AvatarId);
+    }
+
     private static RoomManager CreateManager(TimeProvider? timeProvider = null, IRoomRandom? random = null) => new(
         timeProvider ?? TimeProvider.System,
         Options.Create(new RoomOptions

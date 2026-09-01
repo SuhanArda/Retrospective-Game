@@ -129,6 +129,8 @@ export const gameRegistry: readonly GameDefinition[] = [
     minPlayers: 3,
     maxPlayers: 10,
     visualLabel: 'SK',
+    screenshotUrl: '/screenshots/hide-and-seek.jpg',
+    voteScreenshotUrl: '/screenshots/hide-and-seek-wide.jpg',
     getLaunchUrl: (config) => config.hideAndSeekUrl,
   },
 ];

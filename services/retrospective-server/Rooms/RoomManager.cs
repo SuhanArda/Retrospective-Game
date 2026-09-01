@@ -255,6 +255,24 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    /// <summary>
+    /// Unlike <see cref="DisplayName"/>/<see cref="Color"/> (set once at
+    /// join, never revisited), a picked portrait can change any time a
+    /// player is in the room — the profile editor is reachable from the
+    /// room lobby, not just before joining. An unrecognized id (a tampered
+    /// client, a stale option) is silently normalized to "no avatar" rather
+    /// than rejected, same as at join time.
+    /// </summary>
+    public RoomSnapshot UpdateAvatar(string connectionId, string? avatarId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            player.AvatarId = NormalizeAvatarId(avatarId);
+            return Snapshot(room);
+        }
+    }
+
     public VoteResolution ResolveVote(string connectionId)
     {
         var (room, _) = Authorize(connectionId, hostRequired: true);
@@ -1116,7 +1134,13 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public string Id { get; } = id;
         public string DisplayName { get; } = displayName;
         public string Color { get; } = color;
-        public string? AvatarId { get; } = avatarId;
+        /// <summary>
+        /// Mutable — unlike <see cref="DisplayName"/>/<see cref="Color"/>, a
+        /// player can change their picked portrait after joining (see
+        /// <see cref="RoomManager.UpdateAvatar"/>). Still only ever set
+        /// through <see cref="NormalizeAvatarId"/>, at join time and here.
+        /// </summary>
+        public string? AvatarId { get; set; } = avatarId;
         public byte[] TokenHash { get; } = tokenHash;
         public long JoinedAt { get; } = joinedAt;
         public string? ConnectionId { get; set; }

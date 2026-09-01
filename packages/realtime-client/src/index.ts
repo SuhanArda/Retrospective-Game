@@ -139,6 +139,8 @@ export class RoomRealtimeClient {
     return this.invoke('BeginGameSelection', candidateGameIds);
   }
   castVote(gameId: string): Promise<RoomSnapshot> { return this.invoke('CastVote', gameId); }
+  /** Unlike display name/color, a picked portrait can change any time while in the room — not just before joining. */
+  updateAvatar(avatarId: string | undefined): Promise<RoomSnapshot> { return this.invoke('UpdateAvatar', avatarId); }
   resolveVote(): Promise<RoomSnapshot> { return this.invoke('ResolveVote'); }
   returnToGameSelection(): Promise<RoomSnapshot> { return this.invoke('ReturnToGameSelection'); }
   returnToLobby(): Promise<RoomSnapshot> { return this.invoke('ReturnToLobby'); }

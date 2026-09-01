@@ -6,6 +6,7 @@ import { PhaseHud } from '../components/PhaseHud';
 import { ResultsScreen } from '../components/ResultsScreen';
 import { ReturnToLobbyButton } from '../components/ReturnToLobbyButton';
 import { MuteButton } from '../components/MuteButton';
+import { RoleLegend } from '../components/RoleLegend';
 import { HideSeekConfig } from '../domain/config';
 import { classicMap, parseTileGrid, type HideSeekTileGrid } from '../domain/map';
 import { HideSeekRoomBridge } from './roomBridge';
@@ -304,6 +305,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       </div>
       {gameState?.phase !== 'ENDED' && <ReturnToLobbyButton isHost={isHost} onReturn={handleReturnToGames} />}
       <MuteButton muted={muted} onToggle={toggleMuted} />
+      <RoleLegend localRole={view.role} />
       <HideSeekCanvas
         key={launchContext.gameSessionId}
         grid={view.grid}

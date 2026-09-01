@@ -98,6 +98,9 @@ export class SignalRRoomService implements RoomService {
   castVote(gameId: string): Promise<RetroRoom> {
     return this.requireClient().castVote(gameId) as Promise<RetroRoom>;
   }
+  updateAvatar(avatarId: string | undefined): Promise<RetroRoom> {
+    return this.requireClient().updateAvatar(avatarId) as Promise<RetroRoom>;
+  }
   resolveVote(candidateIds: readonly string[]): Promise<RetroRoom> {
     void candidateIds;
     return this.requireClient().resolveVote() as Promise<RetroRoom>;
