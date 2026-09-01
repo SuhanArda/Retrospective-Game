@@ -25,6 +25,14 @@ export interface RoomService {
   /** Host-only. `candidateGameIds` is what the vote may choose between. */
   beginGameSelection(candidateGameIds: readonly string[]): Promise<RetroRoom>;
   castVote(gameId: string): Promise<RetroRoom>;
+  /**
+   * Changes the current player's picked portrait for the room they're
+   * already in — unlike display name/color, this is reachable any time
+   * from the room lobby, not just before joining. Throws `NO_ACTIVE_ROOM`
+   * (the same error `sendReaction` etc. throw) if there's no room to
+   * update; callers that aren't sure should check `getCurrentPlayer()` first.
+   */
+  updateAvatar(avatarId: string | undefined): Promise<RetroRoom>;
   /** Host-only. Closes the vote early; otherwise the countdown does it. */
   resolveVote(candidateIds: readonly string[]): Promise<RetroRoom>;
   returnToLobby(): Promise<RetroRoom>;

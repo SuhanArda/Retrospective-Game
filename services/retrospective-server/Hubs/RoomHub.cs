@@ -50,6 +50,13 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         return room;
     }
 
+    public async Task<RoomSnapshot> UpdateAvatar(string? avatarId)
+    {
+        var room = rooms.UpdateAvatar(Context.ConnectionId, avatarId);
+        await Broadcast(room);
+        return room;
+    }
+
     public async Task<RoomSnapshot> ResolveVote()
     {
         var resolution = rooms.ResolveVote(Context.ConnectionId);
