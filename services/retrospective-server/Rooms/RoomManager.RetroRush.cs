@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Retrospective.Server.Contracts;
 
 namespace Retrospective.Server.Rooms;
@@ -19,16 +18,17 @@ public sealed partial class RoomManager
     private const int RetroRushCountdownMs = 3_500;
     private const int RetroRushRoundDurationMs = 180_000;
     private const int RetroRushResultsDurationMs = 4_000;
-    private const int RetroRushSpeedCooldownMs = 15_000;
-    private const int RetroRushAskCooldownMs = 30_000;
+    private const int RetroRushInitialAbilityLockMs = 7_000;
+    private const int RetroRushSpeedCooldownMs = 8_000;
+    private const int RetroRushPullLeaderCooldownMs = 12_000;
+    private const double RetroRushPullLeaderVelocityX = -550;
+    private const int RetroRushPullLeaderHitStunMs = 300;
     private const int RetroRushQuestionPoolSize = 20;
-    private static readonly Regex PickupIdPattern = new(
-        "^chunk-[0-9]+-[a-z0-9-]+-pickup-[0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> MovementStates =
         ["ACTIVE", "INVULNERABLE"];
     private static readonly HashSet<string> AnimationStates =
         ["idle", "running", "jumping", "falling", "hit", "eliminated"];
-    private static readonly HashSet<string> AbilityIds = ["speed", "rocket", "ask"];
+    private static readonly HashSet<string> AbilityIds = ["speed", "rocket", "pull"];
     private static readonly HashSet<string> ControlledShoveRejections =
         ["WRONG_GAME_SESSION", "WRONG_ROUND", "PLAYER_NOT_IN_SESSION", "SELF_SHOVE", "PLAYER_NOT_ACTIVE", "ROUND_NOT_STARTED", "SHOVE_COOLDOWN", "SHOVE_OUT_OF_RANGE"];
     private static readonly RetroQuestionDefinition[] RetroRushQuestions =
@@ -149,7 +149,7 @@ public sealed partial class RoomManager
         }
     }
 
-    public RetroRushMutation<RetroRushRocketSnapshot> RequestRetroRushRocketFire(
+    public RetroRushRocketFireMutation RequestRetroRushRocketFire(
         string connectionId, RequestRetroRushRocketFireRequest request)
     {
         var (room, authenticated) = Authorize(connectionId, hostRequired: false);
@@ -160,8 +160,8 @@ public sealed partial class RoomManager
             RequireRetroRushRoundStarted(state);
             var owner = RequirePlayer(state, authenticated.Id);
             if (state.Phase != "RUNNING" || !IsActive(owner)) throw new RoomException("PLAYER_NOT_ACTIVE");
-            if (!owner.OwnedAbilityIds.Contains("rocket")) throw new RoomException("ABILITY_NOT_OWNED");
             var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            RequireRetroRushAbilitiesUnlocked(state, now);
             if (now < owner.RocketReadyAtUtc) throw new RoomException("ROCKET_COOLDOWN");
             var target = state.Players.Values
                 .Where(candidate => candidate.PlayerId != owner.PlayerId && IsActive(candidate))
@@ -175,7 +175,8 @@ public sealed partial class RoomManager
             var rocket = new RetroRushRocketState(
                 Guid.NewGuid().ToString("N"), owner.PlayerId, target.PlayerId, owner.X, owner.Y, now, state.RoundId);
             state.ActiveRockets[rocket.RocketId] = rocket;
-            return new(room.Code, Snapshot(rocket));
+            return new(room.Code, Snapshot(rocket), new RetroRushAbilityApplied(
+                state.RoundId, "rocket", owner.PlayerId, target.PlayerId, null, null, owner.RocketReadyAtUtc));
         }
     }
 
@@ -197,29 +198,6 @@ public sealed partial class RoomManager
             state.ActiveRockets.Remove(rocket.RocketId);
             return new(room.Code, new RetroRushRocketHitApplied(
                 rocket.RocketId, state.RoundId, target.PlayerId, RetroRushRocketKnockbackX, RetroRushRocketHitStunMs));
-        }
-    }
-
-    public RetroRushMutation<RetroRushPickupCollected> RequestRetroRushPickupCollection(
-        string connectionId, RequestRetroRushPickupCollectionRequest request)
-    {
-        var (room, authenticated) = Authorize(connectionId, hostRequired: false);
-        lock (room.Gate)
-        {
-            var state = RequireRetroRush(room, request.GameSessionId, request.RoundId);
-            RefreshRetroRushPhase(state);
-            RequireRetroRushRoundStarted(state);
-            var player = RequirePlayer(state, authenticated.Id);
-            if (state.Phase != "RUNNING" || !IsActive(player)) throw new RoomException("PLAYER_NOT_ACTIVE");
-            if (!PickupIdPattern.IsMatch(request.PickupId) || !AbilityIds.Contains(request.AbilityId))
-                throw new RoomException("INVALID_PICKUP");
-            if (!state.CollectedPickupIds.Add(request.PickupId)) return new(room.Code, null);
-            player.OwnedAbilityIds.Add(request.AbilityId);
-            if (request.AbilityId == "rocket") player.RocketReadyAtUtc = 0;
-            else if (request.AbilityId == "speed") player.SpeedReadyAtUtc = 0;
-            else if (request.AbilityId == "ask") player.AskReadyAtUtc = 0;
-            return new(room.Code, new RetroRushPickupCollected(
-                request.PickupId, state.RoundId, player.PlayerId, request.AbilityId));
         }
     }
 
@@ -252,7 +230,8 @@ public sealed partial class RoomManager
         }
     }
 
-    public void UseRetroRushAbility(string connectionId, UseRetroRushAbilityRequest request)
+    public RetroRushMutation<RetroRushAbilityApplied> UseRetroRushAbility(
+        string connectionId, UseRetroRushAbilityRequest request)
     {
         var (room, authenticated) = Authorize(connectionId, hostRequired: false);
         lock (room.Gate)
@@ -263,41 +242,30 @@ public sealed partial class RoomManager
             var player = RequirePlayer(state, authenticated.Id);
             if (state.Phase != "RUNNING" || !IsActive(player)) throw new RoomException("PLAYER_NOT_ACTIVE");
             if (!AbilityIds.Contains(request.AbilityId)) throw new RoomException("INVALID_ABILITY");
-            if (!player.OwnedAbilityIds.Contains(request.AbilityId)) throw new RoomException("ABILITY_NOT_OWNED");
             var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            RequireRetroRushAbilitiesUnlocked(state, now);
             if (request.AbilityId == "speed")
             {
                 if (now < player.SpeedReadyAtUtc) throw new RoomException("SPEED_COOLDOWN");
                 player.SpeedReadyAtUtc = now + RetroRushSpeedCooldownMs;
+                return new(room.Code, new RetroRushAbilityApplied(
+                    state.RoundId, "speed", player.PlayerId, null, null, null, player.SpeedReadyAtUtc));
             }
-            else if (request.AbilityId == "ask")
+            if (request.AbilityId == "pull")
             {
-                if (now < player.AskReadyAtUtc) throw new RoomException("ASK_COOLDOWN");
-                player.AskReadyAtUtc = now + RetroRushAskCooldownMs;
-                player.AskSelectionExpiresAtUtc = now + 10_000;
+                if (now < player.PullLeaderReadyAtUtc) throw new RoomException("PULL_LEADER_COOLDOWN");
+                var target = state.Players.Values
+                    .Where(candidate => candidate.PlayerId != player.PlayerId && IsActive(candidate) && candidate.X > player.X)
+                    .OrderByDescending(candidate => candidate.X)
+                    .ThenBy(candidate => candidate.PlayerId, StringComparer.Ordinal)
+                    .FirstOrDefault() ?? throw new RoomException("NO_PLAYER_AHEAD");
+                player.PullLeaderReadyAtUtc = now + RetroRushPullLeaderCooldownMs;
+                target.VelocityX = RetroRushPullLeaderVelocityX;
+                return new(room.Code, new RetroRushAbilityApplied(
+                    state.RoundId, "pull", player.PlayerId, target.PlayerId,
+                    RetroRushPullLeaderVelocityX, RetroRushPullLeaderHitStunMs, player.PullLeaderReadyAtUtc));
             }
-            else throw new RoomException("INVALID_ABILITY");
-        }
-    }
-
-    public RetroRushMutation<RetroRushTargetQuestioned> RequestRetroRushAskTarget(
-        string connectionId, RequestRetroRushAskTargetRequest request)
-    {
-        var (room, authenticated) = Authorize(connectionId, hostRequired: false);
-        lock (room.Gate)
-        {
-            var state = RequireRetroRush(room, request.GameSessionId, request.RoundId);
-            RefreshRetroRushPhase(state);
-            RequireRetroRushRoundStarted(state);
-            var source = RequirePlayer(state, authenticated.Id);
-            var target = RequirePlayer(state, request.TargetPlayerId);
-            if (source.PlayerId == target.PlayerId) throw new RoomException("SELF_TARGET");
-            if (state.Phase != "RUNNING" || !IsActive(source) || !IsActive(target))
-                throw new RoomException("PLAYER_NOT_ACTIVE");
-            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-            if (source.AskSelectionExpiresAtUtc < now) throw new RoomException("ASK_NOT_ACTIVATED");
-            source.AskSelectionExpiresAtUtc = 0;
-            return new(room.Code, new RetroRushTargetQuestioned(state.RoundId, source.PlayerId, target.PlayerId));
+            throw new RoomException("INVALID_ABILITY");
         }
     }
 
@@ -331,8 +299,10 @@ public sealed partial class RoomManager
         var state = new RetroRushState(
             session.Id, 1, session.Seed, now, now + RetroRushCountdownMs,
             RetroRushSpawnX, RetroRushSpawnY);
+        var abilityUnlockAt = state.RoundStartAtUnixMs + RetroRushInitialAbilityLockMs;
         foreach (var entry in room.Players.Values.OrderBy(player => player.JoinedAt).Select((player, slot) => (player, slot)))
-            state.Players[entry.player.Id] = NewPlayer(entry.player, entry.slot, state.SpawnX, state.SpawnY);
+            state.Players[entry.player.Id] = NewPlayer(
+                entry.player, entry.slot, state.SpawnX, state.SpawnY, abilityUnlockAt);
         session.RetroRush = state;
     }
 
@@ -348,8 +318,8 @@ public sealed partial class RoomManager
         state.EliminationOrder.Clear();
         state.Ranking.Clear();
         state.LastPlacePlayerId = null;
-        state.CollectedPickupIds.Clear();
         state.ActiveRockets.Clear();
+        var abilityUnlockAt = state.RoundStartAtUnixMs + RetroRushInitialAbilityLockMs;
         foreach (var player in state.Players.Values)
         {
             player.X = state.SpawnX;
@@ -363,13 +333,11 @@ public sealed partial class RoomManager
             player.ClientTimestamp = 0;
             player.LastShoveAtUtc = 0;
             player.LastShoveSequence = 0;
-            player.RocketReadyAtUtc = 0;
-            player.SpeedReadyAtUtc = 0;
-            player.AskReadyAtUtc = 0;
-            player.AskSelectionExpiresAtUtc = 0;
+            player.RocketReadyAtUtc = abilityUnlockAt;
+            player.SpeedReadyAtUtc = abilityUnlockAt;
+            player.PullLeaderReadyAtUtc = abilityUnlockAt;
             player.EliminatedAtUnixMs = null;
             player.EliminationOrder = null;
-            player.OwnedAbilityIds.Clear();
         }
     }
 
@@ -480,6 +448,12 @@ public sealed partial class RoomManager
             throw new RoomException("ROUND_NOT_STARTED");
     }
 
+    private static void RequireRetroRushAbilitiesUnlocked(RetroRushState state, long now)
+    {
+        if (now < state.RoundStartAtUnixMs + RetroRushInitialAbilityLockMs)
+            throw new RoomException("ABILITY_INITIAL_LOCK");
+    }
+
     private static RetroRushState RequireRetroRush(GameRoom room, string gameSessionId, int? roundId = null)
     {
         var session = room.CurrentGameSession;
@@ -505,7 +479,6 @@ public sealed partial class RoomManager
         state.RoundStartAtUnixMs, state.RoundDeadlineAtUnixMs, state.ResultsEndAtUnixMs, state.SpawnX, state.SpawnY,
         state.Players.Values.OrderBy(player => player.Slot)
             .Select(player => Snapshot(player, state.RoundId)).ToArray(),
-        state.CollectedPickupIds.Order(StringComparer.Ordinal).ToArray(),
         state.ActiveRockets.Values.Select(Snapshot).ToArray(), state.EliminationOrder.ToArray(),
         state.Ranking.ToArray(), state.LastPlacePlayerId, state.ActiveQuestion);
 
@@ -513,15 +486,21 @@ public sealed partial class RoomManager
         player.PlayerId, player.DisplayName, player.Color, player.Slot, player.SkinIndex, player.Connected,
         player.X, player.Y, player.VelocityX, player.VelocityY, player.Facing, player.MovementState,
         player.AnimationState, player.Sequence, player.ClientTimestamp, roundId,
-        player.OwnedAbilityIds.Order(StringComparer.Ordinal).ToArray());
+        player.SpeedReadyAtUtc, player.RocketReadyAtUtc, player.PullLeaderReadyAtUtc);
 
     private static RetroRushRocketSnapshot Snapshot(RetroRushRocketState rocket) => new(
         rocket.RocketId, rocket.OwnerPlayerId, rocket.TargetPlayerId, rocket.X, rocket.Y,
         rocket.SpawnedAtUtc, rocket.RoundId);
 
-    private static RetroRushPlayerState NewPlayer(RoomPlayer player, int slot, double spawnX, double spawnY) => new(
+    private static RetroRushPlayerState NewPlayer(
+        RoomPlayer player, int slot, double spawnX, double spawnY, long abilityUnlockAt) => new(
         player.Id, player.DisplayName, player.Color, slot, slot % 4, player.ConnectionId is not null,
-        spawnX, spawnY);
+        spawnX, spawnY)
+    {
+        SpeedReadyAtUtc = abilityUnlockAt,
+        RocketReadyAtUtc = abilityUnlockAt,
+        PullLeaderReadyAtUtc = abilityUnlockAt,
+    };
 
     private sealed record RetroQuestionDefinition(
         string Id, string Category, string Type, string Prompt, IReadOnlyList<string>? Options, bool Required);
@@ -541,7 +520,6 @@ public sealed partial class RoomManager
         public double SpawnX { get; } = spawnX;
         public double SpawnY { get; } = spawnY;
         public Dictionary<string, RetroRushPlayerState> Players { get; } = new(StringComparer.Ordinal);
-        public HashSet<string> CollectedPickupIds { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, RetroRushRocketState> ActiveRockets { get; } = new(StringComparer.Ordinal);
         public List<RetroRushEliminationSnapshot> EliminationOrder { get; } = [];
         public List<RetroRushRankingEntry> Ranking { get; } = [];
@@ -575,11 +553,9 @@ public sealed partial class RoomManager
         public long LastShoveSequence { get; set; }
         public long RocketReadyAtUtc { get; set; }
         public long SpeedReadyAtUtc { get; set; }
-        public long AskReadyAtUtc { get; set; }
-        public long AskSelectionExpiresAtUtc { get; set; }
+        public long PullLeaderReadyAtUtc { get; set; }
         public long? EliminatedAtUnixMs { get; set; }
         public int? EliminationOrder { get; set; }
-        public HashSet<string> OwnedAbilityIds { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed record RetroRushRocketState(
@@ -588,6 +564,8 @@ public sealed partial class RoomManager
 }
 
 public sealed record RetroRushMutation<T>(string RoomCode, T? Event) where T : class;
+public sealed record RetroRushRocketFireMutation(
+    string RoomCode, RetroRushRocketSnapshot Rocket, RetroRushAbilityApplied Ability);
 public sealed record RetroRushShoveMutation(
     string RoomCode, RetroRushShoveCommandResult Result, RetroRushShoveApplied? Applied)
 {

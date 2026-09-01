@@ -20,14 +20,18 @@ function contentSecurityPolicy(apiUrl) {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // import.meta.dirname keeps this independent of where the command was run
   // from, and avoids reaching for Node globals in a config ESLint lints as
   // browser code.
   const env = loadEnv(mode, import.meta.dirname, '')
+  const isProductionBuild = command === 'build' && mode === 'production'
   const publicValue = (name, developmentValue) => {
     const value = env[name] || (mode !== 'production' ? developmentValue : '')
-    if (mode === 'production' && value) {
+    if (isProductionBuild && !value) {
+      throw new Error(`Missing required build-time environment variable: ${name}`)
+    }
+    if (isProductionBuild && value) {
       try {
         if (new URL(value).protocol !== 'https:') throw new Error()
       } catch {
@@ -50,6 +54,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_RUS_RULETI_URL': publicValue('VITE_RUS_RULETI_URL', 'http://localhost:5176'),
       'import.meta.env.VITE_DRAW_AND_GUESS_URL': publicValue('VITE_DRAW_AND_GUESS_URL', 'http://localhost:5177'),
       'import.meta.env.VITE_IMPOSTER_URL': publicValue('VITE_IMPOSTER_URL', 'http://localhost:5178'),
+      'import.meta.env.VITE_TANK_BATTLE_URL': publicValue('VITE_TANK_BATTLE_URL', 'http://localhost:5179'),
       'import.meta.env.VITE_HIDE_AND_SEEK_URL': publicValue('VITE_HIDE_AND_SEEK_URL', 'http://localhost:5180'),
     },
   }

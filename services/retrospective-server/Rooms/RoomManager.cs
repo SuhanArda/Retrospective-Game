@@ -10,7 +10,7 @@ namespace Retrospective.Server.Rooms;
 public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom, HideSeekManager hideSeek)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "hide-and-seek"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle", "hide-and-seek"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -167,6 +167,30 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    public bool TryRememberAiQuestionSet(
+        string rawCode,
+        string roomInstanceId,
+        AiRoomQuestionSet questionSet)
+    {
+        var code = Normalize(rawCode);
+        if (!_rooms.TryGetValue(code, out var room)) return false;
+        lock (room.Gate)
+        {
+            if (room.Id != roomInstanceId ||
+                !string.Equals(questionSet.RoomId, room.Code, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.RoomInstanceId, room.Id, StringComparison.Ordinal) ||
+                !string.Equals(questionSet.Provider, "gemini", StringComparison.Ordinal) ||
+                !string.Equals(questionSet.GenerationStatus, "ready", StringComparison.Ordinal) ||
+                questionSet.Questions.Count != 20)
+            {
+                return false;
+            }
+
+            room.AiQuestionSet = questionSet;
+            return true;
+        }
+    }
+
     public RoomSnapshot Attach(string rawCode, string playerId, string token, string connectionId)
     {
         var room = Find(rawCode);
@@ -185,6 +209,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             player.DisconnectExpiresAt = null;
             _connections[connectionId] = new PlayerConnection(room.Code, player.Id, player.ConnectionGeneration);
             SetRetroRushPlayerConnected(room, player.Id, true);
+            SetTankBattlePlayerConnected(room, player.Id, true);
             hideSeek.SetConnected(room.Code, player.Id, connectionId, true);
             return Snapshot(room);
         }
@@ -600,6 +625,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             RemoveConnectionMapping(player);
             room.Players.Remove(player.Id);
             RemoveRetroRushPlayer(room, player.Id);
+            RemoveTankBattlePlayer(room, player.Id);
             RemoveImposterPlayer(room, player.Id);
             hideSeek.RemovePlayer(room.Code, player.Id);
             ElectHost(room);
@@ -629,6 +655,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             player.DisconnectedAt = disconnectedAt;
             player.DisconnectExpiresAt = disconnectedAt + _disconnectGrace;
             SetRetroRushPlayerConnected(room, player.Id, false);
+            SetTankBattlePlayerConnected(room, player.Id, false);
             hideSeek.SetConnected(room.Code, player.Id, null, false);
             return Snapshot(room);
         }
@@ -654,6 +681,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     RemoveConnectionMapping(room.Players[playerId]);
                     room.Players.Remove(playerId);
                     RemoveRetroRushPlayer(room, playerId);
+                    RemoveTankBattlePlayer(room, playerId);
                     RemoveImposterPlayer(room, playerId);
                     hideSeek.RemovePlayer(room.Code, playerId);
                 }
@@ -680,6 +708,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 var gameStarted = false;
                 var spinStateChanged = false;
                 RetroRushGameSnapshot? retroRushSnapshot = null;
+                TankBattleGameSnapshot? tankBattleSnapshot = null;
                 var drawAndGuessStateChanged = false;
                 if (room.Status == RoomPhase.GameSelection &&
                     room.VotingEndsAt is { } votingEnd && votingEnd <= now)
@@ -703,7 +732,10 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
                 DrawAndGuessWordReveal? drawAndGuessWordReveal = null;
                 if (room.Status == RoomPhase.Playing)
+                {
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
+                    tankBattleSnapshot = AdvanceTankBattleTimedState(room, now);
+                }
 
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
@@ -719,16 +751,22 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     drawAndGuessStateChanged = true;
                 }
 
-                if (gameStarted || spinStateChanged || retroRushSnapshot is not null || drawAndGuessStateChanged)
+                if (gameStarted ||
+                    spinStateChanged ||
+                    retroRushSnapshot is not null ||
+                    tankBattleSnapshot is not null ||
+                    drawAndGuessStateChanged ||
+                    drawAndGuessWordReveal is not null)
                 {
                     changes.Add(new TimedRoomChange(
                         RoomCode: room.Code,
                         Snapshot: Snapshot(room),
                         GameStarted: gameStarted,
                         SpinStateChanged: spinStateChanged,
+                        RetroRushSnapshot: retroRushSnapshot,
+                        TankBattleSnapshot: tankBattleSnapshot,
                         DrawAndGuessStateChanged: drawAndGuessStateChanged,
-                        DrawAndGuessWordReveal: drawAndGuessWordReveal,
-                        RetroRushSnapshot: retroRushSnapshot));
+                        DrawAndGuessWordReveal: drawAndGuessWordReveal));
                 }
             }
         }
@@ -795,6 +833,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.DrawAndGuessState = winner == "draw-and-guess" ? CreateDrawAndGuessState(room, previousScores: null) : null;
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
         if (winner == "imposter") InitializeImposter(room, room.CurrentGameSession);
+        if (winner == "tank-battle") InitializeTankBattle(room, room.CurrentGameSession);
         if (winner == "hide-and-seek")
         {
             room.HideAndSeekState = hideSeek.StartGame(room.Code, room.Players.Values.Select(player => (player.Id, player.ConnectionId)).ToArray());
@@ -814,6 +853,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private static bool IsGamePlayable(GameRoom room, string gameId) => gameId switch
     {
         "imposter" => room.Players.Count is >= 3 and <= 10,
+        "tank-battle" => room.Players.Count >= 2,
         "hide-and-seek" => room.Players.Count is >= HideSeekConfig.MinPlayers and <= HideSeekConfig.MaxPlayers,
         _ => true,
     };
@@ -1012,7 +1052,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.FileName, room.Description, room.CreatedAt,
         room.CurrentGameSession is null ? null : new GameSessionSnapshot(room.CurrentGameSession.Id, room.CurrentGameSession.GameId,
             room.CurrentGameSession.RoundId, room.CurrentGameSession.Seed,
-            room.CurrentGameSession.RetroRush?.RoundStartAtUnixMs, room.CurrentGameSession.State),
+            room.CurrentGameSession.RetroRush?.RoundStartAtUnixMs ?? room.CurrentGameSession.TankBattle?.StartedAtUnixMs,
+            room.CurrentGameSession.State),
         room.SpinBottleState is null ? null : new SpinBottleStateSnapshot(room.SpinBottleState.SpinId,
             room.SpinBottleState.SpinnerPlayerId, room.SpinBottleState.TargetPlayerId, room.SpinBottleState.TargetIndex,
             room.SpinBottleState.Category, room.SpinBottleState.QuestionId, room.SpinBottleState.QuestionText,
@@ -1067,6 +1108,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public DrawAndGuessState? DrawAndGuessState { get; set; }
         public HideAndSeekStateSnapshot? HideAndSeekState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
+        public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }
 
     private sealed class RoomPlayer(string id, string displayName, string color, byte[] tokenHash, long joinedAt, string? avatarId = null)
@@ -1092,6 +1134,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public string State { get; set; } = state;
         public RetroRushState? RetroRush { get; set; }
         public ImposterState? Imposter { get; set; }
+        public TankBattleState? TankBattle { get; set; }
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);
@@ -1181,9 +1224,10 @@ public sealed record TimedRoomChange(
     RoomSnapshot Snapshot,
     bool GameStarted,
     bool SpinStateChanged,
+    RetroRushGameSnapshot? RetroRushSnapshot,
+    TankBattleGameSnapshot? TankBattleSnapshot,
     bool DrawAndGuessStateChanged,
-    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
-    RetroRushGameSnapshot? RetroRushSnapshot = null);
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

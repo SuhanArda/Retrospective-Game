@@ -12,6 +12,28 @@ export interface GeminiContentClient {
 
 const categories = ["reflection", "teamwork", "improvement", "fun"] as const;
 const forbiddenLeakPattern = /(https?:\/\/|www\.|system prompt|sistem talimat|api anahtar|access[_ -]?key|secret|password|e-?posta|@\w+\.|\+?\d[\d\s()-]{8,})/iu;
+const genericImposterAnswers = new Set([
+  "takim", "ekip", "dayanisma", "lider", "liderlik", "iletisim", "is birligi", "basari", "motivasyon", "yaraticilik",
+]);
+
+function foldForComparison(value: string): string {
+  return value.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/gu, "i");
+}
+
+function validateAnswersAgainstSource(request: GenerateQuestionsRequest, questions: readonly QuestionDraft[]): void {
+  const source = foldForComparison(`${request.topic}\n${request.reportText ?? ""}`);
+  const unrelatedGenericAnswer = questions.find((question) => {
+    const answer = foldForComparison(question.answer);
+    return genericImposterAnswers.has(answer) && !source.includes(answer);
+  });
+  if (unrelatedGenericAnswer) throw new Error("Gemini kaynakla ilgisiz genel bir gizli kelime üretti.");
+}
+
+function isUsableImposterWord(value: string): boolean {
+  const parts = value.split(/\s+/u).filter(Boolean);
+  return value.length <= 48 && parts.length >= 1 && parts.length <= 3 &&
+    /^[\p{L}\p{N}]+(?:[ '-][\p{L}\p{N}]+)*$/u.test(value);
+}
 
 function cleanOptionalStrings(value: unknown): string[] | undefined {
   if (value === undefined) return undefined;
@@ -30,7 +52,7 @@ function parseQuestionDraft(value: unknown): QuestionDraft | null {
   const difficulty = item.difficulty === "easy" || item.difficulty === "medium" || item.difficulty === "hard"
     ? item.difficulty : undefined;
   if (text.length < 10 || text.length > 180 || !text.endsWith("?") || forbiddenLeakPattern.test(text)
-      || answer.length < 1 || answer.length > 300 || forbiddenLeakPattern.test(answer) || !category || !gameCategory) return null;
+      || answer.length < 1 || !isUsableImposterWord(answer) || forbiddenLeakPattern.test(answer) || !category || !gameCategory) return null;
 
   const options = cleanOptionalStrings(item.options);
   const hasOptions = item.options !== undefined;
@@ -64,6 +86,8 @@ export function parseQuestions(text: string): QuestionDraft[] {
   const drafts = questions as QuestionDraft[];
   const normalized = drafts.map((question) => question.text.toLocaleLowerCase("tr-TR"));
   if (new Set(normalized).size !== drafts.length) throw new Error("Gemini tekrarlanan sorular üretti.");
+  const normalizedAnswers = drafts.map((question) => question.answer.toLocaleLowerCase("tr-TR"));
+  if (new Set(normalizedAnswers).size !== drafts.length) throw new Error("Gemini tekrarlanan gizli kelimeler üretti.");
   const workCount = drafts.filter((question) => question.gameCategory === "work" && question.category !== "fun").length;
   const funCount = drafts.filter((question) => question.gameCategory === "entertainment" && question.category === "fun").length;
   if (workCount !== 10 || funCount !== 10) throw new Error("Gemini kategori dağılımını sağlayamadı.");
@@ -127,7 +151,7 @@ export async function generateQuestions(
                   required: ["text", "answer", "category", "gameCategory"],
                   properties: {
                     text: { type: "string" },
-                    answer: { type: "string" },
+                    answer: { type: "string", minLength: 2, maxLength: 48 },
                     category: { type: "string", enum: [...categories] },
                     gameCategory: { type: "string", enum: ["work", "entertainment"] },
                     options: { type: "array", minItems: 4, maxItems: 4, items: { type: "string" } },
@@ -141,10 +165,12 @@ export async function generateQuestions(
         },
       });
       if (!response.text) throw new Error("Gemini yanıtında soru çıktısı bulunamadı.");
+      const questions = parseQuestions(response.text);
+      validateAnswersAgainstSource(request, questions);
       return {
         gameId: "room-retrospective",
         provider: "gemini",
-        questions: parseQuestions(response.text).map((question) => ({ id: randomUUID(), ...question })),
+        questions: questions.map((question) => ({ id: randomUUID(), ...question })),
       };
     } catch (error: unknown) {
       if (options.signal?.aborted) throw new Error("Soru üretimi iptal edildi.");

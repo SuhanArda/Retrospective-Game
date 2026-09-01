@@ -25,8 +25,8 @@ describe('authoritative Retro Rush results', () => {
       players: [player('a', 'Aylin', 3), player('c', 'Cem', 1), player('b', 'Bora', 2, true)],
       checkpointLabel: 'Başlangıç Noktası',
       danger: false,
-      ownedAbilities: [],
-      cooldowns: { speed: 0, rocket: 0, ask: 0 },
+      cooldowns: { speed: 0, rocket: 0, pull: 0 },
+      abilityInitialLockRemainingMs: 0,
     };
 
     const view = render(<ResultsScreen snapshot={snapshot} />);

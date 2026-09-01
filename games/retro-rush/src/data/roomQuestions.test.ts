@@ -35,4 +35,19 @@ describe('loadRoomQuestions', () => {
     })));
     await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-2', 'token-2')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
   });
+
+  it('does not permanently cache a request made before questions are ready', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(set), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-3', 'token-3'))
+      .rejects.toThrow('ROOM_QUESTIONS_NOT_READY');
+    await expect(loadRoomQuestions('http://localhost:5281', 'ABC234', 'player-3', 'token-3'))
+      .resolves.toHaveLength(20);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

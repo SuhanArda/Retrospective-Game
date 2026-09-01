@@ -196,6 +196,15 @@ export const translations = {
     },
     games: {
       // Oyun adları çevrilmez — özel isimler. Sadece açıklamalar çevrilir.
+      'tank-battle': {
+        description: 'Takımını savun, parabolik atışlarla rakip tankları vur ve araziyi parçala.',
+        detail: 'Kırmızı ve Mavi takım engebeli bir pixel-art savaş alanında karşılaşır. Fareyle nişan alır, atış gücünü ayarlar ve yıkılabilir zemini taktiksel olarak kullanırsınız. Üç canını ya da ayağının altındaki toprağı kaybeden tank elenir; kaybeden takım retrospektif soruyu yanıtlar.',
+        steps: [
+          'A ve D ile tankını güvenli bir konuma taşı; fareyle top açısını ve gücünü ayarla.',
+          'Sol tıkla parabolik mermi gönder; isabetle can azalt veya zemini oyarak rakibi suya düşür.',
+          'Rakip takımın tüm tanklarını ele; kaybeden takımın retrospektif sorusunu birlikte tamamla.',
+        ],
+      },
       imposter: {
         description:
           'Gizli Imposter’ı bulmak için kelimeyi ele vermeden sırayla ipucu ver ve şüphelendiğin kişiye oy ver.',
@@ -474,6 +483,15 @@ export const translations = {
       backToLobby: 'Back to Lobby',
     },
     games: {
+      'tank-battle': {
+        description: 'Defend your team, arc shells into rival tanks, and reshape the battlefield.',
+        detail: 'Red and Blue teams face off on a rugged pixel-art battlefield. Aim with the mouse, choose shot power, and use destructible terrain tactically. A tank is eliminated after losing three health or falling into the water; the losing team answers a retrospective question.',
+        steps: [
+          'Move to safer ground with A and D, then set your cannon angle and power with the mouse.',
+          'Left-click to launch an arcing shell; damage a rival or crater the ground beneath them.',
+          'Eliminate every rival tank, then let the losing team complete its retrospective question.',
+        ],
+      },
       imposter: {
         description:
           'Give clues without revealing the word, then vote to uncover the hidden Imposter.',

@@ -19,6 +19,7 @@ const config = {
   rusRuletiUrl: '/games/rus-ruleti/',
   drawAndGuessUrl: '/games/draw-and-guess/',
   imposterUrl: '/games/imposter/',
+  tankBattleUrl: '/games/tank-battle/',
   hideAndSeekUrl: '/games/hide-and-seek/',
 };
 
@@ -82,6 +83,19 @@ describe('GameLauncher', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       roomCode: 'ABC123',
       gameId: 'imposter',
+      gameSessionId: 'session-1',
+    });
+  });
+
+  it('launches Tank Battle through its configured frontend URL', () => {
+    const tankContext = { ...context, gameId: 'tank-battle' };
+    const launcher = new GameLauncher(config, new MemoryStorage(), 'https://example.test', vi.fn());
+    const url = new URL(launcher.createLaunchUrl(tankContext));
+
+    expect(url.pathname).toBe('/games/tank-battle/');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      roomCode: 'ABC123',
+      gameId: 'tank-battle',
       gameSessionId: 'session-1',
     });
   });

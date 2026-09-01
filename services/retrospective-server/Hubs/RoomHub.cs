@@ -20,6 +20,9 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             if (room.CurrentGameSession?.GameId == "retro-rush")
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(
                     rooms.GetRetroRushSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
+            if (room.CurrentGameSession?.GameId == "tank-battle")
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(
+                    rooms.GetTankBattleSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
             if (room.CurrentGameSession?.GameId == "hide-and-seek" && room.HideAndSeekState is { } hideAndSeekState)
                 await Clients.Client(Context.ConnectionId).HideAndSeekGameStarted(hideSeek.GetMapPayload(), hideAndSeekState);
             return new HubJoinResult(true, room);
@@ -201,6 +204,8 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Broadcast(room);
             if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+            if (rooms.GetTankBattleSnapshotForRoom(room.Code) is { } tankBattle)
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(tankBattle);
         }
         else
         {
@@ -238,8 +243,9 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public async Task RequestRetroRushRocketFire(RequestRetroRushRocketFireRequest request)
     {
         var mutation = rooms.RequestRetroRushRocketFire(Context.ConnectionId, request);
-        if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketSpawned(mutation.Event);
+        var clients = Clients.Group(GroupName(mutation.RoomCode));
+        await clients.RetroRushAbilityApplied(mutation.Ability);
+        await clients.RetroRushRocketSpawned(mutation.Rocket);
     }
 
     public async Task RequestRetroRushRocketHit(RequestRetroRushRocketHitRequest request)
@@ -247,13 +253,6 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         var mutation = rooms.RequestRetroRushRocketHit(Context.ConnectionId, request);
         if (mutation.Event is not null)
             await Clients.Group(GroupName(mutation.RoomCode)).RetroRushRocketHit(mutation.Event);
-    }
-
-    public async Task RequestRetroRushPickupCollection(RequestRetroRushPickupCollectionRequest request)
-    {
-        var mutation = rooms.RequestRetroRushPickupCollection(Context.ConnectionId, request);
-        if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushPickupCollected(mutation.Event);
     }
 
     public async Task RequestRetroRushPlayerElimination(RequestRetroRushPlayerEliminationRequest request)
@@ -278,18 +277,24 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         }
     }
 
-    public Task UseRetroRushAbility(UseRetroRushAbilityRequest request)
+    public async Task UseRetroRushAbility(UseRetroRushAbilityRequest request)
     {
-        rooms.UseRetroRushAbility(Context.ConnectionId, request);
-        return Task.CompletedTask;
+        var mutation = rooms.UseRetroRushAbility(Context.ConnectionId, request);
+        if (mutation.Event is not null)
+            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushAbilityApplied(mutation.Event);
     }
 
-    public async Task RequestRetroRushAskTarget(RequestRetroRushAskTargetRequest request)
-    {
-        var mutation = rooms.RequestRetroRushAskTarget(Context.ConnectionId, request);
-        if (mutation.Event is not null)
-            await Clients.Group(GroupName(mutation.RoomCode)).RetroRushTargetQuestioned(mutation.Event);
-    }
+    public Task<TankBattleGameSnapshot> GetTankBattleSnapshot(string gameSessionId) =>
+        Task.FromResult(rooms.GetTankBattleSnapshot(Context.ConnectionId, gameSessionId));
+
+    public Task<TankBattleGameSnapshot> MoveTankBattleTank(MoveTankBattleTankRequest request) =>
+        MutateTankBattle(rooms.MoveTankBattleTank(Context.ConnectionId, request));
+
+    public Task<TankBattleGameSnapshot> FireTankBattleShot(FireTankBattleShotRequest request) =>
+        MutateTankBattle(rooms.FireTankBattleShot(Context.ConnectionId, request));
+
+    public Task<TankBattleGameSnapshot> CompleteTankBattleQuestion(CompleteTankBattleQuestionRequest request) =>
+        MutateTankBattle(rooms.CompleteTankBattleQuestion(Context.ConnectionId, request));
 
     public Task<ImposterGameSnapshot> GetImposterSnapshot(string gameSessionId) =>
         Task.FromResult(rooms.GetImposterSnapshot(Context.ConnectionId, gameSessionId));
@@ -316,11 +321,19 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Broadcast(room);
             if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+            if (rooms.GetTankBattleSnapshotForRoom(room.Code) is { } tankBattle)
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(tankBattle);
         }
         await base.OnDisconnectedAsync(exception);
     }
 
     private Task Broadcast(RoomSnapshot room) => Clients.Group(GroupName(room.Code)).RoomSnapshot(room);
+
+    private async Task<TankBattleGameSnapshot> MutateTankBattle(TankBattleMutation mutation)
+    {
+        await Clients.Group(GroupName(mutation.RoomCode)).TankBattleSnapshot(mutation.Snapshot);
+        return mutation.Snapshot;
+    }
 
     private async Task<RoomSnapshot> MutateSpinState(RoomSnapshot room)
     {

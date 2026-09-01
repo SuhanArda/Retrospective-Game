@@ -51,18 +51,19 @@ export class SignalRRoomService implements RoomService {
   async ensureRoom(roomCode: string): Promise<RetroRoom | null> {
     const code = normalizeRoomCode(roomCode);
     const session = loadPlatformSession(this.sessionStorage);
-    if (session?.roomCode === code && session.reconnectToken) {
-      try {
-        await this.connect(session.roomCode, session.playerId, session.reconnectToken);
-        return this.room;
-      } catch {
-        clearPlatformSession(this.sessionStorage);
-      }
+    if (session?.roomCode !== code) return null;
+    if (!session.reconnectToken) {
+      clearPlatformSession(this.sessionStorage);
+      return null;
     }
-    const response = await fetch(`${this.apiUrl}/api/rooms/${code}`);
-    if (!response.ok) return null;
-    this.publish(await response.json() as RetroRoom);
-    return this.room;
+    try {
+      await this.connect(session.roomCode, session.playerId, session.reconnectToken);
+      return this.getRoom(code);
+    } catch {
+      clearPlatformSession(this.sessionStorage);
+      await this.disconnectClient();
+      return null;
+    }
   }
 
   async leaveRoom(): Promise<void> {
@@ -75,11 +76,19 @@ export class SignalRRoomService implements RoomService {
     this.client = null;
   }
 
-  getRoom(roomCode: string): RetroRoom | null { return this.room?.code === normalizeRoomCode(roomCode) ? this.room : null; }
-  getCurrentRoom(): RetroRoom | null { return this.room; }
+  getRoom(roomCode: string): RetroRoom | null {
+    const code = normalizeRoomCode(roomCode);
+    const session = loadPlatformSession(this.sessionStorage);
+    if (session?.roomCode !== code || this.room?.code !== code) return null;
+    return this.room.players.some(player => player.id === session.playerId) ? this.room : null;
+  }
+  getCurrentRoom(): RetroRoom | null {
+    const session = loadPlatformSession(this.sessionStorage);
+    return session ? this.getRoom(session.roomCode) : null;
+  }
   getCurrentPlayer(): RoomPlayer | null {
     const session = loadPlatformSession(this.sessionStorage);
-    return session ? this.room?.players.find(player => player.id === session.playerId) ?? null : null;
+    return session ? this.getRoom(session.roomCode)?.players.find(player => player.id === session.playerId) ?? null : null;
   }
   getConnectionStatus(): RoomConnectionStatus { return this.connectionStatus; }
 
@@ -116,6 +125,7 @@ export class SignalRRoomService implements RoomService {
   }
 
   private async admit(admission: RoomAdmission): Promise<void> {
+    await this.disconnectClient();
     savePlatformSession(this.sessionStorage, {
       playerId: admission.playerId,
       displayName: admission.displayName,
@@ -142,6 +152,13 @@ export class SignalRRoomService implements RoomService {
       });
     }
     await this.client.connect();
+  }
+
+  private async disconnectClient(): Promise<void> {
+    const client = this.client;
+    this.client = null;
+    if (client) await client.disconnect();
+    this.connectionStatus = 'disconnected';
   }
 
   private publish(room: RetroRoom | null): void {

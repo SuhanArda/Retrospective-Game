@@ -36,6 +36,30 @@ describe('MockRoomService', () => {
     const result = await guest.joinRoom({ roomCode: ' abc123 ', displayName: 'Guest', color: '#ff8c42' });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.room.players.map((player) => player.displayName)).toEqual(['Host', 'Guest']);
+    expect(host.getCurrentRoom()?.players.map((player) => player.displayName)).toEqual(['Host', 'Guest']);
+  });
+
+  it('requires an admitted same-room session before exposing a mock lobby snapshot', async () => {
+    const rooms = new MemoryStorage();
+    const host = new MockRoomService(rooms, new MemoryStorage(), () => 'host-id', () => 'ABC123', () => null);
+    await host.createRoom(request('Host'));
+    const freshSession = new MockRoomService(rooms, new MemoryStorage(), () => 'guest-id', () => 'ZZZ999', () => null);
+
+    await expect(freshSession.ensureRoom('ABC123')).resolves.toBeNull();
+    expect(freshSession.getRoom('ABC123')).toBeNull();
+  });
+
+  it('resumes an existing participant without adding a duplicate player', async () => {
+    const rooms = new MemoryStorage();
+    const host = new MockRoomService(rooms, new MemoryStorage(), () => 'host-id', () => 'ABC123', () => null);
+    await host.createRoom(request('Host'));
+    const guest = new MockRoomService(rooms, new MemoryStorage(), () => 'guest-id', () => 'ZZZ999', () => null);
+    await guest.joinRoom({ roomCode: 'ABC123', displayName: 'Guest', color: '#ff8c42' });
+
+    const resumed = await guest.ensureRoom('ABC123');
+
+    expect(resumed?.players).toHaveLength(2);
+    expect(resumed?.players.filter((player) => player.id === 'guest-id')).toHaveLength(1);
   });
 
   it('returns backend-compatible errors for missing rooms', async () => {

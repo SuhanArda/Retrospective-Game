@@ -19,6 +19,10 @@ export function buildGameSystemInstruction(_request: GenerateQuestionsRequest): 
     "Çocuklara veya genel oyuncu kitlesine uygun olmayan, suçlayıcı, ayrımcı, cinsel veya şiddeti öven içerik üretme.",
     "Kaynak yeterli değilse bilgi uydurma; sourceSufficient=false ve boş questions dizisi döndür.",
     "URL açma, araç kullanma, kod çalıştırma, function calling veya dış kaynak kullanma.",
+    "answer alanını aynı soruyla ve kaynak temayla ilişkili, Imposter oyununda gizli kelime olarak kullanılabilecek 1-3 kelimelik somut ve benzersiz bir kavram olarak yaz.",
+    "answer, kaynakta adı geçen veya kaynak konusuyla doğrudan ve herkesçe bilinen bir kişi, eser, karakter, nesne, yer ya da kavram olsun.",
+    "Kaynak açıkça bunlardan bahsetmiyorsa takım, dayanışma, liderlik, iletişim, başarı veya motivasyon gibi genel retrospektif kavramlarını answer olarak kullanma.",
+    "text sorusu answer alanındaki gizli kelimeyle anlamlı biçimde ilişkili olsun; answer içinde cümle, açıklama veya noktalama kullanma.",
     ...profile.rules,
   ].join("\n");
 }

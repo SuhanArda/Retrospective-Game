@@ -82,6 +82,8 @@ public sealed class RoomManagerTests
 
         Assert.True(hostRoom.Players.Single(player => player.Id == host.PlayerId).IsHost);
         Assert.False(guestRoom.Players.Single(player => player.Id == guest.PlayerId).IsHost);
+        Assert.Equal(2, guestRoom.Players.Count);
+        Assert.Equal(["Host", "Guest"], guestRoom.Players.Select(player => player.DisplayName));
         Assert.Equal(host.PlayerId, guestRoom.HostPlayerId);
         Assert.Throws<RoomException>(() => manager.Attach(host.RoomCode, guest.PlayerId, "wrong-token", "attacker"));
     }

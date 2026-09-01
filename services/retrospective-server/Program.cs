@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using Retrospective.Server.Contracts;
 using Retrospective.Server.Hubs;
 using Retrospective.Server.Rooms;
@@ -70,7 +71,7 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
     return Results.Created($"/api/rooms/{admission.RoomCode}", admission);
 }));
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
-app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
+app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
     try
     {
@@ -79,16 +80,25 @@ app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQu
         // The browser immediately navigates to the selected game. Once the
         // request body has arrived, finish generation even if that navigation
         // closes the original HTTP connection.
-        return await ai.Generate(access.RoomCode, access.RoomInstanceId, roomRequest, CancellationToken.None);
+        return await ai.Generate(
+            access.RoomCode,
+            access.RoomInstanceId,
+            roomRequest,
+            CancellationToken.None,
+            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients));
     }
     catch (RoomException error) { return RoomError(error); }
 });
-app.MapGet("/api/rooms/{code}/ai/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, CancellationToken cancellationToken) =>
+app.MapGet("/api/rooms/{code}/ai/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
     try
     {
         var access = AuthorizeAiRequest(request, rooms, code, hostRequired: false);
-        return await ai.Get(access.RoomCode, access.RoomInstanceId, cancellationToken);
+        return await ai.Get(
+            access.RoomCode,
+            access.RoomInstanceId,
+            cancellationToken,
+            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients));
     }
     catch (RoomException error) { return RoomError(error); }
 });
@@ -107,6 +117,18 @@ static IResult Execute(Func<IResult> operation)
             _ => Results.BadRequest(new { code = error.Code }),
         };
     }
+}
+
+static async Task RememberAiQuestionSet(
+    string roomCode,
+    string roomInstanceId,
+    AiRoomQuestionSet questionSet,
+    RoomManager rooms,
+    IHubContext<RoomHub, IRoomClient> clients)
+{
+    if (!rooms.TryRememberAiQuestionSet(roomCode, roomInstanceId, questionSet)) return;
+    if (rooms.RefreshWaitingImposterQuestionPack(roomCode, roomInstanceId) is not { } mutation) return;
+    await clients.Clients.Group(RoomHub.GroupName(mutation.RoomCode)).ImposterStateChanged(mutation.Event);
 }
 
 static RoomAiAccess AuthorizeAiRequest(HttpRequest request, RoomManager rooms, string code, bool hostRequired)

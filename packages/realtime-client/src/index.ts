@@ -27,23 +27,24 @@ import type {
   SpinBottleStateSnapshot,
   SpinResult,
   CompleteRetroRushQuestionRequest,
-  RequestRetroRushPickupCollectionRequest,
   RequestRetroRushPlayerEliminationRequest,
   RequestRetroRushRocketFireRequest,
   RequestRetroRushRocketHitRequest,
   RequestRetroRushShoveRequest,
-  RequestRetroRushAskTargetRequest,
+  RetroRushAbilityApplied,
   RetroRushGameSnapshot,
-  RetroRushPickupCollected,
   RetroRushPlayerEliminated,
   RetroRushPlayerSnapshot,
   RetroRushRocketHitApplied,
   RetroRushRocketSnapshot,
   RetroRushShoveApplied,
   RetroRushShoveCommandResult,
-  RetroRushTargetQuestioned,
   UpdateRetroRushPlayerRequest,
   UseRetroRushAbilityRequest,
+  CompleteTankBattleQuestionRequest,
+  FireTankBattleShotRequest,
+  MoveTankBattleTankRequest,
+  TankBattleGameSnapshot,
 } from '@retro-platform/contracts';
 
 export { RoomQuestionProvider, parseRoomQuestionSet, questionForStableKey } from './roomQuestionProvider';
@@ -82,11 +83,11 @@ type EventMap = {
   retroRushShoveApplied: RetroRushShoveApplied;
   retroRushRocketSpawned: RetroRushRocketSnapshot;
   retroRushRocketHit: RetroRushRocketHitApplied;
-  retroRushPickupCollected: RetroRushPickupCollected;
+  retroRushAbilityApplied: RetroRushAbilityApplied;
   retroRushPlayerEliminated: RetroRushPlayerEliminated;
   retroRushRoundStarted: RetroRushGameSnapshot;
-  retroRushTargetQuestioned: RetroRushTargetQuestioned;
   imposterStateChanged: ImposterStateChanged;
+  tankBattleSnapshot: TankBattleGameSnapshot;
   hideAndSeekGameStarted: { map: HideAndSeekMapPayload; state: HideAndSeekStateSnapshot };
   hideAndSeekSnapshot: HideAndSeekPersonalSnapshot;
   hideAndSeekStateChanged: HideAndSeekStateSnapshot;
@@ -200,20 +201,26 @@ export class RoomRealtimeClient {
   requestRetroRushRocketHit(request: RequestRetroRushRocketHitRequest): Promise<void> {
     return this.invoke('RequestRetroRushRocketHit', request);
   }
-  requestRetroRushPickupCollection(request: RequestRetroRushPickupCollectionRequest): Promise<void> {
-    return this.invoke('RequestRetroRushPickupCollection', request);
-  }
   requestRetroRushPlayerElimination(request: RequestRetroRushPlayerEliminationRequest): Promise<void> {
     return this.invoke('RequestRetroRushPlayerElimination', request);
   }
   completeRetroRushQuestion(request: CompleteRetroRushQuestionRequest): Promise<void> {
     return this.invoke('CompleteRetroRushQuestion', request);
   }
+  getTankBattleSnapshot(gameSessionId: string): Promise<TankBattleGameSnapshot> {
+    return this.invoke('GetTankBattleSnapshot', gameSessionId);
+  }
+  moveTankBattleTank(request: MoveTankBattleTankRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('MoveTankBattleTank', request);
+  }
+  fireTankBattleShot(request: FireTankBattleShotRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('FireTankBattleShot', request);
+  }
+  completeTankBattleQuestion(request: CompleteTankBattleQuestionRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('CompleteTankBattleQuestion', request);
+  }
   useRetroRushAbility(request: UseRetroRushAbilityRequest): Promise<void> {
     return this.invoke('UseRetroRushAbility', request);
-  }
-  requestRetroRushAskTarget(request: RequestRetroRushAskTargetRequest): Promise<void> {
-    return this.invoke('RequestRetroRushAskTarget', request);
   }
   getImposterSnapshot(gameSessionId: string): Promise<ImposterGameSnapshot> {
     return this.invoke('GetImposterSnapshot', gameSessionId);
@@ -265,11 +272,11 @@ export class RoomRealtimeClient {
     connection.on('RetroRushShoveApplied', (shove: RetroRushShoveApplied) => this.emit('retroRushShoveApplied', shove));
     connection.on('RetroRushRocketSpawned', (rocket: RetroRushRocketSnapshot) => this.emit('retroRushRocketSpawned', rocket));
     connection.on('RetroRushRocketHit', (hit: RetroRushRocketHitApplied) => this.emit('retroRushRocketHit', hit));
-    connection.on('RetroRushPickupCollected', (pickup: RetroRushPickupCollected) => this.emit('retroRushPickupCollected', pickup));
+    connection.on('RetroRushAbilityApplied', (ability: RetroRushAbilityApplied) => this.emit('retroRushAbilityApplied', ability));
     connection.on('RetroRushPlayerEliminated', (elimination: RetroRushPlayerEliminated) => this.emit('retroRushPlayerEliminated', elimination));
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
-    connection.on('RetroRushTargetQuestioned', (question: RetroRushTargetQuestioned) => this.emit('retroRushTargetQuestioned', question));
     connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
+    connection.on('TankBattleSnapshot', (snapshot: TankBattleGameSnapshot) => this.emit('tankBattleSnapshot', snapshot));
     connection.on('HideAndSeekGameStarted', (map: HideAndSeekMapPayload, state: HideAndSeekStateSnapshot) =>
       this.emit('hideAndSeekGameStarted', { map, state }));
     connection.on('HideAndSeekSnapshot', (snapshot: HideAndSeekPersonalSnapshot) => this.emit('hideAndSeekSnapshot', snapshot));

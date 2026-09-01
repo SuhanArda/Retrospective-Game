@@ -6,8 +6,14 @@ namespace Retrospective.Server.Rooms;
 public sealed class AiQuestionGateway(HttpClient client, IConfiguration configuration)
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<IResult> Generate(string roomCode, string roomInstanceId, Contracts.GenerateRoomQuestionsRequest request, CancellationToken cancellationToken)
+    public async Task<IResult> Generate(
+        string roomCode,
+        string roomInstanceId,
+        Contracts.GenerateRoomQuestionsRequest request,
+        CancellationToken cancellationToken,
+        Func<AiRoomQuestionSet, Task>? onReady = null)
     {
         using var message = new HttpRequestMessage(HttpMethod.Post, $"rooms/{Uri.EscapeDataString(roomCode)}/questions")
         {
@@ -24,12 +30,18 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
             }),
         };
         AddServiceKey(message);
-        return await Forward(message, cancellationToken);
+        return await Forward(message, cancellationToken, onReady);
     }
 
-    public Task<IResult> Get(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
+    public Task<IResult> Get(
+        string roomCode,
+        string roomInstanceId,
+        CancellationToken cancellationToken,
+        Func<AiRoomQuestionSet, Task>? onReady = null) =>
         Forward(Create(HttpMethod.Get,
-            $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"), cancellationToken);
+            $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"),
+            cancellationToken,
+            onReady);
 
     public Task<IResult> Delete(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
         Forward(Create(HttpMethod.Delete,
@@ -53,7 +65,10 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
         if (!string.IsNullOrWhiteSpace(_serviceKey)) message.Headers.Add("X-Internal-Service-Key", _serviceKey);
     }
 
-    private async Task<IResult> Forward(HttpRequestMessage message, CancellationToken cancellationToken)
+    private async Task<IResult> Forward(
+        HttpRequestMessage message,
+        CancellationToken cancellationToken,
+        Func<AiRoomQuestionSet, Task>? onReady = null)
     {
         try
         {
@@ -62,6 +77,25 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
             JsonElement payload;
             try { payload = JsonSerializer.Deserialize<JsonElement>(body); }
             catch { payload = JsonSerializer.SerializeToElement(new { error = "AI soru servisi geçersiz yanıt verdi." }); }
+            if (response.IsSuccessStatusCode && onReady is not null)
+            {
+                try
+                {
+                    var set = payload.Deserialize<AiRoomQuestionSet>(JsonOptions);
+                    if (set is { GenerationStatus: "ready", Questions.Count: 20 } &&
+                        set.Questions.All(question =>
+                            !string.IsNullOrWhiteSpace(question.Id) &&
+                            !string.IsNullOrWhiteSpace(question.Text) &&
+                            !string.IsNullOrWhiteSpace(question.Answer)))
+                    {
+                        await onReady(set);
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Preserve the proxy response, but never cache malformed AI data in room state.
+                }
+            }
             return Results.Json(payload, statusCode: (int)response.StatusCode);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -74,3 +108,20 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
         }
     }
 }
+
+public sealed record AiRoomQuestion(
+    string Id,
+    string Text,
+    string Answer,
+    string? Category,
+    string? GameCategory);
+
+public sealed record AiRoomQuestionSet(
+    string RoomId,
+    string RoomInstanceId,
+    string QuestionSetId,
+    string Provider,
+    string GenerationStatus,
+    IReadOnlyList<AiRoomQuestion> Questions,
+    long CreatedAt,
+    long UpdatedAt);

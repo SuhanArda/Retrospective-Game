@@ -24,11 +24,11 @@ public interface IRoomClient
     Task RetroRushShoveApplied(RetroRushShoveApplied shove);
     Task RetroRushRocketSpawned(RetroRushRocketSnapshot rocket);
     Task RetroRushRocketHit(RetroRushRocketHitApplied hit);
-    Task RetroRushPickupCollected(RetroRushPickupCollected pickup);
+    Task RetroRushAbilityApplied(RetroRushAbilityApplied ability);
     Task RetroRushPlayerEliminated(RetroRushPlayerEliminated elimination);
     Task RetroRushRoundStarted(RetroRushGameSnapshot snapshot);
-    Task RetroRushTargetQuestioned(RetroRushTargetQuestioned question);
     Task ImposterStateChanged(ImposterStateChanged state);
+    Task TankBattleSnapshot(TankBattleGameSnapshot snapshot);
     /// <summary>Sent once at game start (group broadcast) and once more to a lone rejoining connection — the map never changes mid-round.</summary>
     Task HideAndSeekGameStarted(HideAndSeekMapPayload map, HideAndSeekStateSnapshot state);
     /// <summary>

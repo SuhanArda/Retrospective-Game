@@ -7,7 +7,6 @@ import { buildPlatformGameSelectionUrl, runtimeConfig } from './runtimeConfig';
 import type { ConnectionStatus, MatchSnapshot, PresentedRetroQuestion, RetroQuestion } from '../domain/types';
 import { Hud } from '../ui/Hud';
 import { QuestionOverlay } from '../ui/QuestionOverlay';
-import { TargetSelection } from '../ui/TargetSelection';
 import { ResultsScreen } from '../ui/ResultsScreen';
 import { BackToGamesButton } from '../ui/BackToGamesButton';
 import { consumeGameHandoff, resolveGameLaunchContext } from '@retro-platform/contracts';
@@ -18,7 +17,7 @@ import { loadRoomQuestions } from '../data/roomQuestions';
 import { shouldShowStandaloneStart } from './startupMode';
 import { gameplayConfig } from '../data/gameplayConfig';
 
-const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: gameplayConfig.roundStart.countdownDisplaySeconds, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, ownedAbilities: [], cooldowns: { speed: 0, rocket: 0, ask: 0 } };
+const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: gameplayConfig.roundStart.countdownDisplaySeconds, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, cooldowns: { speed: 0, rocket: 0, pull: 0 }, abilityInitialLockRemainingMs: 0 };
 
 export function App() {
   const launchContext = useMemo(() => consumeGameHandoff(window, window.sessionStorage) ?? resolveGameLaunchContext(window.location.search, window.sessionStorage), []);
@@ -33,7 +32,6 @@ export function App() {
     : new MockGameTransport(), [launchContext, roomClient]);
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [question, setQuestion] = useState<PresentedRetroQuestion | null>(null);
-  const [targeting, setTargeting] = useState<Readonly<Record<string, number>> | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [connection, setConnection] = useState<ConnectionStatus>('disconnected');
   const [muted, setMuted] = useState(false);
@@ -47,23 +45,30 @@ export function App() {
       return;
     }
     let cancelled = false;
-    loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
-      .then((questions) => {
-        if (!cancelled && questions.length > 0) setSessionQuestions(questions);
-      })
-      .catch((cause) => {
-        if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
-      });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const load = () => {
+      loadRoomQuestions(runtimeConfig.roomApiUrl, launchContext.roomCode, launchContext.playerId, launchContext.reconnectToken)
+        .then((questions) => {
+          if (!cancelled && questions.length > 0) setSessionQuestions(questions);
+        })
+        .catch((cause) => {
+          attempt++;
+          if (!cancelled && attempt < 25) retryTimer = setTimeout(load, 2_000);
+          else if (import.meta.env.DEV) console.warn('[AIQuestion] unavailable; Retro Rush is using authoritative defaults', cause);
+        });
+    };
+    load();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [launchContext]);
 
   useEffect(() => {
     const disposers = [
-      bridge.on('snapshot', setSnapshot), bridge.on('questionOpened', (nextQuestion) => { setTargeting(null); setQuestion(nextQuestion); }),
-      bridge.on('roundReset', () => { setQuestion(null); setTargeting(null); }),
-      bridge.on('targetSelectionOpened', ({ protectedTargets }) => setTargeting(protectedTargets)),
+      bridge.on('snapshot', setSnapshot), bridge.on('questionOpened', setQuestion),
+      bridge.on('roundReset', () => setQuestion(null)),
       bridge.on('announcement', (message) => { setAnnouncement(message); window.setTimeout(() => setAnnouncement(''), 2400); }),
       transport.subscribe((event) => { if (event.type === 'connection') setConnection(event.status); if (event.type === 'error') setAnnouncement(localizeUserError(event.message)); }),
     ];
@@ -107,7 +112,6 @@ export function App() {
     {snapshot.state === 'COUNTDOWN' && <div className="phase-note" data-testid="round-start-countdown" role="status" aria-live="polite">PARKUR BAŞLIYOR · {snapshot.countdown}</div>}
     {snapshot.state === 'FINISHED' && <ResultsScreen snapshot={snapshot} />}
     {question && <QuestionOverlay question={question} mode="verbal" onAnswered={() => bridge.emit('questionAnswered', { questionId: question.id })} />}
-    {targeting && <TargetSelection players={snapshot.players} protectedTargets={targeting} onSelect={(playerId) => { bridge.emit('targetSelected', { playerId }); setTargeting(null); }} onCancel={() => setTargeting(null)} />}
     {announcement && <div className="toast" role="status" aria-live="polite">{announcement}</div>}
   </main>;
 }

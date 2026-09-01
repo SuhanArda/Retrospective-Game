@@ -134,7 +134,7 @@ export class MockRoomService implements RoomService {
   async joinRoom(request: JoinRoomRequest): Promise<JoinRoomResult> {
     const roomCode = normalizeRoomCode(request.roomCode);
     if (!isValidRoomCode(roomCode)) return { ok: false, error: 'INVALID_ROOM_CODE' };
-    const room = this.getRoom(roomCode);
+    const room = this.readRoom(roomCode);
     if (!room) return { ok: false, error: 'ROOM_NOT_FOUND' };
     if (room.status === 'PLAYING' || room.status === 'FINISHED') {
       return { ok: false, error: 'ROOM_ALREADY_STARTED' };
@@ -158,7 +158,7 @@ export class MockRoomService implements RoomService {
   async leaveRoom(): Promise<void> {
     const session = loadPlatformSession(this.sessionStorage);
     if (!session) return;
-    const room = this.getRoom(session.roomCode);
+    const room = this.readRoom(session.roomCode);
     if (room) {
       const players = room.players.filter((player) => player.id !== session.playerId);
       if (players.length === 0) this.deleteRoom(room.code);
@@ -180,6 +180,14 @@ export class MockRoomService implements RoomService {
   }
 
   getRoom(roomCode: string): RetroRoom | null {
+    const code = normalizeRoomCode(roomCode);
+    const session = loadPlatformSession(this.sessionStorage);
+    if (session?.roomCode !== code) return null;
+    const room = this.readRoom(code);
+    return room?.players.some((player) => player.id === session.playerId) ? room : null;
+  }
+
+  private readRoom(roomCode: string): RetroRoom | null {
     const raw = this.roomStorage.getItem(this.storageKey(normalizeRoomCode(roomCode)));
     if (!raw) return null;
     try {
@@ -199,8 +207,12 @@ export class MockRoomService implements RoomService {
   getConnectionStatus(): 'connected' { return 'connected'; }
 
   async ensureRoom(roomCode: string): Promise<RetroRoom | null> {
-    // Nothing to connect to: the snapshot is already in this browser.
-    return this.getRoom(roomCode);
+    const code = normalizeRoomCode(roomCode);
+    const session = loadPlatformSession(this.sessionStorage);
+    if (session?.roomCode !== code) return null;
+    const room = this.getRoom(code);
+    if (!room) clearPlatformSession(this.sessionStorage);
+    return room;
   }
 
   async beginGameSelection(candidateGameIds: readonly string[]): Promise<RetroRoom> {
@@ -272,7 +284,7 @@ export class MockRoomService implements RoomService {
     const normalized = normalizeRoomCode(roomCode);
     const handleMessage = (event: MessageEvent<ChannelMessage>) => {
       if (event.data.kind !== 'room') return;
-      if (event.data.roomCode === normalized) listener(event.data.room);
+      if (event.data.roomCode === normalized) listener(this.getRoom(normalized));
     };
     this.channel.addEventListener('message', handleMessage);
     return () => this.channel?.removeEventListener('message', handleMessage);
