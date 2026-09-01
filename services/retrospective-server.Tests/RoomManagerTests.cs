@@ -638,7 +638,8 @@ public sealed class RoomManagerTests
             DisconnectGraceSeconds = 25,
             QuestionLoadingMilliseconds = 1800,
         }),
-        random ?? new FixedRoomRandom(0));
+        random ?? new FixedRoomRandom(0),
+        HideSeekTestSupport.CreateManager());
 
     private static CreateRoomRequest CreateRequest(string name, int votingTimeSeconds = 30) =>
         new(name, "#654321", "Sprint Retro", 10, 30, votingTimeSeconds);

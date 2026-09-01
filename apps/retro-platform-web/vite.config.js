@@ -50,6 +50,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_RUS_RULETI_URL': publicValue('VITE_RUS_RULETI_URL', 'http://localhost:5176'),
       'import.meta.env.VITE_DRAW_AND_GUESS_URL': publicValue('VITE_DRAW_AND_GUESS_URL', 'http://localhost:5177'),
       'import.meta.env.VITE_IMPOSTER_URL': publicValue('VITE_IMPOSTER_URL', 'http://localhost:5178'),
+      'import.meta.env.VITE_HIDE_AND_SEEK_URL': publicValue('VITE_HIDE_AND_SEEK_URL', 'http://localhost:5180'),
     },
   }
 })

@@ -19,6 +19,7 @@ const config = {
   rusRuletiUrl: '/games/rus-ruleti/',
   drawAndGuessUrl: '/games/draw-and-guess/',
   imposterUrl: '/games/imposter/',
+  hideAndSeekUrl: '/games/hide-and-seek/',
 };
 
 describe('GameLauncher', () => {

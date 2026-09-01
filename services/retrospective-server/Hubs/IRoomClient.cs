@@ -29,4 +29,19 @@ public interface IRoomClient
     Task RetroRushRoundStarted(RetroRushGameSnapshot snapshot);
     Task RetroRushTargetQuestioned(RetroRushTargetQuestioned question);
     Task ImposterStateChanged(ImposterStateChanged state);
+    /// <summary>Sent once at game start (group broadcast) and once more to a lone rejoining connection — the map never changes mid-round.</summary>
+    Task HideAndSeekGameStarted(HideAndSeekMapPayload map, HideAndSeekStateSnapshot state);
+    /// <summary>
+    /// Unicast only, at `TICK_RATE` times per second — this is the one
+    /// message in the whole hub that must never go through
+    /// <c>Clients.Group</c>. Its <c>VisiblePlayers</c> list is computed
+    /// fresh per connection; two players in the same room can (and, once
+    /// Faz 4's vision filter lands, usually will) receive different lists
+    /// on the same tick.
+    /// </summary>
+    Task HideAndSeekSnapshot(HideAndSeekPersonalSnapshot snapshot);
+    /// <summary>Group broadcast — fired only on the tick a phase transition actually happens (PREP→DARK, DARK↔REVEAL, →ENDED).</summary>
+    Task HideAndSeekStateChanged(HideAndSeekStateSnapshot state);
+    /// <summary>Group broadcast, once per catch — a toast/sound cue, not itself secret.</summary>
+    Task PlayerCaught(HideAndSeekPlayerCaughtEvent evt);
 }

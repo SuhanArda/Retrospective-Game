@@ -26,7 +26,8 @@ public sealed class ImposterRoomManagerTests
         var manager = new RoomManager(
             TimeProvider.System,
             Options.Create(new RoomOptions { DisconnectGraceSeconds = 25, QuestionLoadingMilliseconds = 1800 }),
-            new FixedRoomRandom());
+            new FixedRoomRandom(),
+            HideSeekTestSupport.CreateManager());
         var host = manager.Create(new CreateRoomRequest("Yağmur", "#654321", "Küçük Oda", 10, 30, 30));
         manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
 
@@ -232,7 +233,8 @@ public sealed class ImposterRoomManagerTests
                 DisconnectGraceSeconds = 25,
                 QuestionLoadingMilliseconds = 1800,
             }),
-            random ?? new FixedRoomRandom());
+            random ?? new FixedRoomRandom(),
+            HideSeekTestSupport.CreateManager());
         var host = manager.Create(new CreateRoomRequest("Yağmur", "#654321", "Sprint Retro", 10, 30, 30));
         var firstGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
         var secondGuest = manager.Join(host.RoomCode, new JoinRoomRequest("Ece", "#abcdef"));
