@@ -393,6 +393,91 @@ export interface DrawAndGuessShapeEvent {
   filled: boolean;
 }
 
+export type HideAndSeekPhase = 'PREP' | 'DARK' | 'REVEAL' | 'ENDED';
+
+/**
+ * Who's the seeker and what the round's phase/countdown is — nothing
+ * secret, and deliberately no positions. Positions only ever travel through
+ * {@link HideAndSeekPersonalSnapshot}, unicast per connection and filtered
+ * by vision — except during `REVEAL`, when that filter is off for everyone.
+ */
+export type HideAndSeekWinner = 'SEEKER' | 'HIDERS';
+
+export interface HideAndSeekStateSnapshot {
+  seekerPlayerId: string;
+  phase: HideAndSeekPhase;
+  /** Display-only countdown target for the current phase — the server decides transitions, this just says when the next one is due. */
+  phaseEndsAtUtc: number;
+  /** When the whole round ends — fixed once at game start. */
+  gameEndsAtUtc: number;
+  /** Every hider caught so far, in catch order — not secret, everyone already sees a hider vanish into spectator mode. */
+  caughtPlayerIds: string[];
+  /** Set once the round is over; undefined while still playing. */
+  winner?: HideAndSeekWinner;
+  revision: number;
+  updatedAtUtc: number;
+}
+
+/** Sent once at game start (and again to a lone rejoining connection) — the map never changes mid-round. */
+export interface HideAndSeekMapPayload {
+  id: string;
+  width: number;
+  height: number;
+  tileSize: number;
+  rows: string[];
+  mapHash: string;
+}
+
+/** Client → server, at most `TICK_RATE` times per second: which directions are held, never a position. */
+export interface HideAndSeekInputRequest {
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
+  /** Client-assigned, monotonically increasing — echoed back in {@link HideAndSeekPersonalSnapshot.lastProcessedSeq}. */
+  seq: number;
+}
+
+export type HideAndSeekRole = 'SEEKER' | 'HIDER';
+
+/**
+ * One other player's authoritative position, as included in someone else's
+ * personal snapshot. `catchProgress` (0..1) is nonzero only for a hider
+ * currently within the seeker's catch range — riding along here means it
+ * only ever reaches connections whose own vision already includes this
+ * player, with no separate broadcast needed.
+ */
+export interface HideAndSeekVisiblePlayer {
+  playerId: string;
+  role: HideAndSeekRole;
+  x: number;
+  y: number;
+  catchProgress: number;
+}
+
+/**
+ * The per-connection payload the game loop unicasts at `TICK_RATE`. Never
+ * broadcast to a room group — `visiblePlayers` is whatever this one
+ * connection is allowed to see, computed fresh for them alone.
+ */
+export interface HideAndSeekPersonalSnapshot {
+  lastProcessedSeq: number;
+  x: number;
+  y: number;
+  /** This player's own catch progress (0..1) if they're currently being caught — the red-vignette trigger. */
+  catchProgress: number;
+  /** True once this player has been caught — a spectator now: frozen, full map visibility, no fog. */
+  isSpectator: boolean;
+  visiblePlayers: HideAndSeekVisiblePlayer[];
+}
+
+/** Group broadcast, fired once per catch — a toast/sound cue, not itself secret. */
+export interface HideAndSeekPlayerCaughtEvent {
+  playerId: string;
+  seekerPlayerId: string;
+  remainingActiveHiders: number;
+}
+
 export interface RoomSnapshot {
   id: string;
   code: string;
@@ -411,6 +496,7 @@ export interface RoomSnapshot {
   spinBottleState?: SpinBottleStateSnapshot;
   russianRouletteState?: RussianRouletteStateSnapshot;
   drawAndGuessState?: DrawAndGuessStateSnapshot;
+  hideAndSeekState?: HideAndSeekStateSnapshot;
   /** Authoritative playerId -> gameId selections for the active room vote. */
   votes?: Record<string, string>;
   /** Unix milliseconds when the authoritative room vote opened. */

@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Retrospective.Server.Contracts;
+using Retrospective.Server.Rooms.HideSeek;
 
 namespace Retrospective.Server.Rooms;
 
-public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
+public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom, HideSeekManager hideSeek)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle", "hide-and-seek"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -209,6 +210,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             _connections[connectionId] = new PlayerConnection(room.Code, player.Id, player.ConnectionGeneration);
             SetRetroRushPlayerConnected(room, player.Id, true);
             SetTankBattlePlayerConnected(room, player.Id, true);
+            hideSeek.SetConnected(room.Code, player.Id, connectionId, true);
             return Snapshot(room);
         }
     }
@@ -285,6 +287,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.SpinBottleState = null;
             room.RussianRouletteState = null;
             room.DrawAndGuessState = null;
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = null;
             room.Votes.Clear();
             room.VotingStartedAt = null;
             room.VotingEndsAt = null;
@@ -582,6 +586,37 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    /// <summary>
+    /// Pure passthrough into <see cref="HideSeekManager"/> — position, wall
+    /// collision, and vision all live there, not in <see cref="RoomManager"/>,
+    /// so there's nothing to mutate on <see cref="GameRoom"/> here beyond
+    /// resolving who's calling.
+    /// </summary>
+    public void SetHideAndSeekInput(string connectionId, HideAndSeekInputRequest request)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        hideSeek.SetInput(room.Code, player.Id, request);
+    }
+
+    /// <summary>
+    /// Called by <see cref="HideSeek.HideSeekGameLoopService"/> — not by a
+    /// client — whenever a tick actually changes the public phase/state.
+    /// Caches it on the room the same way every other game's state lives on
+    /// <see cref="GameRoom"/>, and hands back the fresh <see cref="RoomSnapshot"/>
+    /// to broadcast. Returns null if the room is gone by the time the tick
+    /// that changed it gets around to reporting it (a room can close between
+    /// a tick starting and this call landing; nothing to update at that point).
+    /// </summary>
+    public RoomSnapshot? SetHideAndSeekState(string roomCode, HideAndSeekStateSnapshot state)
+    {
+        if (!_rooms.TryGetValue(Normalize(roomCode), out var room)) return null;
+        lock (room.Gate)
+        {
+            room.HideAndSeekState = state;
+            return Snapshot(room);
+        }
+    }
+
     public RoomSnapshot Leave(string connectionId)
     {
         var (room, player) = Authorize(connectionId, hostRequired: false);
@@ -592,6 +627,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             RemoveRetroRushPlayer(room, player.Id);
             RemoveTankBattlePlayer(room, player.Id);
             RemoveImposterPlayer(room, player.Id);
+            hideSeek.RemovePlayer(room.Code, player.Id);
             ElectHost(room);
             if (room.Players.Count == 0) _rooms.TryRemove(room.Code, out _);
             return Snapshot(room);
@@ -620,6 +656,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             player.DisconnectExpiresAt = disconnectedAt + _disconnectGrace;
             SetRetroRushPlayerConnected(room, player.Id, false);
             SetTankBattlePlayerConnected(room, player.Id, false);
+            hideSeek.SetConnected(room.Code, player.Id, null, false);
             return Snapshot(room);
         }
     }
@@ -646,6 +683,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     RemoveRetroRushPlayer(room, playerId);
                     RemoveTankBattlePlayer(room, playerId);
                     RemoveImposterPlayer(room, playerId);
+                    hideSeek.RemovePlayer(room.Code, playerId);
                 }
                 ElectHost(room);
                 if (room.Players.Count == 0)
@@ -753,6 +791,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.SpinBottleState = null;
         room.RussianRouletteState = null;
         room.DrawAndGuessState = null;
+        hideSeek.EndGame(room.Code);
+        room.HideAndSeekState = null;
         room.Votes.Clear();
         room.CandidateGameIds = candidates;
         room.VotingStartedAt = now;
@@ -794,16 +834,29 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
         if (winner == "imposter") InitializeImposter(room, room.CurrentGameSession);
         if (winner == "tank-battle") InitializeTankBattle(room, room.CurrentGameSession);
+        if (winner == "hide-and-seek")
+        {
+            room.HideAndSeekState = hideSeek.StartGame(room.Code, room.Players.Values.Select(player => (player.Id, player.ConnectionId)).ToArray());
+        }
+        else
+        {
+            // A previous round in this same room may still be ticking in
+            // HideSeekManager's own dictionary — stop it, or its loop keeps
+            // simulating and unicasting to players who moved on to a
+            // different game.
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = null;
+        }
         return true;
     }
 
-    private static bool IsGamePlayable(GameRoom room, string gameId) =>
-        gameId switch
-        {
-            "imposter" => room.Players.Count is >= 3 and <= 10,
-            "tank-battle" => room.Players.Count >= 2,
-            _ => true,
-        };
+    private static bool IsGamePlayable(GameRoom room, string gameId) => gameId switch
+    {
+        "imposter" => room.Players.Count is >= 3 and <= 10,
+        "tank-battle" => room.Players.Count >= 2,
+        "hide-and-seek" => room.Players.Count is >= HideSeekConfig.MinPlayers and <= HideSeekConfig.MaxPlayers,
+        _ => true,
+    };
 
     /// <summary>
     /// Chamber count is deliberately not equal to the player count (same
@@ -1019,7 +1072,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc,
             room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
             room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index]),
-            room.DrawAndGuessState.LastRevealedIndex));
+            room.DrawAndGuessState.LastRevealedIndex),
+        room.HideAndSeekState);
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -1052,6 +1106,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public SpinBottleState? SpinBottleState { get; set; }
         public RussianRouletteState? RussianRouletteState { get; set; }
         public DrawAndGuessState? DrawAndGuessState { get; set; }
+        public HideAndSeekStateSnapshot? HideAndSeekState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
         public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }

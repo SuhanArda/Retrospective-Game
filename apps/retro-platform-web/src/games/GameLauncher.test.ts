@@ -20,6 +20,7 @@ const config = {
   drawAndGuessUrl: '/games/draw-and-guess/',
   imposterUrl: '/games/imposter/',
   tankBattleUrl: '/games/tank-battle/',
+  hideAndSeekUrl: '/games/hide-and-seek/',
 };
 
 describe('GameLauncher', () => {

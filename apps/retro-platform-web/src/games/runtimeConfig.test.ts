@@ -14,6 +14,7 @@ describe('game runtime configuration', () => {
       VITE_DRAW_AND_GUESS_URL: '/games/draw-and-guess/',
       VITE_IMPOSTER_URL: '/games/imposter/',
       VITE_TANK_BATTLE_URL: '/games/tank-battle/',
+      VITE_HIDE_AND_SEEK_URL: '/games/hide-and-seek/',
     })).toEqual({
       retroRushUrl: '/games/retro-rush/',
       spinTheBottleUrl: '/games/spin-the-bottle/',
@@ -21,6 +22,7 @@ describe('game runtime configuration', () => {
       drawAndGuessUrl: '/games/draw-and-guess/',
       imposterUrl: '/games/imposter/',
       tankBattleUrl: '/games/tank-battle/',
+      hideAndSeekUrl: '/games/hide-and-seek/',
     });
   });
 });

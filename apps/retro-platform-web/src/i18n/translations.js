@@ -259,6 +259,16 @@ export const translations = {
           'Tur bitince yeni bir çizen ve yeni kelime gelir.',
         ],
       },
+      'hide-and-seek': {
+        description: 'Biri ebe, gerisi saklanır. Harita karanlık, herkes yalnızca yakın çevresini görür.',
+        detail:
+          'Bir oyuncu rastgele ebe seçilir, geri kalanı saklanandır. Harita karanlıktır, herkes sadece kendi etrafındaki dar alanı görür; periyodik olarak harita kısa süreliğine tamamen aydınlanır. Ebe bir saklananı yakalarsa o oyuncu izleyiciye döner. Süre dolduğunda hâlâ saklanan biri varsa saklananlar, herkes yakalanırsa ebe kazanır.',
+        steps: [
+          'Ebe donmuşken saklananlar haritaya dağılır, sonra karanlık başlar.',
+          'Sadece yakın çevreni görebilirsin — periyodik aydınlanmalarda herkes birbirini görür.',
+          'Yakalanan izleyiciye döner; süre dolduğunda hayatta kalan olursa saklananlar kazanır.',
+        ],
+      },
       platform: {
         name: 'Platform Oyunu',
         text: 'Engelleri aş. Düştüğünde oyun durur, karşına bir soru gelir.',
@@ -534,6 +544,16 @@ export const translations = {
           "If it's your turn, draw the given word; otherwise, type your guess in the chat.",
           'Correct guessers score in order — the word itself stays hidden.',
           'When the round ends, a new drawer and a new word come up.',
+        ],
+      },
+      'hide-and-seek': {
+        description: 'One seeker, everyone else hides. The map is dark — you only see what is right around you.',
+        detail:
+          'One random player becomes the seeker, everyone else hides. The map stays dark — each player only sees a small area around themselves — but the whole map lights up for everyone, briefly, every so often. A caught hider becomes a spectator. If any hider is still free when time runs out, the hiders win; if everyone gets caught first, the seeker wins.',
+        steps: [
+          'The seeker starts frozen while hiders scatter across the map.',
+          'You only see your own small radius — until the map briefly lights up for everyone.',
+          'A caught hider becomes a spectator; the hiders win if anyone is still free when time runs out.',
         ],
       },
       platform: {

@@ -102,7 +102,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     // dolu/kontur seçeneği çıkar.
     const [tool, setTool] = useState<'pen' | 'shape'>('pen');
     const [activeShapeId, setActiveShapeId] = useState<string | null>(null);
-    const [filled, setFilled] = useState(true);
+    const [filled, setFilled] = useState(false);
     const [shapePanelOpen, setShapePanelOpen] = useState(false);
     const [activeCategory, setActiveCategory] = useState<ShapeCategory>('basic');
     const activeShapeDef = activeShapeId ? findShape(activeShapeId) : undefined;
@@ -275,8 +275,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             )}
             <button
               type="button"
-              className={`btn-secondary tool-button${tool === 'pen' ? ' is-selected' : ''}`}
-              onClick={() => { setTool('pen'); setShapePanelOpen(false); }}
+              className={`btn-secondary tool-button${tool === 'pen' && !isEraser ? ' is-selected' : ''}`}
+              onClick={() => { setTool('pen'); setIsEraser(false); setShapePanelOpen(false); }}
             >
               ✏️ Kalem
             </button>

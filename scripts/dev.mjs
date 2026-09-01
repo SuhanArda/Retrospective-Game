@@ -12,6 +12,7 @@ const commands = process.argv.includes('--with-server')
       { script: 'dev:draw-and-guess', required: true },
       { script: 'dev:imposter', required: true },
       { script: 'dev:tank-battle', required: true },
+      { script: 'dev:hide-and-seek', required: true },
     ]
   : [
       { script: 'dev:web', required: true },
@@ -21,6 +22,7 @@ const commands = process.argv.includes('--with-server')
       { script: 'dev:draw-and-guess', required: true },
       { script: 'dev:imposter', required: true },
       { script: 'dev:tank-battle', required: true },
+      { script: 'dev:hide-and-seek', required: true },
     ];
 const children = commands.map(({ script, required }) => ({
   script,

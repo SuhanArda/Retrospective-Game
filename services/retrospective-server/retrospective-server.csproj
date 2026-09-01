@@ -5,4 +5,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Retrospective.Server</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Saklambaç's map lives in exactly one physical file, in the client
+      workspace — this links it into the build output rather than keeping a
+      second copy in sync by hand, so client and server can never drift on
+      wall/floor geometry. See games/hide-and-seek/src/data/maps/classic.json.
+    -->
+    <Content Include="..\..\games\hide-and-seek\src\data\maps\classic.json"
+             Link="Rooms\HideSeek\maps\classic.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

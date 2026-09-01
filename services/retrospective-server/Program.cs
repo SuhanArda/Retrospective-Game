@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using Retrospective.Server.Contracts;
 using Retrospective.Server.Hubs;
 using Retrospective.Server.Rooms;
+using Retrospective.Server.Rooms.HideSeek;
 
 var builder = WebApplication.CreateBuilder(args);
 var renderPort = Environment.GetEnvironmentVariable("PORT");
@@ -44,6 +45,9 @@ builder.Services.Configure<RoomOptions>(builder.Configuration.GetSection("Rooms"
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IRoomRandom, CryptographicRoomRandom>();
 builder.Services.AddSingleton<RoomManager>();
+builder.Services.AddSingleton(_ => HideSeekMap.LoadClassic());
+builder.Services.AddSingleton<HideSeekManager>();
+builder.Services.AddHostedService<HideSeekGameLoopService>();
 builder.Services.AddHttpClient<AiQuestionGateway>((services, client) =>
 {
     var configuration = services.GetRequiredService<IConfiguration>();

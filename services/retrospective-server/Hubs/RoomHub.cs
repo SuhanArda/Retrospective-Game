@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.SignalR;
 using Retrospective.Server.Contracts;
 using Retrospective.Server.Rooms;
+using Retrospective.Server.Rooms.HideSeek;
 
 namespace Retrospective.Server.Hubs;
 
-public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger, AiQuestionGateway ai) : Hub<IRoomClient>
+public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger, AiQuestionGateway ai, HideSeekManager hideSeek) : Hub<IRoomClient>
 {
     public static string GroupName(string roomCode) => $"room:{roomCode}";
 
@@ -22,6 +23,8 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             if (room.CurrentGameSession?.GameId == "tank-battle")
                 await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(
                     rooms.GetTankBattleSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
+            if (room.CurrentGameSession?.GameId == "hide-and-seek" && room.HideAndSeekState is { } hideAndSeekState)
+                await Clients.Client(Context.ConnectionId).HideAndSeekGameStarted(hideSeek.GetMapPayload(), hideAndSeekState);
             return new HubJoinResult(true, room);
         }
         catch (RoomException error)
@@ -52,7 +55,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         var resolution = rooms.ResolveVote(Context.ConnectionId);
         await Broadcast(resolution.Snapshot);
         if (resolution.GameStarted)
+        {
             await Clients.Group(GroupName(resolution.Snapshot.Code)).GameStarted(resolution.Snapshot.CurrentGameSession!);
+            if (resolution.Snapshot.CurrentGameSession?.GameId == "hide-and-seek" && resolution.Snapshot.HideAndSeekState is { } hideAndSeekState)
+                await Clients.Group(GroupName(resolution.Snapshot.Code)).HideAndSeekGameStarted(hideSeek.GetMapPayload(), hideAndSeekState);
+        }
         return resolution.Snapshot;
     }
 
@@ -172,6 +179,19 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessCanvasCleared();
+    }
+
+    /// <summary>
+    /// Fire-and-forget, at most `TICK_RATE` times per second: which directions
+    /// are held right now. The tick loop applies it server-side and reports
+    /// each player's position back through <c>HideAndSeekSnapshot</c>, unicast
+    /// per connection — never through this method's return value or any
+    /// group broadcast.
+    /// </summary>
+    public Task SendHideAndSeekInput(HideAndSeekInputRequest request)
+    {
+        rooms.SetHideAndSeekInput(Context.ConnectionId, request);
+        return Task.CompletedTask;
     }
 
     public async Task LeaveRoom()

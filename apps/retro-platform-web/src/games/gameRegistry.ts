@@ -119,6 +119,18 @@ export const gameRegistry: readonly GameDefinition[] = [
     voteScreenshotUrl: '/screenshots/imposter-wide-v2.png',
     getLaunchUrl: (config) => config.imposterUrl,
   },
+  {
+    id: 'hide-and-seek',
+    name: 'Saklambaç',
+    descriptionKey: 'games.hide-and-seek.description',
+    detailKey: 'games.hide-and-seek.detail',
+    stepsKey: 'games.hide-and-seek.steps',
+    status: 'available',
+    minPlayers: 3,
+    maxPlayers: 10,
+    visualLabel: 'SK',
+    getLaunchUrl: (config) => config.hideAndSeekUrl,
+  },
 ];
 
 export function findGame(gameId: string): GameDefinition | null {

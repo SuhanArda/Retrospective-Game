@@ -13,6 +13,11 @@ import type {
   FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
+  HideAndSeekInputRequest,
+  HideAndSeekMapPayload,
+  HideAndSeekPersonalSnapshot,
+  HideAndSeekPlayerCaughtEvent,
+  HideAndSeekStateSnapshot,
   ImposterGameSnapshot,
   ImposterStateChanged,
   CastImposterVoteRequest,
@@ -83,6 +88,10 @@ type EventMap = {
   retroRushRoundStarted: RetroRushGameSnapshot;
   imposterStateChanged: ImposterStateChanged;
   tankBattleSnapshot: TankBattleGameSnapshot;
+  hideAndSeekGameStarted: { map: HideAndSeekMapPayload; state: HideAndSeekStateSnapshot };
+  hideAndSeekSnapshot: HideAndSeekPersonalSnapshot;
+  hideAndSeekStateChanged: HideAndSeekStateSnapshot;
+  playerCaught: HideAndSeekPlayerCaughtEvent;
 };
 
 type Listener<K extends keyof EventMap> = (event: EventMap[K]) => void;
@@ -231,6 +240,10 @@ export class RoomRealtimeClient {
   setImposterBackground(gameSessionId: string, backgroundId: string): Promise<ImposterGameSnapshot> {
     return this.invoke('SetImposterBackground', gameSessionId, backgroundId);
   }
+  /** Fire-and-forget — the server's reply arrives as `hideAndSeekSnapshot` events, never through this call's own promise. */
+  sendHideAndSeekInput(request: HideAndSeekInputRequest): Promise<void> {
+    return this.invoke('SendHideAndSeekInput', request);
+  }
 
   private async open(): Promise<RoomSnapshot> {
     this.emit('connectionChanged', 'connecting');
@@ -264,6 +277,11 @@ export class RoomRealtimeClient {
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
     connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
     connection.on('TankBattleSnapshot', (snapshot: TankBattleGameSnapshot) => this.emit('tankBattleSnapshot', snapshot));
+    connection.on('HideAndSeekGameStarted', (map: HideAndSeekMapPayload, state: HideAndSeekStateSnapshot) =>
+      this.emit('hideAndSeekGameStarted', { map, state }));
+    connection.on('HideAndSeekSnapshot', (snapshot: HideAndSeekPersonalSnapshot) => this.emit('hideAndSeekSnapshot', snapshot));
+    connection.on('HideAndSeekStateChanged', (state: HideAndSeekStateSnapshot) => this.emit('hideAndSeekStateChanged', state));
+    connection.on('PlayerCaught', (evt: HideAndSeekPlayerCaughtEvent) => this.emit('playerCaught', evt));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {
       this.emit('connectionChanged', 'connected');

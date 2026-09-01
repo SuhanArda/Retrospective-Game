@@ -5,7 +5,7 @@ describe('game registry', () => {
   it('registers every playable game with a unique ID', () => {
     const available = gameRegistry.filter((game) => game.status === 'available');
     expect(available.map((game) => game.id)).toEqual([
-      'retro-rush', 'tank-battle', 'spin-the-bottle', 'rus-ruleti', 'draw-and-guess', 'imposter',
+      'retro-rush', 'tank-battle', 'spin-the-bottle', 'rus-ruleti', 'draw-and-guess', 'imposter', 'hide-and-seek',
     ]);
     expect(new Set(gameRegistry.map((game) => game.id)).size).toBe(gameRegistry.length);
     expect(findGame('retro-rush')?.name).toBe('Retro Rush');
@@ -14,7 +14,13 @@ describe('game registry', () => {
     expect(findGame('draw-and-guess')?.name).toBe('Draw & Guess');
     expect(findGame('imposter')?.name).toBe('Imposter');
     expect(findGame('tank-battle')?.name).toBe('Tank Battle');
-    expect(available.every((game) => game.screenshotUrl && game.voteScreenshotUrl)).toBe(true);
+    expect(findGame('hide-and-seek')?.name).toBe('Saklambaç');
+    // Saklambaç has no screenshot art yet — the vote card falls back to the
+    // gradient + visualLabel placeholder, same as any game would before art ships.
+    const gamesWithoutScreenshotsYet = new Set(['hide-and-seek']);
+    expect(available
+      .filter((game) => !gamesWithoutScreenshotsYet.has(game.id))
+      .every((game) => game.screenshotUrl && game.voteScreenshotUrl)).toBe(true);
   });
 
   it('returns null for unknown games', () => expect(findGame('not-a-game')).toBeNull());

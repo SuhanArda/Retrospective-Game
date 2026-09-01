@@ -28,11 +28,7 @@ function Header() {
       <header className="site-header">
         <button className="header-brand" onClick={() => navigate('/')} type="button">
           <span className="header-logo">
-            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-              <circle cx="22" cy="32" r="7" fill="#ff8c42" />
-              <circle cx="43" cy="22" r="6" fill="#ff8c42" />
-              <circle cx="43" cy="42" r="6" fill="#ff8c42" />
-            </svg>
+            <img src="/logo-dragon.png" alt="" width="30" height="30" />
           </span>
           <span className="header-brand-text">
             <TypeText text={t('header.brand')} />

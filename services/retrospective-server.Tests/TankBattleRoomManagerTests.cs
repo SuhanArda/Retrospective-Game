@@ -330,7 +330,7 @@ public sealed class TankBattleRoomManagerTests
         {
             DisconnectGraceSeconds = 25,
             QuestionLoadingMilliseconds = 1800,
-        }), new FixedRoomRandom(3));
+        }), new FixedRoomRandom(3), HideSeekTestSupport.CreateManager());
         var host = manager.Create(new CreateRoomRequest("Arda", "#ef5350", "Tank Room", 10, 30, 30));
         var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#42a5f5"));
         var extras = Enumerable.Range(0, extraPlayerCount)
