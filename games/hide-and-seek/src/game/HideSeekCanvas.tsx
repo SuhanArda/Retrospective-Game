@@ -28,9 +28,12 @@ const WALL_DEPTH_RATIO = 0.26;
  * and the seeker red; the seeker sees red across the board (no teammates to
  * pick out, so no reason to split "me" from "them").
  */
-const SELF_FILL = '#4cd08a';
-const ALLY_FILL = '#4aa3ff';
-const SEEKER_FILL = '#e6553f';
+// Exported so the HUD's role legend (see App.tsx) can swatch the exact same
+// colors instead of duplicating the hex values and risking the two drifting
+// apart.
+export const SELF_FILL = '#4cd08a';
+export const ALLY_FILL = '#4aa3ff';
+export const SEEKER_FILL = '#e6553f';
 const REMOTE_PLAYER_OUTLINE = '#f5f4f8';
 const BACKDROP_COLOR = '#050409';
 /** Warm lantern-glow tint laid over the currently-visible area, additive (`screen` blend) so it only brightens, never recolors, what's underneath. */
@@ -76,12 +79,11 @@ const SHAKE_MAX_OFFSET_PX = 6;
 /** How long a single footprint mark stays visible before fading out entirely, in milliseconds. */
 const FOOTPRINT_LIFETIME_MS = 3000;
 /** Opacity a footprint is drawn at the instant it's placed — it only ever fades down from here. */
-const FOOTPRINT_MAX_ALPHA = 0.35;
-/** World-pixel size of one footprint oval: long axis along the direction of travel. */
-const FOOTPRINT_LENGTH = 5;
-const FOOTPRINT_WIDTH = 2.6;
+const FOOTPRINT_MAX_ALPHA = 0.55;
+/** World-pixel radius of one footprint dot — round, not an oval; sized to actually read at a glance without rivaling a player token. */
+const FOOTPRINT_RADIUS = 4.5;
 /** How far a footprint sits to either side of the player's direct path, world px — the left/right alternation that makes it read as a gait rather than a dotted line straight down the middle. */
-const FOOTPRINT_SIDE_OFFSET_PX = 3;
+const FOOTPRINT_SIDE_OFFSET_PX = 3.5;
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -750,15 +752,12 @@ export function HideSeekCanvas({ grid, online, phase }: HideSeekCanvasProps) {
         const perpAngle = mark.angle + Math.PI / 2;
         const offsetX = Math.cos(perpAngle) * FOOTPRINT_SIDE_OFFSET_PX * mark.side;
         const offsetY = Math.sin(perpAngle) * FOOTPRINT_SIDE_OFFSET_PX * mark.side;
-        ctx.save();
-        ctx.translate(mark.x + offsetX, mark.y + offsetY);
-        ctx.rotate(mark.angle);
         ctx.globalAlpha = FOOTPRINT_MAX_ALPHA * (1 - progress);
         ctx.fillStyle = mark.color;
         ctx.beginPath();
-        ctx.ellipse(0, 0, FOOTPRINT_LENGTH / 2, FOOTPRINT_WIDTH / 2, 0, 0, Math.PI * 2);
+        ctx.arc(mark.x + offsetX, mark.y + offsetY, FOOTPRINT_RADIUS, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
+        ctx.globalAlpha = 1;
       }
     }
 
