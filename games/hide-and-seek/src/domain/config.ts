@@ -23,7 +23,7 @@ export const HideSeekConfig = {
   /** Hider movement speed, px/sec. */
   PLAYER_SPEED: 140,
   /** Seeker speed as a multiplier of PLAYER_SPEED. */
-  SEEKER_SPEED_MULT: 1.05,
+  SEEKER_SPEED_MULT: 1.2,
   /** Half-width of a player's collision box, in px — kept well under half a
    * tile (10px) so two players can still pass each other in a corridor. */
   PLAYER_RADIUS: 7,
@@ -40,9 +40,9 @@ export const HideSeekConfig = {
   REVEAL_WARNING_SEC: 5,
 
   /** A hider within this many px of the seeker is eligible to be caught. */
-  CATCH_RADIUS_PX: 24,
+  CATCH_RADIUS_PX: 32,
   /** Seconds of uninterrupted contact within CATCH_RADIUS_PX before a catch lands. */
-  CATCH_DURATION_SEC: 2.0,
+  CATCH_DURATION_SEC: 1.0,
   /** Contact can drop for up to this long (network jitter) without resetting the catch timer. */
   CATCH_GRACE_SEC: 0.3,
 

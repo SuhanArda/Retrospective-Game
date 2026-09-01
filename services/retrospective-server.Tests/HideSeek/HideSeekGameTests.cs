@@ -194,20 +194,23 @@ public sealed class HideSeekGameTests
     }
 
     [Fact]
-    public void CatchesAHiderAfterTwoSecondsOfUninterruptedContact()
+    public void CatchesAHiderAfterSustainedUninterruptedContact()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-28T00:00:00Z"));
         var map = BuildAdjacentSpawnMap();
         var game = new HideSeekGame("ROOM1", map, [("seeker", "c1"), ("hider", "c2")], new SequentialRoomRandom(0, 0), clock);
         clock.Advance(TimeSpan.FromSeconds(HideSeekConfig.PrepDurationSec)); // into DARK — PREP never processes catches
 
-        var almostCaught = game.Tick(HideSeekConfig.CatchDurationSec - 0.1);
+        // Proportional to CatchDurationSec rather than a fixed "-0.1s" margin
+        // — a short duration (this game tunes it aggressively) leaves too
+        // little room for a fixed offset to stay safely short of a full catch.
+        var almostCaught = game.Tick(HideSeekConfig.CatchDurationSec * 0.9);
         Assert.Empty(almostCaught.NewCatches);
         var hiderTick = almostCaught.Players.Single(p => p.PlayerId == "hider");
         Assert.False(hiderTick.Snapshot.IsSpectator);
-        Assert.True(hiderTick.Snapshot.CatchProgress is > 0.9 and < 1);
+        Assert.True(hiderTick.Snapshot.CatchProgress is > 0.85 and < 1);
 
-        var caughtTick = game.Tick(0.2); // crosses the 2.0s threshold
+        var caughtTick = game.Tick(HideSeekConfig.CatchDurationSec * 0.2); // comfortably crosses the threshold
         Assert.Single(caughtTick.NewCatches);
         var caughtEvent = caughtTick.NewCatches[0];
         Assert.Equal("hider", caughtEvent.PlayerId);
@@ -223,18 +226,18 @@ public sealed class HideSeekGameTests
         var game = new HideSeekGame("ROOM1", map, [("seeker", "c1"), ("hider", "c2")], new SequentialRoomRandom(0, 0), clock);
         clock.Advance(TimeSpan.FromSeconds(HideSeekConfig.PrepDurationSec));
 
-        game.Tick(1.0); // 1.0s of contact banked, both still stationary 20px apart
+        game.Tick(HideSeekConfig.CatchDurationSec * 0.5); // half the contact banked, both still stationary 20px apart
 
         // Hider steps away far enough to break contact (20px -> 34px), held just one tick.
         game.SetInput("hider", new HideAndSeekInputRequest(false, false, false, true, Seq: 1));
-        var brokenContact = game.Tick(0.1); // moves ~14px right; grace ticks down from 0.3 to 0.2, contact NOT reset
+        var brokenContact = game.Tick(0.1); // moves ~14px right; grace ticks down, contact NOT reset
         Assert.True(brokenContact.Players.Single(p => p.PlayerId == "hider").Snapshot.CatchProgress is > 0.4 and < 0.6);
 
         // Steps back within the grace window (well under CatchGraceSec).
         game.SetInput("hider", new HideAndSeekInputRequest(false, false, true, false, Seq: 2));
-        game.Tick(0.1); // back within range; contact resumes from 1.0s, now 1.1s
+        game.Tick(0.1); // back within range; contact resumes from where it left off
 
-        var caughtTick = game.Tick(0.9); // 1.1 + 0.9 = 2.0s total — never reset despite the brief gap
+        var caughtTick = game.Tick(HideSeekConfig.CatchDurationSec); // comfortably crosses the threshold — never reset despite the brief gap
         Assert.Single(caughtTick.NewCatches);
     }
 
@@ -246,11 +249,11 @@ public sealed class HideSeekGameTests
         var game = new HideSeekGame("ROOM1", map, [("seeker", "c1"), ("hider", "c2")], new SequentialRoomRandom(0, 0), clock);
         clock.Advance(TimeSpan.FromSeconds(HideSeekConfig.PrepDurationSec));
 
-        game.Tick(1.5); // well past halfway
+        game.Tick(HideSeekConfig.CatchDurationSec * 0.75); // well past halfway, still short of a full catch
         game.SetInput("hider", new HideAndSeekInputRequest(false, false, false, true, Seq: 1));
         game.Tick(0.1); // breaks contact
 
-        var afterGraceExpires = game.Tick(HideSeekConfig.CatchGraceSec + 0.1); // stays out of range past the 0.3s grace
+        var afterGraceExpires = game.Tick(HideSeekConfig.CatchGraceSec + 0.1); // stays out of range past the grace window
         Assert.Equal(0, afterGraceExpires.Players.Single(p => p.PlayerId == "hider").Snapshot.CatchProgress);
     }
 

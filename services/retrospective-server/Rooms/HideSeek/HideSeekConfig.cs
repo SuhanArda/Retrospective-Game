@@ -19,7 +19,7 @@ public static class HideSeekConfig
     /// <summary>Hider movement speed, px/sec.</summary>
     public const double PlayerSpeed = 140;
     /// <summary>Seeker speed as a multiplier of PlayerSpeed.</summary>
-    public const double SeekerSpeedMultiplier = 1.05;
+    public const double SeekerSpeedMultiplier = 1.2;
     /// <summary>Half-width of a player's collision box, in px.</summary>
     public const double PlayerRadius = 7;
 
@@ -29,8 +29,8 @@ public static class HideSeekConfig
     public const int RevealDurationSec = 15;
     public const int RevealWarningSec = 5;
 
-    public const double CatchRadiusPx = 24;
-    public const double CatchDurationSec = 2.0;
+    public const double CatchRadiusPx = 32;
+    public const double CatchDurationSec = 1.0;
     public const double CatchGraceSec = 0.3;
 
     public const int MinPlayers = 3;

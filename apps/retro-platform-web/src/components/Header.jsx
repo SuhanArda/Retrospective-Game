@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
+import { useTheme } from '../context/ThemeContext.jsx'
 import Avatar from './Avatar.jsx'
 import DrawerMascot from './DrawerMascot.jsx'
 import TypeText from './TypeText.jsx'
@@ -13,7 +14,9 @@ function Header() {
   const [open, setOpen] = useState(false)
   const { user, openEditor } = useUser()
   const { t } = useLanguage()
+  const { theme } = useTheme()
   const navigate = useNavigate()
+  const logoSrc = theme === 'dark' ? '/logo-dragon-dark.png' : '/logo-dragon.png'
 
   const links = [
     { to: '/', label: t('nav.home') },
@@ -28,7 +31,7 @@ function Header() {
       <header className="site-header">
         <button className="header-brand" onClick={() => navigate('/')} type="button">
           <span className="header-logo">
-            <img src="/logo-dragon.png" alt="" width="30" height="30" />
+            <img src={logoSrc} alt="" width="30" height="30" />
           </span>
           <span className="header-brand-text">
             <TypeText text={t('header.brand')} />
