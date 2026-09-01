@@ -24,10 +24,14 @@ public sealed class HideSeekPlayerState
     public string? ConnectionId { get; set; }
     public bool Connected { get; set; }
     public HideSeekPlayerStatus Status { get; set; } = HideSeekPlayerStatus.Active;
-    /// <summary>Seconds of uninterrupted seeker contact accumulated so far — resets once it either lands a catch or the grace window (below) expires.</summary>
+    /// <summary>
+    /// A health bar, not a sustained-contact timer: seconds of seeker
+    /// contact accumulated across the *whole round*, never reset by
+    /// breaking contact — only ever paused (stops climbing, but doesn't
+    /// fall back) until the seeker catches up again. Only resets (to 0) at
+    /// the moment it actually lands a catch. See <see cref="HideSeekGame.ProcessCatches"/>.
+    /// </summary>
     public double CatchContactSeconds { get; set; }
-    /// <summary>Counts down while out of contact; contact resumes without resetting <see cref="CatchContactSeconds"/> as long as this hasn't hit zero.</summary>
-    public double CatchGraceRemainingSeconds { get; set; }
     /// <summary>Set when this player disconnects; cleared on reconnect. Once passed, <see cref="HideSeekGame"/> drops them from the round as a neutral dropout — see <see cref="HideSeekConfig.DisconnectGraceSec"/>.</summary>
     public long? DisconnectExpiresAtUtc { get; set; }
 }
@@ -319,9 +323,12 @@ public sealed class HideSeekGame
 
     /// <summary>
     /// One seeker, so one contact check per hider: within
-    /// <see cref="HideSeekConfig.CatchRadiusPx"/> accumulates toward a catch;
-    /// outside it burns down a grace window before resetting, so ordinary
-    /// network jitter can't undo real progress. Caller must hold <see cref="_gate"/>.
+    /// <see cref="HideSeekConfig.CatchRadiusPx"/> accumulates toward a
+    /// catch. A health bar, not a sustained-contact timer — breaking
+    /// contact simply stops it climbing, it never falls back down. A hider
+    /// brushed twice for a second each is exactly as caught as one held for
+    /// two seconds straight; only landing the catch itself resets it.
+    /// Caller must hold <see cref="_gate"/>.
     /// </summary>
     private List<HideAndSeekPlayerCaughtEvent> ProcessCatches(double dtSeconds)
     {
@@ -334,26 +341,18 @@ public sealed class HideSeekGame
             var dx = hider.X - seeker.X;
             var dy = hider.Y - seeker.Y;
             var inContact = Math.Sqrt(dx * dx + dy * dy) <= HideSeekConfig.CatchRadiusPx;
+            if (!inContact) continue; // paused, not reset — see the method's own doc comment
 
-            if (inContact)
+            hider.CatchContactSeconds += dtSeconds;
+            if (hider.CatchContactSeconds >= HideSeekConfig.CatchDurationSec)
             {
-                hider.CatchContactSeconds += dtSeconds;
-                hider.CatchGraceRemainingSeconds = HideSeekConfig.CatchGraceSec;
-                if (hider.CatchContactSeconds >= HideSeekConfig.CatchDurationSec)
-                {
-                    hider.Status = HideSeekPlayerStatus.Caught;
-                    hider.CatchContactSeconds = 0;
-                    hider.InputUp = hider.InputDown = hider.InputLeft = hider.InputRight = false;
-                    _caughtPlayerIds.Add(hider.PlayerId);
-                    _revision++;
-                    var remainingActive = _players.Values.Count(p => p.Role == HideSeekRole.Hider && p.Status == HideSeekPlayerStatus.Active);
-                    caught.Add(new HideAndSeekPlayerCaughtEvent(hider.PlayerId, SeekerPlayerId, remainingActive));
-                }
-            }
-            else if (hider.CatchGraceRemainingSeconds > 0)
-            {
-                hider.CatchGraceRemainingSeconds -= dtSeconds;
-                if (hider.CatchGraceRemainingSeconds <= 0) hider.CatchContactSeconds = 0;
+                hider.Status = HideSeekPlayerStatus.Caught;
+                hider.CatchContactSeconds = 0;
+                hider.InputUp = hider.InputDown = hider.InputLeft = hider.InputRight = false;
+                _caughtPlayerIds.Add(hider.PlayerId);
+                _revision++;
+                var remainingActive = _players.Values.Count(p => p.Role == HideSeekRole.Hider && p.Status == HideSeekPlayerStatus.Active);
+                caught.Add(new HideAndSeekPlayerCaughtEvent(hider.PlayerId, SeekerPlayerId, remainingActive));
             }
         }
 

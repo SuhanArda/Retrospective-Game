@@ -219,42 +219,50 @@ public sealed class HideSeekGameTests
     }
 
     [Fact]
-    public void ABriefLossOfContactWithinTheGraceWindowDoesNotResetCatchProgress()
+    public void CatchProgressIsAHealthBarThatOnlyPausesWhenContactBreaksNeverResets()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-28T00:00:00Z"));
         var map = BuildAdjacentSpawnMap();
         var game = new HideSeekGame("ROOM1", map, [("seeker", "c1"), ("hider", "c2")], new SequentialRoomRandom(0, 0), clock);
         clock.Advance(TimeSpan.FromSeconds(HideSeekConfig.PrepDurationSec));
 
-        game.Tick(HideSeekConfig.CatchDurationSec * 0.5); // half the contact banked, both still stationary 20px apart
+        game.Tick(HideSeekConfig.CatchDurationSec * 0.5); // half the bar filled, both still stationary 20px apart
 
-        // Hider steps away far enough to break contact (20px -> 34px), held just one tick.
+        // Hider walks to the far wall in small steps — a single giant Tick()
+        // resolves movement in one shot with no wall-sliding, so a huge dt
+        // that would overshoot a wall gets rejected outright instead of
+        // stopping at it; this matches the real ~20Hz tick rate instead.
         game.SetInput("hider", new HideAndSeekInputRequest(false, false, false, true, Seq: 1));
-        var brokenContact = game.Tick(0.1); // moves ~14px right; grace ticks down, contact NOT reset
-        Assert.True(brokenContact.Players.Single(p => p.PlayerId == "hider").Snapshot.CatchProgress is > 0.4 and < 0.6);
+        for (var i = 0; i < 20; i++) game.Tick(0.1); // 2s of movement — comfortably reaches and settles at the wall
 
-        // Steps back within the grace window (well under CatchGraceSec).
-        game.SetInput("hider", new HideAndSeekInputRequest(false, false, true, false, Seq: 2));
-        game.Tick(0.1); // back within range; contact resumes from where it left off
-
-        var caughtTick = game.Tick(HideSeekConfig.CatchDurationSec); // comfortably crosses the threshold — never reset despite the brief gap
-        Assert.Single(caughtTick.NewCatches);
+        // No old "grace window" to wait out anymore, so even many more
+        // seconds of zero contact leave the bar exactly where it was.
+        var stillHalfway = game.Tick(5.0).Players.Single(p => p.PlayerId == "hider").Snapshot.CatchProgress;
+        Assert.True(stillHalfway is > 0.4 and < 0.6);
     }
 
     [Fact]
-    public void ALossOfContactPastTheGraceWindowResetsCatchProgress()
+    public void SeparateEncountersAccumulateTowardTheSameCatch()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-28T00:00:00Z"));
         var map = BuildAdjacentSpawnMap();
         var game = new HideSeekGame("ROOM1", map, [("seeker", "c1"), ("hider", "c2")], new SequentialRoomRandom(0, 0), clock);
         clock.Advance(TimeSpan.FromSeconds(HideSeekConfig.PrepDurationSec));
 
-        game.Tick(HideSeekConfig.CatchDurationSec * 0.75); // well past halfway, still short of a full catch
+        // First encounter: half the bar, then the hider walks away for good
+        // (small steps — see the sibling test's comment on why).
+        game.Tick(HideSeekConfig.CatchDurationSec * 0.5);
         game.SetInput("hider", new HideAndSeekInputRequest(false, false, false, true, Seq: 1));
-        game.Tick(0.1); // breaks contact
+        for (var i = 0; i < 20; i++) game.Tick(0.1); // settles at the far wall, well outside CatchRadiusPx
 
-        var afterGraceExpires = game.Tick(HideSeekConfig.CatchGraceSec + 0.1); // stays out of range past the grace window
-        Assert.Equal(0, afterGraceExpires.Players.Single(p => p.PlayerId == "hider").Snapshot.CatchProgress);
+        // Second encounter, later in the round: the hider walks back and
+        // through the seeker's spot. The bar picks up from half — it
+        // doesn't restart from 0 — so this second brush is enough to finish
+        // it well before the loop runs out.
+        game.SetInput("hider", new HideAndSeekInputRequest(false, false, true, false, Seq: 2));
+        var totalCatches = 0;
+        for (var i = 0; i < 20; i++) totalCatches += game.Tick(0.1).NewCatches.Count;
+        Assert.Equal(1, totalCatches);
     }
 
     [Fact]
