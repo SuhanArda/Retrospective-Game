@@ -30,8 +30,13 @@ public static class HideSeekConfig
     public const int RevealWarningSec = 5;
 
     public const double CatchRadiusPx = 32;
-    public const double CatchDurationSec = 1.0;
-    public const double CatchGraceSec = 0.3;
+    /// <summary>
+    /// Total seconds of seeker contact needed to land a catch — a health
+    /// bar accumulated across the whole round, not a sustained-contact
+    /// timer. Breaking contact only pauses it (stops it climbing); it never
+    /// falls back down. See <see cref="HideSeekGame.ProcessCatches"/>.
+    /// </summary>
+    public const double CatchDurationSec = 2.0;
 
     public const int MinPlayers = 3;
     public const int MaxPlayers = 10;

@@ -41,10 +41,14 @@ export const HideSeekConfig = {
 
   /** A hider within this many px of the seeker is eligible to be caught. */
   CATCH_RADIUS_PX: 32,
-  /** Seconds of uninterrupted contact within CATCH_RADIUS_PX before a catch lands. */
-  CATCH_DURATION_SEC: 1.0,
-  /** Contact can drop for up to this long (network jitter) without resetting the catch timer. */
-  CATCH_GRACE_SEC: 0.3,
+  /**
+   * Total seconds of seeker contact needed to land a catch — a health bar
+   * accumulated across the *whole round*, not a sustained-contact timer.
+   * Breaking contact only pauses it (stops it climbing); it never falls
+   * back down. Two separate ten-second-apart brushes of half a second each
+   * catch a hider exactly as surely as one full second held in one go.
+   */
+  CATCH_DURATION_SEC: 2.0,
 
   MIN_PLAYERS: 3,
   MAX_PLAYERS: 10,
