@@ -51,7 +51,18 @@ builder.Services.AddHostedService<HideSeekGameLoopService>();
 builder.Services.AddHttpClient<AiQuestionGateway>((services, client) =>
 {
     var configuration = services.GetRequiredService<IConfiguration>();
-    client.BaseAddress = new Uri(configuration["AiQuestions:BaseUrl"] ?? "http://localhost:3002/");
+    var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("AI.Config");
+    var configuredBaseUrl = configuration["AiQuestions:BaseUrl"];
+    var baseUrl = string.IsNullOrWhiteSpace(configuredBaseUrl) ? "http://localhost:3002/" : configuredBaseUrl;
+    if (string.IsNullOrWhiteSpace(configuredBaseUrl))
+    {
+        logger.LogWarning("[AI Gateway] AiQuestions:BaseUrl is missing; using development default {BaseUrl}", baseUrl);
+    }
+    logger.LogInformation(
+        "[AI Config] backendBaseUrl={BaseUrl} internalServiceKeyConfigured={InternalServiceKeyConfigured}",
+        baseUrl,
+        !string.IsNullOrWhiteSpace(configuration["AiQuestions:InternalServiceKey"]));
+    client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromSeconds(40);
 });
 builder.Services.AddSignalR();

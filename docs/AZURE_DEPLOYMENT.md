@@ -40,7 +40,7 @@ All `VITE_*` values are public build-time browser configuration. Never place key
 | `Azure__SignalR__ConnectionString` | Backend, optional later | unset | Azure SignalR SDK configuration after optional integration | Yes |
 | `AI_PROVIDER` | AI Bot | `local` | `local` or `gemini` | No |
 | `GEMINI_API_KEY` | AI Bot | `your-api-key-here` | Required when provider is `gemini` | Yes |
-| `GEMINI_MODEL` | AI Bot | `gemini-2.5-flash-lite` | Provider model name | No |
+| `GEMINI_MODEL` | AI Bot | `gemini-3.1-flash-lite` | Provider model name | No |
 | `PORT` | Spin and AI Bot | `3000` / `3002` | Assigned by App Service; do not hardcode it | No |
 | `NODE_ENV` | AI Bot | `development` or unset | `production`, enabling fail-closed CORS validation | No |
 | `ALLOWED_ORIGINS` | AI Bot | comma-separated local origins | Comma-separated exact HTTPS frontend origins | No |
