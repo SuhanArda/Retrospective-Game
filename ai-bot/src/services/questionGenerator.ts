@@ -10,6 +10,11 @@ export interface GeminiContentClient {
   }): Promise<{ text: string | undefined }>;
 }
 
+export interface GeminiDiagnosticLogger {
+  log(message: string): void;
+  warn(message: string): void;
+}
+
 const categories = ["reflection", "teamwork", "improvement", "fun"] as const;
 const forbiddenLeakPattern = /(https?:\/\/|www\.|system prompt|sistem talimat|api anahtar|access[_ -]?key|secret|password|e-?posta|@\w+\.|\+?\d[\d\s()-]{8,})/iu;
 const genericImposterAnswers = new Set([
@@ -100,6 +105,38 @@ function statusOf(error: unknown): number | null {
   return typeof status === "number" ? status : null;
 }
 
+function receivedQuestionCount(text: string): number | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const questions = (parsed as { questions?: unknown }).questions;
+    return Array.isArray(questions) ? questions.length : null;
+  } catch {
+    return null;
+  }
+}
+
+export function describeGeminiFailure(error: unknown): { status: number | null; reason: string } {
+  const status = statusOf(error);
+  if (status === 401 || status === 403) return { status, reason: "authentication" };
+  if (status === 404) return { status, reason: "model_not_found" };
+  if (status === 408) return { status, reason: "timeout" };
+  if (status === 429) return { status, reason: "rate_limit" };
+  if (status !== null && status >= 500) return { status, reason: "provider_unavailable" };
+  if (error instanceof Error) {
+    if (error.name === "AbortError" || error.name === "TimeoutError" || /timeout|zaman aşımı/iu.test(error.message)) {
+      return { status, reason: "timeout" };
+    }
+    if (/geçerli JSON/iu.test(error.message)) return { status, reason: "invalid_json" };
+    if (/yetersiz/iu.test(error.message)) return { status, reason: "source_insufficient" };
+    if (/şema|tekrarlanan|kategori|tam olarak 20|kaynakla ilgisiz/iu.test(error.message)) {
+      return { status, reason: "validation_rejected" };
+    }
+    if (/yanıtında soru çıktısı/iu.test(error.message)) return { status, reason: "empty_response" };
+  }
+  return { status, reason: "request_failed" };
+}
+
 function isRetryable(error: unknown): boolean {
   const status = statusOf(error);
   return status === null || status === 408 || status === 429 || status >= 500;
@@ -120,7 +157,12 @@ export async function generateQuestions(
   request: GenerateQuestionsRequest,
   client: GeminiContentClient,
   model: string,
-  options: { timeoutMs?: number; maximumRetries?: number; signal?: AbortSignal } = {},
+  options: {
+    timeoutMs?: number;
+    maximumRetries?: number;
+    signal?: AbortSignal;
+    logger?: GeminiDiagnosticLogger;
+  } = {},
 ): Promise<GenerateQuestionsResponse> {
   const timeoutMs = options.timeoutMs ?? 30_000;
   const maximumRetries = options.maximumRetries ?? 2;
@@ -130,6 +172,7 @@ export async function generateQuestions(
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const abortSignal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
     try {
+      options.logger?.log(`[AI] Gemini request sent attempt=${attempt + 1}`);
       const response = await client.generateContent({
         model,
         contents: buildGameQuestionPrompt(request),
@@ -164,9 +207,24 @@ export async function generateQuestions(
           },
         },
       });
+      const receivedCount = response.text ? receivedQuestionCount(response.text) : 0;
+      options.logger?.log(
+        `[AI] Gemini response received attempt=${attempt + 1} textPresent=${Boolean(response.text)} `
+        + `receivedCount=${receivedCount ?? "unknown"}`,
+      );
       if (!response.text) throw new Error("Gemini yanıtında soru çıktısı bulunamadı.");
-      const questions = parseQuestions(response.text);
-      validateAnswersAgainstSource(request, questions);
+      let questions: QuestionDraft[];
+      try {
+        questions = parseQuestions(response.text);
+        validateAnswersAgainstSource(request, questions);
+      } catch (error: unknown) {
+        const failure = describeGeminiFailure(error);
+        options.logger?.warn(
+          `[AI] Gemini response parsing/validation failed attempt=${attempt + 1} reason=${failure.reason} `
+          + `receivedCount=${receivedCount ?? "unknown"} acceptedCount=0`,
+        );
+        throw error;
+      }
       return {
         gameId: "room-retrospective",
         provider: "gemini",

@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { AppConfig } from "../config.js";
 import type { GenerateQuestionsRequest, GenerateQuestionsResponse } from "../types/questions.js";
 import { generateDemoQuestions } from "./demoQuestionGenerator.js";
-import { generateQuestions, type GeminiContentClient } from "./questionGenerator.js";
+import { describeGeminiFailure, generateQuestions, type GeminiContentClient } from "./questionGenerator.js";
 
 export interface AiQuestionGenerationService {
   generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse>;
@@ -23,12 +23,22 @@ export class GeminiQuestionGenerator implements AiQuestionGenerationService {
     this.client = { generateContent: (input) => sdk.models.generateContent(input) };
   }
 
-  generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse> {
-    return generateQuestions(request, this.client, this.config.model, {
-      timeoutMs: this.config.requestTimeoutMs,
-      maximumRetries: this.config.maximumRetries,
-      ...(signal ? { signal } : {}),
-    });
+  async generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse> {
+    console.log(`[AI] Gemini generation started model=${this.config.model}`);
+    try {
+      const generated = await generateQuestions(request, this.client, this.config.model, {
+        timeoutMs: this.config.requestTimeoutMs,
+        maximumRetries: this.config.maximumRetries,
+        logger: console,
+        ...(signal ? { signal } : {}),
+      });
+      console.log(`[AI] Gemini generation succeeded count=${generated.questions.length}`);
+      return generated;
+    } catch (error: unknown) {
+      const failure = describeGeminiFailure(error);
+      console.warn(`[AI] Gemini generation failed status=${failure.status ?? "none"} reason=${failure.reason}`);
+      throw error;
+    }
   }
 }
 
