@@ -1,5 +1,9 @@
 import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
 
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+  questionOpen?: boolean;
+}
+
 /**
  * Tam ekran aç/kapa düğmesi. Oyunlar platformdan iframe ile değil tam sayfa
  * yönlendirmeyle açıldığı için doğrudan `documentElement` üzerinde çalışır —
@@ -10,7 +14,7 @@ import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
  * kalırdı. Görünüm tamamen çağıran oyuna ait — her oyunun kendi buton stili
  * olduğu için `className` dışarıdan verilir.
  */
-export function FullscreenButton({ className, ...buttonProps }: ButtonHTMLAttributes<HTMLButtonElement>) {
+export function FullscreenButton({ className, questionOpen = false, ...buttonProps }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Destek kontrolü de effect içinde: sunucuda render edilen oyunlarda (Next)
   // ilk render'ın sunucuyla aynı olması, hydration uyuşmazlığını önler.
@@ -18,11 +22,23 @@ export function FullscreenButton({ className, ...buttonProps }: ButtonHTMLAttrib
 
   useEffect(() => {
     setSupported(typeof document.documentElement.requestFullscreen === 'function');
-    const sync = () => setIsFullscreen(document.fullscreenElement !== null);
+    const sync = () => {
+      const tankBattleIsFullscreen = document.fullscreenElement === document.documentElement;
+      setIsFullscreen(tankBattleIsFullscreen);
+      document.documentElement.classList.toggle('tank-battle-fullscreen', tankBattleIsFullscreen);
+    };
     sync();
     document.addEventListener('fullscreenchange', sync);
-    return () => document.removeEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.documentElement.classList.remove('tank-battle-fullscreen');
+    };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('tank-battle-question-open', questionOpen);
+    return () => document.documentElement.classList.remove('tank-battle-question-open');
+  }, [questionOpen]);
 
   // iOS Safari `requestFullscreen` desteklemez; orada düğmeyi hiç göstermemek,
   // basınca sessizce hiçbir şey olmayan bir düğme göstermekten iyidir.
