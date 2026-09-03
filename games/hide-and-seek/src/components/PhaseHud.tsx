@@ -9,7 +9,8 @@ const PHASE_LABELS: Record<HideAndSeekPhase, string> = {
   ENDED: 'Bitti',
 };
 
-function secondsLeft(endsAtUtc: number): number {
+/** Shared with `PrepCountdown` — both read the same `phaseEndsAtUtc`, just at different poll rates for different purposes. */
+export function secondsLeft(endsAtUtc: number): number {
   return Math.max(0, Math.ceil((endsAtUtc - Date.now()) / 1000));
 }
 

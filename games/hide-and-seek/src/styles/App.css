@@ -39,6 +39,21 @@
   color: #b8b0c9;
 }
 
+.controls-hint {
+  display: inline-block;
+  max-width: 24rem;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.5s ease, max-width 0.5s ease, margin-left 0.5s ease;
+}
+
+.controls-hint-fading {
+  opacity: 0;
+  max-width: 0;
+  margin-left: -12px; /* collapses the flex gap too, so the pill shrinks in cleanly rather than leaving a gap-shaped notch */
+}
+
 .return-to-lobby-button {
   position: absolute;
   top: 64px;
@@ -227,4 +242,34 @@
   color: #f5f4f8;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.prep-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.prep-countdown-number {
+  font-size: clamp(96px, 18vw, 220px);
+  font-weight: 900;
+  line-height: 1;
+  color: #e6553f;
+  text-shadow: 0 0 48px rgba(230, 85, 63, 0.55), 0 6px 24px rgba(0, 0, 0, 0.65);
+  animation: prep-countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* Sharp arrival, a held beat in the middle, then burns away — same shape as
+   draw-and-guess's score-pop keyframes, compressed to fit inside one second
+   so it can repeat cleanly for every number in the countdown. */
+@keyframes prep-countdown-pop {
+  0%   { opacity: 0; transform: scale(0.3); }
+  12%  { opacity: 1; transform: scale(1.25); }
+  22%  { opacity: 1; transform: scale(1); }
+  70%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.4); }
 }

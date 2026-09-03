@@ -9,7 +9,7 @@ import { ScorePop } from '../components/ScorePop';
 import { RoundTimer } from '../components/RoundTimer';
 import { WordHint } from '../components/WordHint';
 import { pickRandomWord } from '../data/words';
-import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
+import { MOCK_PLAYERS, pickNextDrawer } from '../data/mockPlayers';
 import type { DisplayPlayer } from '../domain/displayPlayer';
 import { DrawAndGuessRoomBridge, type DrawAndGuessBridgeState } from './roomBridge';
 import {
@@ -306,7 +306,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 function StandaloneGame() {
   const [word, setWord] = useState(() => pickRandomWord());
   const [recentWords, setRecentWords] = useState<string[]>([word]);
-  const [drawerId, setDrawerId] = useState(() => pickRandomDrawer(MOCK_PLAYERS).id);
+  const [drawerId, setDrawerId] = useState(() => pickNextDrawer(MOCK_PLAYERS).id);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -379,7 +379,7 @@ function StandaloneGame() {
     const nextWord = pickRandomWord(recentWords);
     setWord(nextWord);
     setRecentWords((current) => [nextWord, ...current].slice(0, RECENT_WORD_MEMORY));
-    setDrawerId((current) => pickRandomDrawer(MOCK_PLAYERS, current).id);
+    setDrawerId((current) => pickNextDrawer(MOCK_PLAYERS, current).id);
   }
 
   return (
