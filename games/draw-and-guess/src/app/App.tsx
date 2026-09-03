@@ -6,6 +6,7 @@ import { PlayerList } from '../components/PlayerList';
 import { GuessChat, type ChatMessage } from '../components/GuessChat';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { ScorePop } from '../components/ScorePop';
+import { FullscreenButton } from '../components/FullscreenButton';
 import { RoundTimer } from '../components/RoundTimer';
 import { WordHint } from '../components/WordHint';
 import { pickRandomWord } from '../data/words';
@@ -217,6 +218,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 
   return (
     <div className="page">
+      <FullscreenButton className="fullscreen-button" />
       {scorePop && <ScorePop key={scorePop.id} points={scorePop.points} onDone={() => setScorePop(null)} />}
       <div className="page-content">
         <div className="brand">Draw & Guess</div>

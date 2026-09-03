@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { TankBattleGameSnapshot } from '@retro-platform/contracts';
+import { FullscreenButton } from './FullscreenButton';
 
 interface Props {
   snapshot: TankBattleGameSnapshot | null;
@@ -39,5 +40,6 @@ export function Hud({ snapshot, localPlayerId, angle, power, connection }: Props
       <div><small>NİŞAN</small><strong>{angleDirection} {Math.abs(Math.round(angle))}°</strong></div>
       <div className="power-readout"><small>ATIŞ GÜCÜ</small><span className="power-track"><i style={{ '--power': `${powerPercent}%` } as CSSProperties} /></span><b>{Math.round(power)}</b></div>
     </div>
+    <FullscreenButton className="hud-fullscreen" />
   </header>;
 }

@@ -1,4 +1,5 @@
 import { abilityDefinitions } from '../data/abilityDefinitions';
+import { FullscreenButton } from './FullscreenButton';
 import type { MatchSnapshot } from '../domain/types';
 import { matchStateLabels, playerStateLabels } from './retroRushLabels';
 
@@ -15,7 +16,10 @@ export function Hud({ snapshot, muted, onMute, onAbility }: Props) {
       <header className="top-hud">
         <div className="brand"><span className="brand-mark">R</span><div><strong>RETRO RUSH</strong><small>YOSUNLU ORMAN KOŞUSU</small></div></div>
         <div className="match-meta"><span><small>ODA</small><strong>DX-204</strong></span><span><small>AŞAMA</small><strong>{matchStateLabels[snapshot.state]}</strong></span><span className="timer"><small>SÜRE</small><strong>{formatTime(snapshot.timeRemainingMs)}</strong></span></div>
-        <button className="icon-button" type="button" onClick={onMute} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>{muted ? 'SES KAPALI' : 'SES AÇIK'}</button>
+        <div className="hud-actions">
+          <button className="icon-button" type="button" onClick={onMute} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>{muted ? 'SES KAPALI' : 'SES AÇIK'}</button>
+          <FullscreenButton className="icon-button fullscreen-button" />
+        </div>
         <div className="abilities" aria-label="Yetenekler">
           {Object.values(abilityDefinitions).map((ability, index) => {
             const cooldown = snapshot.cooldowns[ability.id];

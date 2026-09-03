@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { RoomRealtimeClient } from "@retro-platform/realtime-client";
+import { FullscreenButton } from "./FullscreenButton";
 import {
   canControlSpinQuestion,
   type SpinBottleStateSnapshot,
@@ -512,6 +513,7 @@ export default function Home() {
           >
             <span className="music-icon" aria-hidden="true">♫</span>
           </button>
+          <FullscreenButton className="sound-button fullscreen-button" />
         </div>
       </header>
 
