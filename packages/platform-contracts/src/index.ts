@@ -453,6 +453,15 @@ export interface HideAndSeekVisiblePlayer {
   x: number;
   y: number;
   catchProgress: number;
+  /**
+   * True within the server's `VisionRadius` — render this player's actual
+   * token. False means they were only picked up by the wider
+   * `FootprintSenseRadius` check: their position still arrives (so a
+   * footprint trail can keep being laid down), but no token should be
+   * drawn for them — they weren't actually seen, just sensed. Always true
+   * during REVEAL or for a spectator, where the vision filter is off.
+   */
+  isFullyVisible: boolean;
 }
 
 /**

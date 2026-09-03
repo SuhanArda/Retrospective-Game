@@ -250,9 +250,15 @@ public sealed class HideSeekGame
     /// — the client never sends a position, only intent), resolve seeker
     /// contact into catches, then build each player's personal tick payload.
     /// Who appears in whose payload is filtered per observer by
-    /// <see cref="HideSeekVision.IsPlayerVisible"/> — except during
-    /// <see cref="HideSeekPhase.Reveal"/> or for a caught spectator, when
-    /// everyone is visible to everyone and the filter is skipped entirely.
+    /// <see cref="HideSeekVision.IsPlayerVisible"/>, at two radii: within
+    /// <see cref="HideSeekConfig.VisionRadius"/> a player is fully visible
+    /// (<see cref="HideAndSeekVisiblePlayer.IsFullyVisible"/>); out to the
+    /// wider <see cref="HideSeekConfig.FootprintSenseRadius"/> they're
+    /// included anyway so their footprints keep being sensed, but flagged
+    /// not-fully-visible so the client won't draw their token. Both checks
+    /// require the same clear line of sight, so a wall blocks either one
+    /// alike. Skipped entirely — everyone fully visible to everyone — during
+    /// <see cref="HideSeekPhase.Reveal"/> or for a caught spectator.
     /// </summary>
     public HideSeekTickResult Tick(double dtSeconds)
     {
@@ -295,13 +301,18 @@ public sealed class HideSeekGame
                     // camera (see HideSeekCanvas); this is what makes every
                     // other client's view agree with that.
                     if (other.Status == HideSeekPlayerStatus.Caught) continue;
+                    var isFullyVisible = true;
                     if (!skipVisionFilter)
                     {
                         var (targetTileX, targetTileY) = _map.WorldToTile(other.X, other.Y);
-                        if (!HideSeekVision.IsPlayerVisible(_map, observerTileX, observerTileY, targetTileX, targetTileY, HideSeekConfig.VisionRadius)) continue;
+                        isFullyVisible = HideSeekVision.IsPlayerVisible(_map, observerTileX, observerTileY, targetTileX, targetTileY, HideSeekConfig.VisionRadius);
+                        // Not close enough to actually see — still include them if
+                        // their footsteps carry this far down the same clear
+                        // sightline (a wall/corner blocks both checks alike).
+                        if (!isFullyVisible && !HideSeekVision.IsPlayerVisible(_map, observerTileX, observerTileY, targetTileX, targetTileY, HideSeekConfig.FootprintSenseRadius)) continue;
                     }
                     var otherCatchProgress = other.Role == HideSeekRole.Hider ? CatchProgressOf(other) : 0;
-                    others.Add(new HideAndSeekVisiblePlayer(other.PlayerId, other.Role.ToString().ToUpperInvariant(), other.X, other.Y, otherCatchProgress));
+                    others.Add(new HideAndSeekVisiblePlayer(other.PlayerId, other.Role.ToString().ToUpperInvariant(), other.X, other.Y, otherCatchProgress, isFullyVisible));
                 }
                 var ownCatchProgress = player.Role == HideSeekRole.Hider ? CatchProgressOf(player) : 0;
                 var snapshot = new HideAndSeekPersonalSnapshot(player.LastProcessedSeq, player.X, player.Y, ownCatchProgress, isSpectator, others);
