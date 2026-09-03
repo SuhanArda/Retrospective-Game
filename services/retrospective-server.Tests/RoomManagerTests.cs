@@ -610,6 +610,30 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void DrawAndGuessRotatesTheDrawerInSequentialJoinOrderNotRandomly()
+    {
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var second = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        var third = manager.Join(host.RoomCode, new JoinRoomRequest("Ece", "#abcdef"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "c1");
+        manager.Attach(host.RoomCode, second.PlayerId, second.ReconnectToken, "c2");
+        manager.Attach(host.RoomCode, third.PlayerId, third.ReconnectToken, "c3");
+        manager.BeginGameSelection("c1", ["draw-and-guess"]);
+        manager.CastVote("c1", "draw-and-guess");
+        manager.ResolveVote("c1");
+
+        // Join order: host, second, third — the drawer cycles through
+        // exactly that order, wrapping back to the start, never at random
+        // (a random-excluding-the-last-drawer pick could coincidentally
+        // produce this same sequence once; it couldn't keep doing it).
+        Assert.Equal(host.PlayerId, manager.Get(host.RoomCode)!.DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(second.PlayerId, manager.NextDrawAndGuessRound("c1").DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(third.PlayerId, manager.NextDrawAndGuessRound("c2").DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(host.PlayerId, manager.NextDrawAndGuessRound("c3").DrawAndGuessState!.DrawerPlayerId); // wraps back to the top
+    }
+
+    [Fact]
     public void HostTransfersAfterDisconnectGraceButNotBefore()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));

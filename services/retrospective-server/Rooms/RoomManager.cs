@@ -900,12 +900,15 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// </summary>
     private DrawAndGuessState CreateDrawAndGuessState(GameRoom room, IReadOnlyDictionary<string, int>? previousScores)
     {
+        // Sequential rotation by join order, not random — the drawer is
+        // always whoever comes right after the previous one on that list,
+        // wrapping back to the start. No previous drawer (first round of
+        // the room, or the previous drawer has since left) starts the
+        // rotation back at the top rather than picking anyone at random.
         var players = room.Players.Values.OrderBy(player => player.JoinedAt).ToArray();
         var previousDrawerId = room.DrawAndGuessState?.DrawerPlayerId;
-        var eligibleDrawers = players.Length > 1 && previousDrawerId is not null
-            ? players.Where(player => player.Id != previousDrawerId).ToArray()
-            : players;
-        var drawer = eligibleDrawers[roomRandom.Next(eligibleDrawers.Length)];
+        var previousDrawerIndex = previousDrawerId is null ? -1 : Array.FindIndex(players, player => player.Id == previousDrawerId);
+        var drawer = players[(previousDrawerIndex + 1) % players.Length];
         var previousRecentWords = room.DrawAndGuessState?.RecentWords ?? [];
         var wordPool = DrawAndGuessWords.Where(candidate => !previousRecentWords.Contains(candidate, StringComparer.Ordinal)).ToArray();
         var wordSource = wordPool.Length > 0 ? wordPool : DrawAndGuessWords;
