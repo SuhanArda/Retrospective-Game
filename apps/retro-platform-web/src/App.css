@@ -362,7 +362,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   width: 100%;
-  margin-top: 48px;
+  margin-top: 0;
 }
 
 .feature-card {
@@ -2094,5 +2094,41 @@
 }
 
 .home-games-link {
-  margin-top: 4px;
+  margin-top: 24px;
+  margin-bottom: 8px;
+}
+
+.home-page {
+  min-height: 100dvh;
+}
+
+@media (min-width: 641px) and (max-height: 800px) {
+  .home-page {
+    padding: 83px 24px 16px;
+  }
+
+  .home-page .brand {
+    margin-bottom: 8px;
+  }
+
+  .home-page .title {
+    margin-bottom: 12px;
+  }
+
+  .home-page .subtitle {
+    margin-bottom: 24px;
+  }
+
+  .home-page .home-games-link {
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+
+  .home-page .feature-card {
+    padding-block: 16px;
+  }
+
+  .home-page .feature-card .feature-icon {
+    margin-bottom: 8px;
+  }
 }
