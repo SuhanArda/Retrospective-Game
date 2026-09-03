@@ -3,6 +3,7 @@ import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import type { HideAndSeekRole, HideAndSeekStateSnapshot } from '@retro-platform/contracts';
 import { HideSeekCanvas, type HideSeekPlayerIdentity } from '../game/HideSeekCanvas';
 import { PhaseHud } from '../components/PhaseHud';
+import { PrepCountdown } from '../components/PrepCountdown';
 import { ResultsScreen } from '../components/ResultsScreen';
 import { ReturnToLobbyButton } from '../components/ReturnToLobbyButton';
 import { MuteButton } from '../components/MuteButton';
@@ -58,12 +59,38 @@ export function App() {
   return launchContext ? <OnlineGame launchContext={launchContext} /> : <StandaloneGame />;
 }
 
+/** How long the WASD hint stays fully visible before it starts fading — long enough to read once, short enough not to keep sitting over the map. */
+const CONTROLS_HINT_VISIBLE_MS = 4000;
+/** Must match the CSS transition duration on `.hint-fading` — the hint only leaves the DOM (and stops taking up room in the pill) once its own fade-out has actually finished playing. */
+const CONTROLS_HINT_FADE_MS = 500;
+
 function StandaloneGame() {
+  // Three stages, not just shown/hidden: 'fading' plays the CSS transition
+  // (opacity + collapsing width) before 'hidden' actually removes the hint
+  // from the layout — skipping straight to unmounting would pop the pill
+  // narrower instantly instead of shrinking smoothly.
+  const [hintPhase, setHintPhase] = useState<'visible' | 'fading' | 'hidden'>('visible');
+
+  useEffect(() => {
+    const startFade = window.setTimeout(() => setHintPhase('fading'), CONTROLS_HINT_VISIBLE_MS);
+    return () => window.clearTimeout(startFade);
+  }, []);
+
+  useEffect(() => {
+    if (hintPhase !== 'fading') return;
+    const remove = window.setTimeout(() => setHintPhase('hidden'), CONTROLS_HINT_FADE_MS);
+    return () => window.clearTimeout(remove);
+  }, [hintPhase]);
+
   return (
     <div className="page">
       <div className="hud-overlay">
         <span className="brand">Saklambaç</span>
-        <span className="hint">WASD / ok tuşları ile hareket et — bağımsız deneme</span>
+        {hintPhase !== 'hidden' && (
+          <span className={`hint controls-hint${hintPhase === 'fading' ? ' controls-hint-fading' : ''}`}>
+            WASD / ok tuşları ile hareket et — bağımsız deneme
+          </span>
+        )}
       </div>
       <HideSeekCanvas grid={classicMap} />
     </div>
@@ -318,6 +345,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
           onLocalStep: audio.playFootstep,
         }}
       />
+      {gameState && <PrepCountdown phase={gameState.phase} phaseEndsAtUtc={gameState.phaseEndsAtUtc} />}
       {gameState?.phase === 'ENDED' && gameState.winner && (
         <ResultsScreen
           winner={gameState.winner}
