@@ -20,7 +20,8 @@ import {
 } from './platformIntegration';
 import '../styles/App.css';
 
-const RECENT_WORD_MEMORY = 8;
+/** Matches the server's `DrawAndGuessRecentWordMemory` — with 1000+ words now in the pool, a wider memory still barely dents it while cutting repeats over a longer session much further than the old 8 did. */
+const RECENT_WORD_MEMORY = 50;
 const YOU_ID = 'you';
 const BOT_MIN_DELAY_MS = 1500;
 const BOT_MAX_DELAY_MS = 5000;

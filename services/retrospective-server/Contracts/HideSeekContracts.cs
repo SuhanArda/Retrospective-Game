@@ -52,7 +52,16 @@ public sealed record HideAndSeekInputRequest(bool Up, bool Down, bool Left, bool
 /// means it only ever reaches connections whose own vision already includes
 /// this player, with no separate broadcast needed.
 /// </summary>
-public sealed record HideAndSeekVisiblePlayer(string PlayerId, string Role, double X, double Y, double CatchProgress);
+/// <param name="IsFullyVisible">
+/// True within <c>HideSeekConfig.VisionRadius</c> — the client draws this
+/// player's actual token. False means they were only picked up by the
+/// wider <c>HideSeekConfig.FootprintSenseRadius</c> check: the client
+/// still gets their position (so it can keep laying down footprint marks
+/// for the trail), but must not render a token for them — they weren't
+/// actually seen, just sensed. Always true during REVEAL or for a
+/// spectator, where the vision filter is off entirely.
+/// </param>
+public sealed record HideAndSeekVisiblePlayer(string PlayerId, string Role, double X, double Y, double CatchProgress, bool IsFullyVisible);
 
 /// <summary>
 /// The per-connection payload the game loop unicasts at `TICK_RATE`. Never

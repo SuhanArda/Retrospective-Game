@@ -16,6 +16,16 @@ public static class HideSeekConfig
     public static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1.0 / TickRate);
     /// <summary>How far (in tiles) a player can see, both for fog and for who is visible.</summary>
     public const int VisionRadius = 4;
+    /// <summary>
+    /// How far (in tiles) a player's footsteps carry down a clear sightline —
+    /// wider than <see cref="VisionRadius"/> so a trail can be sensed
+    /// (footprints only, no player token) before the person leaving it is
+    /// close enough to actually see. Still requires the same unobstructed
+    /// line of sight as <see cref="VisionRadius"/> — a wall or corner blocks
+    /// this exactly as it blocks direct vision, only the straight-line range
+    /// is longer. See <see cref="HideSeekGame.Tick"/>.
+    /// </summary>
+    public const int FootprintSenseRadius = 8;
     /// <summary>Hider movement speed, px/sec.</summary>
     public const double PlayerSpeed = 140;
     /// <summary>Seeker speed as a multiplier of PlayerSpeed.</summary>
