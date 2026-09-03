@@ -30,7 +30,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:fo
 .match-meta { display: flex; gap: 0; padding: 3px; border: 3px solid #3b2b2d; outline: 2px solid var(--line); background: var(--panel); box-shadow: 6px 6px 0 #21191caa; }
 .match-meta span { min-width: 72px; display: flex; flex-direction: column; text-align: center; padding: 2px 8px; border-right: 2px solid #765844; }.match-meta span:last-child { border: 0; }
 .match-meta small { font-size: 8px; letter-spacing: .14em; color: #c8b3a3; }.match-meta strong { font-size: 11px; color: #c9bf79; }.match-meta .timer strong { color: #f0c66f; font-size: 16px; }
-.icon-button { pointer-events: auto; justify-self: end; border: 3px solid #3b2b2d; outline: 1px solid var(--line); padding: 10px 12px; background: var(--panel); font-size: 10px; cursor: pointer; box-shadow: 3px 3px 0 #21191c; }
+/* Ses + tam ekran düğmeleri üst şeridin 3. sütununu paylaşır — grid
+   sütun sayısı değişmesin diye tek sarmalayıcı içindeler. */
+.hud-actions { justify-self: end; display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.icon-button { pointer-events: auto; border: 3px solid #3b2b2d; outline: 1px solid var(--line); padding: 10px 12px; background: var(--panel); font-size: 10px; cursor: pointer; box-shadow: 3px 3px 0 #21191c; }
+.fullscreen-button { display: grid; place-items: center; padding: 9px 10px; font-size: 15px; }
 .player-list { position: absolute; z-index: 22; top: 140px; right: 18px; width: 210px; display: grid; gap: 6px; }
 .player-row { display: grid; grid-template-columns: 1fr 10px; gap: 7px; align-items: center; padding: 8px 10px; background: rgba(54,42,43,.88); border: 2px solid #493739; box-shadow: 3px 3px 0 #21191c88; }.player-row.local { border-color: #c48b4f; }
 .player-row > span { display: flex; flex-direction: column; }.player-row strong { font-size: 12px; }.player-row small { color: #c4ad9e; font-size: 8px; }

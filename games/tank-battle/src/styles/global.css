@@ -23,7 +23,7 @@ button:focus-visible { outline: 4px solid #fff0a1; outline-offset: 4px; }
 
 .hud {
   position: absolute; z-index: 40; inset: 14px 14px auto; min-height: 82px;
-  display: grid; grid-template-columns: minmax(170px, .8fr) auto minmax(190px, 1fr) minmax(190px, .8fr);
+  display: grid; grid-template-columns: minmax(170px, .8fr) auto minmax(190px, 1fr) minmax(190px, .8fr) auto;
   align-items: stretch; gap: 8px; padding: 7px;
   border: 3px solid #7d8da6; border-top-color: #bdc7d5; border-left-color: #bdc7d5;
   background: linear-gradient(180deg, rgba(20, 30, 49, .97), rgba(8, 14, 26, .94));
@@ -33,6 +33,11 @@ button:focus-visible { outline: 4px solid #fff0a1; outline-offset: 4px; }
 .hud::before { content: ""; position: absolute; inset: 3px; pointer-events: none; border: 1px solid rgba(255,255,255,.09); }
 .hud-loading { display: flex; width: max-content; min-height: auto; align-items: center; gap: 10px; padding: 13px 17px; color: var(--cream); letter-spacing: 1px; }
 .loading-pip { width: 9px; height: 9px; background: #75d8a7; box-shadow: 0 0 12px #75d8a7; animation: blink 1s steps(2) infinite; }
+
+/* HUD şeridinin son sütunu: tam ekran düğmesi. Ayrı bir yüzen düğme
+   olsaydı bu şeridin üstüne binerdi -- şeridin kendi sütunu olması daha temiz. */
+.hud-fullscreen { display: grid; place-items: center; padding: 0 13px; color: var(--gold); background: #1b2740; border: 2px solid #7d8da6; box-shadow: 2px 2px 0 #050913; font-size: 17px; cursor: pointer; }
+.hud-fullscreen:hover { filter: brightness(1.2); }
 
 .hud-brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-right: 1px solid #3d4960; }
 .brand-mark { display: grid; place-items: center; width: 45px; height: 45px; color: #151b27; background: var(--gold); border: 3px solid #fff0a7; box-shadow: 3px 3px 0 #725929; font-weight: 1000; font-size: 19px; transform: rotate(-2deg); }
@@ -127,7 +132,7 @@ kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; 
 @keyframes voice-pulse { 50% { transform: scaleY(.55); opacity: .6; } }
 
 @media (max-width: 900px) {
-  .hud { grid-template-columns: 145px 1fr 180px; }
+  .hud { grid-template-columns: 145px 1fr 180px auto; }
   .aim-console { display: none; }
   .hud-brand strong { font-size: 12px; }.brand-mark { width: 37px; height: 37px; }
 }

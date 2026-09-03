@@ -13,6 +13,29 @@
   max-width: 1120px;
 }
 
+/* Bu oyunun ses düğmesi yok; tam ekran düğmesi sağ üst köşede tek başına. */
+.fullscreen-button {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 26, 53, 0.18);
+  background: #ffffff;
+  color: #241a35;
+  font-size: 15px;
+  box-shadow: 0 1px 3px rgba(36, 26, 53, 0.12);
+}
+
+.fullscreen-button:hover,
+.fullscreen-button:focus-visible {
+  border-color: rgba(36, 26, 53, 0.45);
+}
+
 .brand {
   font-size: 13px;
   font-weight: 700;

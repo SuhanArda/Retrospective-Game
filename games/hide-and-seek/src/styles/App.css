@@ -48,10 +48,39 @@
   transition: opacity 0.5s ease, max-width 0.5s ease, margin-left 0.5s ease;
 }
 
-.controls-hint-fading {
+/* Inline variant (standalone mode): collapses its own width and the flex
+   gap alongside it fading, so the pill it sits in visibly shrinks back down
+   to just its sibling content rather than leaving a gap-shaped notch. */
+.controls-hint.controls-hint-fading {
   opacity: 0;
   max-width: 0;
-  margin-left: -12px; /* collapses the flex gap too, so the pill shrinks in cleanly rather than leaving a gap-shaped notch */
+  margin-left: -12px;
+}
+
+.controls-hint-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 15;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(108, 92, 231, 0.4);
+  background: rgba(13, 11, 20, 0.72);
+  backdrop-filter: blur(4px);
+  color: #b8b0c9;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* Toast variant (online mode): not in a flex row, so there's no width to
+   collapse — it just sinks and fades instead. */
+.controls-hint-toast.controls-hint-fading {
+  opacity: 0;
+  transform: translate(-50%, 12px);
 }
 
 .return-to-lobby-button {
@@ -77,7 +106,8 @@
   border-color: rgba(108, 92, 231, 0.7);
 }
 
-.mute-button {
+.mute-button,
+.fullscreen-button {
   position: absolute;
   top: 16px;
   right: 16px;
@@ -96,8 +126,16 @@
   cursor: pointer;
 }
 
+/* Ses düğmesinin hemen soluna oturur — ikisi de sağ üst köşede. */
+.fullscreen-button {
+  right: 60px;
+  color: #b8b0c9;
+}
+
 .mute-button:hover,
-.mute-button:focus-visible {
+.mute-button:focus-visible,
+.fullscreen-button:hover,
+.fullscreen-button:focus-visible {
   border-color: rgba(108, 92, 231, 0.7);
 }
 
