@@ -12,6 +12,8 @@
 }
 
 * { box-sizing: border-box; }
+:root.tank-battle-fullscreen:not(.tank-battle-question-open),
+:root.tank-battle-fullscreen:not(.tank-battle-question-open) * { cursor: none !important; }
 body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
 button { font: inherit; }
 button:focus-visible { outline: 4px solid #fff0a1; outline-offset: 4px; }
