@@ -7,6 +7,9 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly SemaphoreSlim WarmUpGate = new(1, 1);
+    private static readonly TimeSpan WarmUpInterval = TimeSpan.FromMinutes(1);
+    private static long _lastWarmUpTicks;
 
     public async Task<IResult> Generate(
         string roomCode,
@@ -42,6 +45,27 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
             $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"),
             cancellationToken,
             onReady);
+
+    /// <summary>
+    /// Pings the AI service so a sleeping free tier instance starts waking up
+    /// before the moderator submits the room form. Failures are irrelevant: the
+    /// request that matters is the generation call that follows.
+    /// </summary>
+    public async Task WarmUp(CancellationToken cancellationToken)
+    {
+        var last = Interlocked.Read(ref _lastWarmUpTicks);
+        if (last != 0 && DateTime.UtcNow.Ticks - last < WarmUpInterval.Ticks) return;
+        if (!await WarmUpGate.WaitAsync(0, cancellationToken)) return;
+        try
+        {
+            using var message = Create(HttpMethod.Get, "health");
+            using var response = await client.SendAsync(message, cancellationToken);
+            Interlocked.Exchange(ref _lastWarmUpTicks, DateTime.UtcNow.Ticks);
+        }
+        catch (HttpRequestException) { /* The generation call reports real failures. */ }
+        catch (OperationCanceledException) { /* A slow wake still helps the next call. */ }
+        finally { WarmUpGate.Release(); }
+    }
 
     public Task<IResult> Delete(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
         Forward(Create(HttpMethod.Delete,

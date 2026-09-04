@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { roomService } from '../services/roomServiceInstance'
-import { prepareRoomQuestions } from '../services/QuestionBotService'
+import { prepareRoomQuestions, warmUpQuestionBot } from '../services/QuestionBotService'
 import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
@@ -23,6 +23,10 @@ function CreateRoom() {
   const [questionStyle, setQuestionStyle] = useState('dengeli')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
+
+  // Wake the AI service while the form is being filled in, so question
+  // generation does not have to pay for a sleeping instance afterwards.
+  useEffect(() => { warmUpQuestionBot() }, [])
 
   function validate() {
     const next = {}

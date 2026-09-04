@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareRoomQuestions, roomQuestionsAreReady } from './QuestionBotService';
+import { prepareRoomQuestions, roomQuestionsAreReady, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
 
 const validQuestions = Array.from({ length: 20 }, (_, index) => ({
   id: `question-${index}`,
@@ -15,7 +15,10 @@ const validSet = {
 };
 
 describe('QuestionBotService', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 
   it('uses the room question endpoint with a finite timeout', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(validSet), { status: 201, headers: { 'Content-Type': 'application/json' } }));
@@ -43,6 +46,23 @@ describe('QuestionBotService', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
     await expect(roomQuestionsAreReady('ABC234', 'player-1', 'token-1')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
+  });
+
+  it('retries once when the gateway reports a sleeping question service', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(validSet), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const preparation = prepareRoomQuestions({
+      roomCode: 'ABC234', style: 'dengeli',
+      playerId: 'player-1', reconnectToken: 'token-1',
+    });
+    await vi.advanceTimersByTimeAsync(QUESTION_RETRY_DELAY_MS);
+
+    await expect(preparation).resolves.toMatchObject({ roomId: 'ABC234' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('treats a failed question endpoint as unavailable even when health can be healthy', async () => {

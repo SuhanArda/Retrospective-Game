@@ -530,6 +530,22 @@
   background: #2fb344;
 }
 
+.question-status {
+  margin-top: 6px;
+}
+
+.question-status.preparing .status-dot {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.question-status.ai .status-dot {
+  background: #2fb344;
+}
+
+.question-status.fallback .status-dot {
+  background: #e0a33a;
+}
+
 @keyframes pulse {
   0%,
   100% {

@@ -52,7 +52,10 @@ builder.Services.AddHttpClient<AiQuestionGateway>((services, client) =>
 {
     var configuration = services.GetRequiredService<IConfiguration>();
     client.BaseAddress = new Uri(configuration["AiQuestions:BaseUrl"] ?? "http://localhost:3002/");
-    client.Timeout = TimeSpan.FromSeconds(40);
+    // The AI service can run on a free tier instance that sleeps when idle.
+    // Waking one takes about a minute and generation itself retries, so a short
+    // timeout here cancels the call before the bot has even received it.
+    client.Timeout = TimeSpan.FromSeconds(120);
 });
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<RoomMaintenanceService>();
@@ -71,6 +74,14 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
     return Results.Created($"/api/rooms/{admission.RoomCode}", admission);
 }));
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
+app.MapPost("/api/ai/warmup", async (AiQuestionGateway ai) =>
+{
+    // The browser fires this while the moderator is still filling in the room
+    // form, so the wake overlaps with typing instead of the generation call.
+    // It must survive that browser navigating away, hence no request token.
+    await ai.WarmUp(CancellationToken.None);
+    return Results.Ok(new { warming = true });
+});
 app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
     try
