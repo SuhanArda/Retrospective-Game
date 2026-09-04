@@ -28,6 +28,29 @@ async function encodeReportFile(file: File): Promise<{ name: string; mimeType: s
   return { name: file.name, mimeType: file.type, dataBase64 };
 }
 
+// A sleeping AI service answers through the backend gateway as 502, 503 or 504.
+// The failed call itself starts the wake, so a single retry lands on a service
+// that is now up. Other statuses are real rejections and are not retried.
+const wakeUpStatuses = new Set([502, 503, 504]);
+export const QUESTION_RETRY_DELAY_MS = 5_000;
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, milliseconds); });
+}
+
+/**
+ * Starts waking the AI service without waiting for it. Call this as soon as the
+ * moderator opens the room form: on a free tier instance the wake can take about
+ * a minute, and that minute should be spent while they type, not afterwards.
+ */
+export function warmUpQuestionBot(): void {
+  if (!questionApiUrl) return;
+  void fetch(`${questionApiUrl}/api/ai/warmup`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(120_000),
+  }).catch(() => { /* The generation call reports real failures. */ });
+}
+
 export async function prepareRoomQuestions(input: {
   roomCode: string;
   style: 'dengeli' | 'eğlendirici' | 'düşündürücü';
@@ -39,11 +62,13 @@ export async function prepareRoomQuestions(input: {
   replaceExisting?: boolean;
 }): Promise<RoomQuestionSet> {
   const reportFile = input.reportFile ? await encodeReportFile(input.reportFile) : null;
-  const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(input.roomCode)}/ai/questions`, {
+  const send = () => fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(input.roomCode)}/ai/questions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders(input.playerId, input.reconnectToken) },
     keepalive: reportFile === null,
-    signal: AbortSignal.timeout(45_000),
+    // Matches the backend gateway timeout so a slow first generation is never
+    // abandoned here while the service is still producing the question set.
+    signal: AbortSignal.timeout(120_000),
     body: JSON.stringify({
       topic: input.contextPrompt?.trim() || null,
       reportText: input.reportText?.trim() || null,
@@ -54,8 +79,36 @@ export async function prepareRoomQuestions(input: {
       replaceExisting: input.replaceExisting === true,
     }),
   });
+
+  let response = await send();
+  if (wakeUpStatuses.has(response.status)) {
+    await wait(QUESTION_RETRY_DELAY_MS);
+    response = await send();
+  }
   if (!response.ok) throw new Error('QUESTION_PREPARATION_FAILED');
   return parseRoomQuestionSet(await response.json());
+}
+
+/** 'preparing' while the bot is still working, then whichever set the room got. */
+export type RoomQuestionStatus = 'preparing' | 'ai' | 'fallback';
+
+/**
+ * Tells the room which question set it is about to play with: one generated
+ * from the moderator's prompt, or the shared built-in set the bot falls back to
+ * when generation fails. A room without a set yet is still preparing.
+ */
+export async function readRoomQuestionStatus(
+  roomCode: string,
+  playerId: string,
+  reconnectToken: string,
+): Promise<RoomQuestionStatus> {
+  const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(roomCode)}/ai/questions`, {
+    headers: authHeaders(playerId, reconnectToken),
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (response.status === 404) return 'preparing';
+  if (!response.ok) throw new Error('QUESTION_BOT_UNAVAILABLE');
+  return parseRoomQuestionSet(await response.json()).provider === 'gemini' ? 'ai' : 'fallback';
 }
 
 export async function roomQuestionsAreReady(roomCode: string, playerId: string, reconnectToken: string): Promise<boolean> {
