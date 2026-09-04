@@ -36,9 +36,6 @@ export function Hud({ snapshot, muted, onMute, onAbility }: Props) {
         {snapshot.players.map((player) => <div className={`player-row ${player.isLocal ? 'local' : ''}`} key={player.id}><span><strong>{player.name}</strong><small>{playerStateLabels[player.state]}</small></span><i className={`status-dot state-${player.state.toLowerCase()}`} /></div>)}
       </aside>
       {snapshot.danger && snapshot.state === 'RUNNING' && <div className="danger-banner" role="status">İLERLE — KAMERA SINIRI YAKINDA</div>}
-      <div className="bottom-hud">
-        <div className="mode"><span className="status-dot online" /> DENEME MODU<small>YEREL SİMÜLASYON</small></div>
-      </div>
     </>
   );
 }

@@ -12,8 +12,10 @@ export function computeAim(
   facing: TankFacing,
 ): { angle: number; power: number } {
   const direction = facing === 'RIGHT' ? 1 : -1;
-  const forwardDistance = Math.max(24, (pointerX - tankX) * direction);
-  const verticalDistance = tankY - 18 - pointerY;
+  const pivotX = tankX + direction * 2;
+  const pivotY = tankY - 15;
+  const forwardDistance = Math.max(24, (pointerX - pivotX) * direction);
+  const verticalDistance = pivotY - pointerY;
   const angle = clamp(
     Math.atan2(verticalDistance, forwardDistance) * 180 / Math.PI,
     gameplayConfig.shot.minAngle,

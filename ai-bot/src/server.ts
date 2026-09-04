@@ -5,16 +5,18 @@ import { LocalPrivateQuestionGenerator, createAiQuestionGenerationService } from
 import { extractReportText, ReportValidationError } from "./services/reportParser.js";
 import { RoomQuestionStore } from "./services/roomQuestionStore.js";
 import { RoomQuestionProvider } from "./services/roomQuestionProvider.js";
+import { JsonQuestionBank } from "./services/questionBank.js";
+import { PersistingQuestionGenerator, QuestionBankFallbackGenerator } from "./services/resilientQuestionProvider.js";
 import { validateGenerateQuestionsRequest, validateRoomEnvelope, validateRoomQuestionRequest } from "./validation/questionRequest.js";
 import { RoomGenerationInProgressError, StaleRoomGenerationError } from "./services/roomQuestionStore.js";
 
 const config = loadConfig();
 const store = new RoomQuestionStore();
-const generator = createAiQuestionGenerationService(config);
 const localFallback = new LocalPrivateQuestionGenerator();
-const roomQuestions = new RoomQuestionProvider(store, generator, localFallback, () => {
-  if (config.questionProvider === "gemini") console.warn("Gemini kullanılamadı; ortak yerel oda soru paketine geçildi.");
-});
+const questionBank = new JsonQuestionBank({ path: config.questionBankPath, maxItems: config.questionBankMaxItems });
+const generator = new PersistingQuestionGenerator(createAiQuestionGenerationService(config), questionBank);
+const fallback = new QuestionBankFallbackGenerator(questionBank, localFallback);
+const roomQuestions = new RoomQuestionProvider(store, generator, fallback);
 const activeGenerations = new Map<string, { roomInstanceId: string; controller: AbortController }>();
 const lastGenerationAttempts = new Map<string, number>();
 const maximumBodySize = Math.ceil(config.maxReportSizeBytes * 4 / 3) + 65_536;
@@ -72,8 +74,7 @@ async function produce(requestData: ReturnType<typeof validateGenerateQuestionsR
     return await generator.generate(requestData.data, signal);
   } catch {
     if (signal?.aborted) throw new Error("Soru üretimi iptal edildi.");
-    if (config.questionProvider === "gemini") console.warn("Gemini kullanılamadı; yerel soru sağlayıcısına geçildi.");
-    return localFallback.generate(requestData.data, signal);
+    return fallback.generate(requestData.data, signal);
   }
 }
 
@@ -85,16 +86,24 @@ const server = createServer(async (request, response) => {
     response.end();
     return;
   }
-  if (request.method === "GET" && request.url === "/health") {
+  const url = new URL(request.url ?? "/", "http://request.invalid");
+  if (request.method === "GET" && url.pathname === "/health") {
     sendJson(response, 200, { status: "ok", provider: config.questionProvider, activeRoomCount: store.size });
     return;
   }
+  const isDirectGeneration = request.method === "POST" && url.pathname === "/questions/generate";
+  const isRoomGeneration = request.method === "POST" && roomRoute.test(url.pathname);
+  const generationRoute = isDirectGeneration ? "direct" : isRoomGeneration ? "room" : null;
+  if (generationRoute) console.log(`[AI Request] received route=${generationRoute}`);
   if (!isAuthorized(request)) {
+    if (generationRoute) console.warn(`[AI Request] authentication failed route=${generationRoute} status=401`);
     sendJson(response, 401, { error: "Yetkisiz servis isteği." });
     return;
   }
+  if (generationRoute) {
+    console.log(`[AI Request] authenticated route=${generationRoute} provider=${config.questionProvider}`);
+  }
 
-  const url = new URL(request.url ?? "/", "http://request.invalid");
   const roomMatch = roomRoute.exec(url.pathname);
   const closeMatch = closeRoomRoute.exec(url.pathname);
 
@@ -102,6 +111,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/questions/generate") {
       const validation = validateGenerateQuestionsRequest(await resolveReportInput(await readJson(request)));
       if (!validation.success) {
+        console.warn(`[AI Request] validation failed route=direct rejectedFields=${validation.errors.length}`);
         sendJson(response, 400, { error: "Geçersiz istek.", details: validation.errors });
         return;
       }
@@ -114,16 +124,19 @@ const server = createServer(async (request, response) => {
       const validation = validateRoomQuestionRequest(input);
       const envelope = validateRoomEnvelope(input);
       if (!validation.success) {
+        console.warn(`[AI Request] validation failed route=room rejectedFields=${validation.errors.length}`);
         sendJson(response, 400, { error: "Geçersiz istek.", details: validation.errors });
         return;
       }
       if (!envelope.success) {
+        console.warn(`[AI Request] validation failed route=room rejectedFields=${envelope.errors.length}`);
         sendJson(response, 400, { error: "Geçersiz istek.", details: envelope.errors });
         return;
       }
       const roomCode = roomMatch[1]!;
       const existing = roomQuestions.getQuestionsForRoom(roomCode, envelope.roomInstanceId);
       if (existing && !envelope.replaceExisting) {
+        console.log(`[AI Request] completed source=room-cache count=${existing.questions.length}`);
         sendJson(response, 200, existing);
         return;
       }
@@ -199,11 +212,17 @@ const server = createServer(async (request, response) => {
       sendJson(response, 409, { error: "Oda kapandığı veya yeni üretim başladığı için eski sonuç kullanılmadı." });
       return;
     }
-    console.error("AI soru isteği güvenli biçimde sonlandırıldı.");
+    if (generationRoute) console.error(`[AI Request] failed route=${generationRoute} stage=request_processing`);
+    else console.error("AI soru isteği güvenli biçimde sonlandırıldı.");
     sendJson(response, 500, { error: "İşlem tamamlanamadı." });
   }
 });
 
 server.listen(config.port, () => {
-  console.log(`AI bot is listening on port ${config.port} in ${config.questionProvider} mode.`);
+  console.log(
+    `[AI Config] provider=${config.questionProvider} geminiKeyConfigured=${Boolean(config.apiKey)} `
+    + `model=${config.model} internalServiceKeyConfigured=${Boolean(config.internalServiceKey)} `
+    + `questionBankPath=${config.questionBankPath} questionBankMaxItems=${config.questionBankMaxItems}`,
+  );
+  console.log(`AI bot is listening on port ${config.port}.`);
 });

@@ -40,6 +40,6 @@ export function Hud({ snapshot, localPlayerId, angle, power, connection }: Props
       <div><small>NİŞAN</small><strong>{angleDirection} {Math.abs(Math.round(angle))}°</strong></div>
       <div className="power-readout"><small>ATIŞ GÜCÜ</small><span className="power-track"><i style={{ '--power': `${powerPercent}%` } as CSSProperties} /></span><b>{Math.round(power)}</b></div>
     </div>
-    <FullscreenButton className="hud-fullscreen" />
+    <FullscreenButton className="hud-fullscreen" questionOpen={Boolean(snapshot.activeQuestion)} />
   </header>;
 }

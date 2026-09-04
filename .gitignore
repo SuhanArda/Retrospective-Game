@@ -10,6 +10,11 @@ coverage/
 node-portable.zip
 *.tsbuildinfo
 
+# Runtime AI-generated question bank (may contain user-derived question text)
+/ai-bot/data/generated-question-bank.json
+/ai-bot/data/generated-question-bank.json.tmp-*
+/ai-bot/data/generated-question-bank.json.corrupt-*
+
 # Local editor/agent tooling
 .claude/
 

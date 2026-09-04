@@ -3,7 +3,10 @@ using System.Text.Json;
 
 namespace Retrospective.Server.Rooms;
 
-public sealed class AiQuestionGateway(HttpClient client, IConfiguration configuration)
+public sealed class AiQuestionGateway(
+    HttpClient client,
+    IConfiguration configuration,
+    ILogger<AiQuestionGateway> logger)
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -33,7 +36,7 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
             }),
         };
         AddServiceKey(message);
-        return await Forward(message, cancellationToken, onReady);
+        return await Forward(message, cancellationToken, "generation", onReady);
     }
 
     public Task<IResult> Get(
@@ -43,7 +46,7 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
         Func<AiRoomQuestionSet, Task>? onReady = null) =>
         Forward(Create(HttpMethod.Get,
             $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"),
-            cancellationToken,
+            cancellationToken, "get",
             onReady);
 
     /// <summary>
@@ -69,7 +72,8 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
 
     public Task<IResult> Delete(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
         Forward(Create(HttpMethod.Delete,
-            $"rooms/{Uri.EscapeDataString(roomCode)}?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"), cancellationToken);
+            $"rooms/{Uri.EscapeDataString(roomCode)}?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"),
+            cancellationToken, "delete");
 
     public async Task DeleteSilently(string roomCode, string roomInstanceId, CancellationToken cancellationToken)
     {
@@ -92,15 +96,31 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
     private async Task<IResult> Forward(
         HttpRequestMessage message,
         CancellationToken cancellationToken,
+        string operation,
         Func<AiRoomQuestionSet, Task>? onReady = null)
     {
+        var baseUrl = client.BaseAddress?.GetLeftPart(UriPartial.Authority) ?? "unconfigured";
+        logger.LogInformation("[AI Gateway] {Operation} requested", operation);
+        logger.LogInformation("[AI Gateway] calling ai-bot operation={Operation} baseUrl={BaseUrl}", operation, baseUrl);
         try
         {
             using var response = await client.SendAsync(message, cancellationToken);
+            logger.LogInformation(
+                "[AI Gateway] ai-bot response operation={Operation} status={StatusCode}",
+                operation,
+                (int)response.StatusCode);
+            if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            {
+                logger.LogWarning("[AI Gateway] ai-bot authentication rejected; verify matching internal service keys");
+            }
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             JsonElement payload;
             try { payload = JsonSerializer.Deserialize<JsonElement>(body); }
-            catch { payload = JsonSerializer.SerializeToElement(new { error = "AI soru servisi geçersiz yanıt verdi." }); }
+            catch
+            {
+                logger.LogWarning("[AI Gateway] ai-bot returned a non-JSON response operation={Operation}", operation);
+                payload = JsonSerializer.SerializeToElement(new { error = "AI soru servisi geçersiz yanıt verdi." });
+            }
             if (response.IsSuccessStatusCode && onReady is not null)
             {
                 try
@@ -117,6 +137,7 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
                 }
                 catch (JsonException)
                 {
+                    logger.LogWarning("[AI Gateway] successful ai-bot response failed room question-set validation");
                     // Preserve the proxy response, but never cache malformed AI data in room state.
                 }
             }
@@ -124,10 +145,16 @@ public sealed class AiQuestionGateway(HttpClient client, IConfiguration configur
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogWarning("[AI Gateway] request failed operation={Operation} reason=timeout", operation);
             return Results.Json(new { error = "AI soru servisi zaman aşımına uğradı." }, statusCode: StatusCodes.Status504GatewayTimeout);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException error)
         {
+            logger.LogWarning(
+                "[AI Gateway] request failed operation={Operation} reason=connection_error httpError={HttpError} baseUrl={BaseUrl}",
+                operation,
+                error.HttpRequestError,
+                baseUrl);
             return Results.Json(new { error = "AI soru servisine ulaşılamıyor." }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { GenerateQuestionsRequest } from "../types/questions.js";
-import { generateQuestions, parseQuestions, type GeminiContentClient } from "./questionGenerator.js";
+import {
+  describeGeminiFailure,
+  generateQuestions,
+  parseQuestions,
+  type GeminiContentClient,
+} from "./questionGenerator.js";
 
 const request: GenerateQuestionsRequest = {
   gameId: "room-retrospective", topic: "kedi temalı ekip iletişimi", language: "tr", style: "dengeli", count: 20,
@@ -75,4 +80,25 @@ test("kaynakta geçmeyen genel Imposter kelimesini reddedip yeniden dener", asyn
   );
   assert.equal(calls, 2);
   assert.equal(response.questions.length, 20);
+});
+
+test("Gemini hata durumlarını sır veya yanıt içeriği olmadan sınıflandırır", () => {
+  assert.deepEqual(describeGeminiFailure({ status: 401 }), { status: 401, reason: "authentication" });
+  assert.deepEqual(describeGeminiFailure({ status: 429 }), { status: 429, reason: "rate_limit" });
+  assert.deepEqual(describeGeminiFailure({ status: 404 }), { status: 404, reason: "model_not_found" });
+  assert.deepEqual(
+    describeGeminiFailure(new Error("Gemini geçerli JSON döndürmedi.")),
+    { status: null, reason: "invalid_json" },
+  );
+});
+
+test("yanıt alındığını ve ayrıştırma reddini güvenli aşama loglarıyla ayırır", async () => {
+  const logs: string[] = [];
+  const client: GeminiContentClient = { generateContent: async () => ({ text: "not-json" }) };
+  await assert.rejects(generateQuestions(request, client, "model", {
+    maximumRetries: 0,
+    logger: { log: (message) => logs.push(message), warn: (message) => logs.push(message) },
+  }));
+  assert.ok(logs.some((message) => message.includes("Gemini response received")));
+  assert.ok(logs.some((message) => message.includes("reason=invalid_json")));
 });

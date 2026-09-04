@@ -35,7 +35,6 @@ function CreateRoom() {
     if (!Number.isInteger(max) || max < 2 || max > 50) {
       next.maxParticipants = t('createRoom.maxParticipantsError')
     }
-    if (!contextPrompt.trim() && !reportFile) next.report = 'Kısa bir prompt gir veya TXT, PDF ya da DOCX raporu ekle.'
     return next
   }
 
@@ -58,7 +57,7 @@ function CreateRoom() {
     const questionPreparation = prepareRoomQuestions({
       roomCode: room.code,
       style: questionStyle,
-      contextPrompt: contextPrompt.trim(),
+      contextPrompt: contextPrompt.trim() || undefined,
       reportFile,
       playerId: player.id,
       reconnectToken,
@@ -149,7 +148,7 @@ function CreateRoom() {
           </div>
 
           <div className="field">
-            <label htmlFor="roomPrompt">Kısa prompt (zorunlu)</label>
+            <label htmlFor="roomPrompt">Kısa prompt (opsiyonel)</label>
             <textarea id="roomPrompt" className="input textarea" value={contextPrompt} onChange={(event) => setContextPrompt(event.target.value)} maxLength={1000} rows={3} placeholder="Örn. Son sprintte yaşanan iletişim sorunlarına odaklan." />
           </div>
 

@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 export interface AppConfig {
   apiKey: string | null;
   model: string;
@@ -9,6 +11,8 @@ export interface AppConfig {
   maximumRetries: number;
   roomRateLimitMs: number;
   maxReportSizeBytes: number;
+  questionBankPath: string;
+  questionBankMaxItems: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -73,6 +77,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (!Number.isInteger(maxReportSizeMb) || maxReportSizeMb < 1 || maxReportSizeMb > 10)
     throw new Error("MAX_REPORT_SIZE_MB 1-10 arasında olmalıdır.");
 
+  const rawQuestionBankPath = env.AI_QUESTION_BANK_PATH?.trim() || "./data/generated-question-bank.json";
+  const questionBankMaxItems = Number(env.AI_QUESTION_BANK_MAX_ITEMS ?? "1000");
+  if (!Number.isInteger(questionBankMaxItems) || questionBankMaxItems < 1 || questionBankMaxItems > 100_000) {
+    throw new Error("AI_QUESTION_BANK_MAX_ITEMS must be an integer between 1 and 100000.");
+  }
+
   return {
     apiKey,
     model: env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite",
@@ -84,5 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maximumRetries,
     roomRateLimitMs,
     maxReportSizeBytes: maxReportSizeMb * 1024 * 1024,
+    questionBankPath: resolve(rawQuestionBankPath),
+    questionBankMaxItems,
   };
 }

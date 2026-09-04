@@ -142,7 +142,9 @@ AllowedOrigins__1=https://<RETRO_RUSH_CLOUDFLARE_HOST>
 AllowedOrigins__2=https://<SPIN_WORKER_HOST>
 ```
 
-Do not set `PORT`; Render owns it. Do not set `AiQuestions__InternalServiceKey` or `GEMINI_API_KEY` in this phase. The backend's AI gateway can be unreachable without preventing room creation, SignalR, or game launch.
+Do not set `PORT`; Render owns it. This deployment phase intentionally does not deploy the AI-bot and therefore cannot generate new Gemini questions. The backend's AI gateway defaults to `http://localhost:3002/`, which is not another Render service and can be unreachable without preventing room creation, SignalR, or game launch.
+
+To enable AI later, deploy `ai-bot` as its own service, set its `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, `INTERNAL_SERVICE_KEY`, `ALLOWED_ORIGINS`, and optional question-bank settings, then set backend `AiQuestions__BaseUrl=https://<AI_BOT_RENDER_HOST>/` and `AiQuestions__InternalServiceKey` to the same service key. Do not expose either secret through a `VITE_*` variable.
 
 `GET /health` remains anonymous and returns a successful JSON response. SignalR remains at `/hubs/room`; browsers connect to the HTTPS Render base URL and the official client negotiates WSS. Render terminates public TLS and supports WebSocket upgrades. Do not add Redis, Azure SignalR, a database, or another realtime provider for this first single-instance deployment.
 

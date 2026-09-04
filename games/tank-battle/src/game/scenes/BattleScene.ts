@@ -38,6 +38,7 @@ export class BattleScene extends Phaser.Scene {
   private snapshot: TankBattleGameSnapshot | null = null;
   private angle = 42;
   private power = 340;
+  private aimPointerPage: { x: number; y: number } | null = null;
   private lastMoveAt = 0;
   private lastWaterFrameAt = 0;
   private localFacingOverride: TankFacing | null = null;
@@ -99,6 +100,7 @@ export class BattleScene extends Phaser.Scene {
     this.updateProjectileVisuals(time);
     if (this.snapshot && this.advanceTankPositions(delta)) this.renderTanks(this.snapshot, false);
     this.updateCamera(delta);
+    this.refreshAimFromPointer();
     if (this.snapshot && time - this.lastWaterFrameAt > 90) {
       this.renderWater(this.snapshot, Math.floor(time / 90));
       this.lastWaterFrameAt = time;
@@ -169,6 +171,7 @@ export class BattleScene extends Phaser.Scene {
   private handleViewportResize(): void {
     this.refreshViewportCoverage();
     this.updateCamera(0, true);
+    this.refreshAimFromPointer();
   }
 
   private updateCamera(deltaMs: number, snap = false): void {
@@ -379,11 +382,18 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handleAim(pageX: number, pageY: number): void {
+    this.aimPointerPage = { x: pageX, y: pageY };
+    this.refreshAimFromPointer();
+  }
+
+  private refreshAimFromPointer(): void {
+    if (!this.aimPointerPage) return;
     const authoritativeLocal = this.localTank();
     const local = authoritativeLocal ? this.renderedTank(authoritativeLocal) : undefined;
     if (!local?.alive || this.snapshot?.phase !== 'RUNNING') return;
-    const pointer = pagePointerToWorld(pageX, pageY, this.scale, this.cameras.main);
+    const pointer = pagePointerToWorld(this.aimPointerPage.x, this.aimPointerPage.y, this.scale, this.cameras.main);
     const aim = computeAim(local.x, local.y, pointer.x, pointer.y, this.effectiveFacing(local));
+    if (aim.angle === this.angle && aim.power === this.power) return;
     this.angle = aim.angle;
     this.power = aim.power;
     this.bridge.emit('aimChanged', aim);
