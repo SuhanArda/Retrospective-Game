@@ -10,6 +10,7 @@ This runbook prepares the repository for Azure. It does not create resources or 
 | Retro Rush | `games/retro-rush` | Azure Static Web Apps | `<RETRO_RUSH_SWA>` |
 | Spin the Bottle | `games/spin-the-bottle` | Azure App Service, Node.js | `<SPIN_APP_SERVICE>` |
 | Rus Ruleti | `games/rus-ruleti` | Azure Static Web Apps | `<RUS_RULETI_SWA>` |
+| Çarkı Felek | `games/wheel-of-fortune` | Azure Static Web Apps | `<WHEEL_OF_FORTUNE_SWA>` |
 | Realtime backend | `services/retrospective-server` | Azure App Service, ASP.NET Core | `<API_APP_SERVICE>` |
 | AI Bot | `ai-bot` | Azure App Service, Node.js | `<AI_BOT_APP_SERVICE>` |
 | Optional realtime fan-out | backend integration | Azure SignalR Service | `<SIGNALR_RESOURCE>` |
@@ -28,7 +29,8 @@ All `VITE_*` values are public build-time browser configuration. Never place key
 | `VITE_RETRO_RUSH_URL` | Platform | `http://localhost:5174` | `https://<retro-rush-host>` | No |
 | `VITE_SPIN_THE_BOTTLE_URL` | Platform | `http://localhost:5175` | `https://<spin-host>` | No |
 | `VITE_RUS_RULETI_URL` | Platform | `http://localhost:5176` | `https://<rus-ruleti-host>` | No |
-| `VITE_PLATFORM_URL` | Retro Rush, Spin | `http://localhost:5173` | `https://<platform-host>` for Back to Games | No |
+| `VITE_WHEEL_OF_FORTUNE_URL` | Platform | `http://localhost:5181` | `https://<wheel-of-fortune-host>` | No |
+| `VITE_PLATFORM_URL` | Retro Rush, Spin, Çarkı Felek | `http://localhost:5173` | `https://<platform-host>` for Back to Games | No |
 | `VITE_ROOM_SERVICE` | Platform | `real` | Keep `real`; `mock` is isolated UI development only | No |
 | `VITE_TRANSPORT_MODE` | Retro Rush standalone configuration | `mock` | Set `signalr` in its production build | No |
 | `AllowedOrigins__0` | Backend | `http://localhost:5173` from Development JSON | Exact `https://<platform-host>` | No |
@@ -65,6 +67,7 @@ npm run build:all
 | Platform SWA | `/` | `npm run build:web` | `apps/retro-platform-web/dist` |
 | Retro Rush SWA | `/` | `npm run build:retro-rush` | `games/retro-rush/dist` |
 | Spin App Service | `/` | `npm run build:spin-the-bottle` | `games/spin-the-bottle/dist` (`client` and `server`) |
+| Çarkı Felek SWA | `/` | `npm run build:wheel-of-fortune` | `games/wheel-of-fortune/dist` |
 | Backend App Service | `/` | `dotnet publish services/retrospective-server -c Release -o <PUBLISH_DIR>` | `<PUBLISH_DIR>` |
 | AI Bot App Service | `/` | `npm run build:ai-bot` | `ai-bot/dist` |
 

@@ -21,6 +21,8 @@ public sealed class RoomMaintenanceService(RoomManager rooms, IHubContext<RoomHu
                 if (change.TankBattleSnapshot is not null) await clients.TankBattleSnapshot(change.TankBattleSnapshot);
                 if (change.DrawAndGuessStateChanged && change.Snapshot.DrawAndGuessState is { } drawAndGuessState)
                     await clients.DrawAndGuessStateChanged(drawAndGuessState);
+                if (change.WheelOfFortuneStateChanged && change.Snapshot.WheelOfFortuneState is { } wheelState)
+                    await clients.WheelOfFortuneStateChanged(wheelState);
             }
             foreach (var change in rooms.SweepDisconnected())
             {

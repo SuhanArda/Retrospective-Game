@@ -10,7 +10,7 @@ namespace Retrospective.Server.Rooms;
 public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom, HideSeekManager hideSeek)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle", "hide-and-seek"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle", "hide-and-seek", "wheel-of-fortune"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -728,6 +728,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 RetroRushGameSnapshot? retroRushSnapshot = null;
                 TankBattleGameSnapshot? tankBattleSnapshot = null;
                 var drawAndGuessStateChanged = false;
+                var wheelOfFortuneStateChanged = false;
                 if (room.Status == RoomPhase.GameSelection &&
                     room.VotingEndsAt is { } votingEnd && votingEnd <= now)
                 {
@@ -753,6 +754,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 {
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
                     tankBattleSnapshot = AdvanceTankBattleTimedState(room, now);
+                    wheelOfFortuneStateChanged = AdvanceExpiredWheelSpin(room);
                 }
 
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
@@ -774,7 +776,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     retroRushSnapshot is not null ||
                     tankBattleSnapshot is not null ||
                     drawAndGuessStateChanged ||
-                    drawAndGuessWordReveal is not null)
+                    drawAndGuessWordReveal is not null ||
+                    wheelOfFortuneStateChanged)
                 {
                     changes.Add(new TimedRoomChange(
                         RoomCode: room.Code,
@@ -784,7 +787,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                         RetroRushSnapshot: retroRushSnapshot,
                         TankBattleSnapshot: tankBattleSnapshot,
                         DrawAndGuessStateChanged: drawAndGuessStateChanged,
-                        DrawAndGuessWordReveal: drawAndGuessWordReveal));
+                        DrawAndGuessWordReveal: drawAndGuessWordReveal,
+                        WheelOfFortuneStateChanged: wheelOfFortuneStateChanged));
                 }
             }
         }
@@ -847,6 +851,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.CurrentGameSession = new GameSession(
             Guid.NewGuid().ToString("N"), winner, Guid.NewGuid().ToString("N"),
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
+        if (winner == "wheel-of-fortune")
+            room.CurrentGameSession.WheelOfFortune = new WheelOfFortuneState(
+                room.CurrentGameSession.Id, timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
         room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
         room.DrawAndGuessState = winner == "draw-and-guess" ? CreateDrawAndGuessState(room, previousScores: null) : null;
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
@@ -1063,7 +1070,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         return new string(result);
     }
 
-    private static RoomSnapshot Snapshot(GameRoom room) => new(
+    private RoomSnapshot Snapshot(GameRoom room) => new(
         room.Id, room.Code, room.RoomName, room.HostPlayerId,
         room.Players.Values.OrderBy(player => player.JoinedAt).Select(player => PlayerSnapshot(room, player)).ToArray(),
         room.SelectedGameId, room.Status.ToWire(), room.MaxParticipants, room.QuestionTimeSeconds, room.VotingTimeSeconds,
@@ -1094,7 +1101,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
             room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index]),
             room.DrawAndGuessState.LastRevealedIndex),
-        room.HideAndSeekState);
+        room.HideAndSeekState,
+        room.CurrentGameSession?.WheelOfFortune is { } wheel ? WheelSnapshot(wheel) : null);
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -1162,6 +1170,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public RetroRushState? RetroRush { get; set; }
         public ImposterState? Imposter { get; set; }
         public TankBattleState? TankBattle { get; set; }
+        public WheelOfFortuneState? WheelOfFortune { get; set; }
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);
@@ -1254,7 +1263,8 @@ public sealed record TimedRoomChange(
     RetroRushGameSnapshot? RetroRushSnapshot,
     TankBattleGameSnapshot? TankBattleSnapshot,
     bool DrawAndGuessStateChanged,
-    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null);
+    DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
+    bool WheelOfFortuneStateChanged = false);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

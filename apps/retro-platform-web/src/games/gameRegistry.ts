@@ -133,6 +133,19 @@ export const gameRegistry: readonly GameDefinition[] = [
     voteScreenshotUrl: '/screenshots/hide-and-seek-wide.jpg',
     getLaunchUrl: (config) => config.hideAndSeekUrl,
   },
+  {
+    id: 'wheel-of-fortune',
+    name: 'Çarkı Felek',
+    descriptionKey: 'games.wheel-of-fortune.description',
+    detailKey: 'games.wheel-of-fortune.detail',
+    stepsKey: 'games.wheel-of-fortune.steps',
+    status: 'available',
+    minPlayers: 1,
+    visualLabel: 'ÇF',
+    screenshotUrl: '/screenshots/wheel-of-fortune.svg',
+    voteScreenshotUrl: '/screenshots/wheel-of-fortune-wide.svg',
+    getLaunchUrl: (config) => config.wheelOfFortuneUrl,
+  },
 ];
 
 export function findGame(gameId: string): GameDefinition | null {

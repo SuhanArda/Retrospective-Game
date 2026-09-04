@@ -6,6 +6,7 @@ This monorepo contains the entry platform and independently runnable retrospecti
 
 - `apps/retro-platform-web/` — the existing React/Vite Website, now the main create/join/lobby/game-selection application.
 - `games/retro-rush/` — the existing React/TypeScript/Vite/Phaser game. It remains an independent application.
+- `games/wheel-of-fortune/` — the server-authoritative two-wheel retrospective game.
 - `packages/platform-contracts/` — the small typed launch contract shared by the platform and games.
 - `packages/realtime-client/` — shared SignalR connection, reconnect, and room/game event client.
 - `services/retrospective-server/` — ASP.NET Core room and game-session authority.
@@ -26,6 +27,7 @@ The combined command starts:
 - Platform Website: <http://localhost:5173>
 - Retro Rush: <http://localhost:5174>
 - Spin the Bottle: <http://localhost:5175>
+- Çarkı Felek: <http://localhost:5181>
 - Room server: <http://localhost:5281>
 - Demo AI question service: <http://localhost:3002>
 

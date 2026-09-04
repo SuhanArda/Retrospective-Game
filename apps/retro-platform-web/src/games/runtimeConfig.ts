@@ -6,6 +6,7 @@ export interface GameRuntimeConfig {
   imposterUrl: string;
   tankBattleUrl: string;
   hideAndSeekUrl: string;
+  wheelOfFortuneUrl: string;
 }
 
 export function parseGameRuntimeConfig(
@@ -25,6 +26,7 @@ export function parseGameRuntimeConfig(
     imposterUrl: requiredUrl('VITE_IMPOSTER_URL'),
     tankBattleUrl: requiredUrl('VITE_TANK_BATTLE_URL'),
     hideAndSeekUrl: requiredUrl('VITE_HIDE_AND_SEEK_URL'),
+    wheelOfFortuneUrl: requiredUrl('VITE_WHEEL_OF_FORTUNE_URL'),
   };
 }
 
