@@ -24,6 +24,46 @@ export interface GameSessionSnapshot {
   state: 'ACTIVE' | 'ENDED';
 }
 
+export type WheelOfFortunePhase =
+  | 'SETUP'
+  | 'PLAYER_WHEEL_READY'
+  | 'PLAYER_WHEEL_SPINNING'
+  | 'QUESTION_WHEEL_READY'
+  | 'QUESTION_WHEEL_SPINNING'
+  | 'QUESTION_REVEAL';
+
+export interface WheelQuestionSnapshot {
+  id: string;
+  text: string;
+}
+
+export interface WheelSpinSnapshot {
+  spinId: string;
+  selectedId: string;
+  selectedIndex: number;
+  startedAtUnixMs: number;
+  durationMs: number;
+}
+
+export interface WheelOfFortuneStateSnapshot {
+  gameSessionId: string;
+  phase: WheelOfFortunePhase;
+  questions: WheelQuestionSnapshot[];
+  usedQuestionIds: string[];
+  playerSpin?: WheelSpinSnapshot;
+  questionSpin?: WheelSpinSnapshot;
+  selectedPlayerId?: string;
+  selectedQuestionId?: string;
+  roundNumber: number;
+  revision: number;
+  updatedAtUnixMs: number;
+  serverTimeUnixMs: number;
+}
+
+export interface WheelQuestionRequest { gameSessionId: string; text: string }
+export interface UpdateWheelQuestionRequest extends WheelQuestionRequest { questionId: string }
+export interface WheelGameRequest { gameSessionId: string }
+
 export type ImposterPhase = 'ROLE_REVEAL' | 'CLUE_GIVING' | 'VOTING' | 'RESULTS';
 export type ImposterRole = 'IMPOSTER' | 'CREW';
 
@@ -506,6 +546,7 @@ export interface RoomSnapshot {
   russianRouletteState?: RussianRouletteStateSnapshot;
   drawAndGuessState?: DrawAndGuessStateSnapshot;
   hideAndSeekState?: HideAndSeekStateSnapshot;
+  wheelOfFortuneState?: WheelOfFortuneStateSnapshot;
   /** Authoritative playerId -> gameId selections for the active room vote. */
   votes?: Record<string, string>;
   /** Unix milliseconds when the authoritative room vote opened. */

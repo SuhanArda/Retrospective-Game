@@ -45,6 +45,10 @@ import type {
   FireTankBattleShotRequest,
   MoveTankBattleTankRequest,
   TankBattleGameSnapshot,
+  UpdateWheelQuestionRequest,
+  WheelGameRequest,
+  WheelOfFortuneStateSnapshot,
+  WheelQuestionRequest,
 } from '@retro-platform/contracts';
 
 export { RoomQuestionProvider, parseRoomQuestionSet, questionForStableKey } from './roomQuestionProvider';
@@ -92,6 +96,7 @@ type EventMap = {
   hideAndSeekSnapshot: HideAndSeekPersonalSnapshot;
   hideAndSeekStateChanged: HideAndSeekStateSnapshot;
   playerCaught: HideAndSeekPlayerCaughtEvent;
+  wheelOfFortuneStateChanged: WheelOfFortuneStateSnapshot;
 };
 
 type Listener<K extends keyof EventMap> = (event: EventMap[K]) => void;
@@ -246,6 +251,27 @@ export class RoomRealtimeClient {
   sendHideAndSeekInput(request: HideAndSeekInputRequest): Promise<void> {
     return this.invoke('SendHideAndSeekInput', request);
   }
+  addWheelQuestion(request: WheelQuestionRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('AddWheelQuestion', request);
+  }
+  updateWheelQuestion(request: UpdateWheelQuestionRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('UpdateWheelQuestion', request);
+  }
+  removeWheelQuestion(gameSessionId: string, questionId: string): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('RemoveWheelQuestion', gameSessionId, questionId);
+  }
+  startWheelGame(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('StartWheelGame', request);
+  }
+  spinWheelPlayer(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('SpinWheelPlayer', request);
+  }
+  spinWheelQuestion(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('SpinWheelQuestion', request);
+  }
+  nextWheelRound(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('NextWheelRound', request);
+  }
 
   private async open(): Promise<RoomSnapshot> {
     this.emit('connectionChanged', 'connecting');
@@ -284,6 +310,8 @@ export class RoomRealtimeClient {
     connection.on('HideAndSeekSnapshot', (snapshot: HideAndSeekPersonalSnapshot) => this.emit('hideAndSeekSnapshot', snapshot));
     connection.on('HideAndSeekStateChanged', (state: HideAndSeekStateSnapshot) => this.emit('hideAndSeekStateChanged', state));
     connection.on('PlayerCaught', (evt: HideAndSeekPlayerCaughtEvent) => this.emit('playerCaught', evt));
+    connection.on('WheelOfFortuneStateChanged', (state: WheelOfFortuneStateSnapshot) =>
+      this.emit('wheelOfFortuneStateChanged', state));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {
       this.emit('connectionChanged', 'connected');

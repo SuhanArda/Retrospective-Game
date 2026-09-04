@@ -21,6 +21,7 @@ const config = {
   imposterUrl: '/games/imposter/',
   tankBattleUrl: '/games/tank-battle/',
   hideAndSeekUrl: '/games/hide-and-seek/',
+  wheelOfFortuneUrl: '/games/wheel-of-fortune/',
 };
 
 describe('GameLauncher', () => {

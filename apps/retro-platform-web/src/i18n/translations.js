@@ -272,6 +272,15 @@ export const translations = {
           'Yakalanan izleyiciye döner; süre dolduğunda hayatta kalan olursa saklananlar kazanır.',
         ],
       },
+      'wheel-of-fortune': {
+        description: 'Çarkı çevir, sıradaki oyuncuyu ve konuşulacak retro sorusunu belirle.',
+        detail: 'Oda kurucusu soruları yazar; iki çark önce kimin konuşacağını, sonra hangi soruyu yanıtlayacağını seçer. Sonuçlar sunucuda belirlenir ve bütün ekip aynı dönüşü izler.',
+        steps: [
+          'Oda kurucusu retrospektif sorularını hazırlayıp oyunu başlatır.',
+          'Oyuncu çarkını çevir ve konuşacak kişiyi belirle.',
+          'Soru çarkını çevir, gelen soruyu sesli yanıtlayıp sonraki tura geç.',
+        ],
+      },
       platform: {
         name: 'Platform Oyunu',
         text: 'Engelleri aş. Düştüğünde oyun durur, karşına bir soru gelir.',
@@ -560,6 +569,15 @@ export const translations = {
           'The seeker starts frozen while hiders scatter across the map.',
           'You only see your own small radius — until the map briefly lights up for everyone.',
           'A caught hider becomes a spectator; the hiders win if anyone is still free when time runs out.',
+        ],
+      },
+      'wheel-of-fortune': {
+        description: 'Spin the wheels to choose the next player and retrospective question.',
+        detail: 'The host writes the questions; two wheels choose who speaks and which prompt they answer. Results are decided by the server, so the whole team watches the same spin.',
+        steps: [
+          'The host prepares the retrospective questions and starts the game.',
+          'Spin the player wheel to choose who will speak.',
+          'Spin the question wheel, discuss the prompt aloud, then start the next round.',
         ],
       },
       platform: {

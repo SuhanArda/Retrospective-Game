@@ -44,4 +44,5 @@ public interface IRoomClient
     Task HideAndSeekStateChanged(HideAndSeekStateSnapshot state);
     /// <summary>Group broadcast, once per catch — a toast/sound cue, not itself secret.</summary>
     Task PlayerCaught(HideAndSeekPlayerCaughtEvent evt);
+    Task WheelOfFortuneStateChanged(WheelOfFortuneStateSnapshot state);
 }

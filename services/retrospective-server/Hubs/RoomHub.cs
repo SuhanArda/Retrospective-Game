@@ -125,6 +125,27 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public Task<RoomSnapshot> CompleteFireQuestion(int expectedRevision) =>
         MutateRouletteState(rooms.CompleteFireQuestion(Context.ConnectionId, expectedRevision));
 
+    public Task<WheelOfFortuneStateSnapshot> AddWheelQuestion(WheelQuestionRequest request) =>
+        MutateWheel(rooms.AddWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> UpdateWheelQuestion(UpdateWheelQuestionRequest request) =>
+        MutateWheel(rooms.UpdateWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> RemoveWheelQuestion(string gameSessionId, string questionId) =>
+        MutateWheel(rooms.RemoveWheelQuestion(Context.ConnectionId, gameSessionId, questionId));
+
+    public Task<WheelOfFortuneStateSnapshot> StartWheelGame(WheelGameRequest request) =>
+        MutateWheel(rooms.StartWheelGame(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> SpinWheelPlayer(WheelGameRequest request) =>
+        MutateWheel(rooms.SpinWheelPlayer(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> SpinWheelQuestion(WheelGameRequest request) =>
+        MutateWheel(rooms.SpinWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> NextWheelRound(WheelGameRequest request) =>
+        MutateWheel(rooms.NextWheelRound(Context.ConnectionId, request));
+
     /// <summary>Return value only — SignalR delivers it to the caller alone, never broadcasts it.</summary>
     public Task<string> RequestDrawAndGuessWord() =>
         Task.FromResult(rooms.RequestDrawAndGuessWord(Context.ConnectionId));
@@ -360,5 +381,13 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         await Clients.Group(GroupName(mutation.RoomCode)).ImposterStateChanged(mutation.Event);
         return rooms.GetImposterSnapshot(Context.ConnectionId, mutation.Event.GameSessionId);
+    }
+
+    private async Task<WheelOfFortuneStateSnapshot> MutateWheel(WheelMutation mutation)
+    {
+        await Clients.Group(GroupName(mutation.RoomCode)).WheelOfFortuneStateChanged(mutation.Snapshot);
+        var room = rooms.Get(mutation.RoomCode);
+        if (room is not null) await Broadcast(room);
+        return mutation.Snapshot;
     }
 }
