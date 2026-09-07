@@ -305,5 +305,7 @@ function isFileError(error: unknown, code: string): boolean {
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "unknown storage error";
+  // JSON parse errors can contain excerpts of stored questions; never log messages.
+  if (isRecord(error) && typeof error.code === "string" && /^E[A-Z]+$/u.test(error.code)) return error.code;
+  return error instanceof SyntaxError ? "invalid_json" : "storage_or_schema_error";
 }

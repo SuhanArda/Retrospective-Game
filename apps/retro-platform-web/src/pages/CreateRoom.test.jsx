@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CreateRoom from './CreateRoom.jsx'
@@ -25,6 +25,7 @@ describe('optional room question prompt', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   beforeEach(() => {
@@ -81,6 +82,23 @@ describe('optional room question prompt', () => {
     expect(mocks.createRoom).toHaveBeenCalledTimes(1)
   })
 
+  it('enters the lobby after two seconds while question preparation is still pending', async () => {
+    vi.useFakeTimers()
+    mocks.prepareRoomQuestions.mockImplementation(() => new Promise(() => undefined))
+    const view = render(
+      <MemoryRouter initialEntries={['/room/create']}><Routes>
+        <Route path="/room/create" element={<CreateRoom />} />
+        <Route path="/room/:roomCode" element={<Location />} />
+      </Routes></MemoryRouter>,
+    )
+    fireEvent.change(view.container.querySelector('#roomName'), { target: { value: 'Sprint Retro' } })
+    await act(async () => { fireEvent.submit(view.container.querySelector('form')) })
+    expect(view.container.textContent).toContain('questionPreparation.preparing')
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(view.container.querySelector('[data-location]')?.textContent).toBe('/room/ABC234')
+    expect(mocks.prepareRoomQuestions).toHaveBeenCalledTimes(1)
+  })
+
   it('preserves room name validation', () => {
     const view = render(
       <MemoryRouter initialEntries={['/room/create']}>
@@ -91,5 +109,17 @@ describe('optional room question prompt', () => {
     fireEvent.submit(view.container.querySelector('form'))
 
     expect(mocks.createRoom).not.toHaveBeenCalled()
+  })
+
+  it('reports admission failure before question preparation without logging credentials', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mocks.createRoom.mockRejectedValue(new Error('private-reconnect-token'))
+    const view = render(<MemoryRouter><CreateRoom /></MemoryRouter>)
+    fireEvent.change(view.container.querySelector('#roomName'), { target: { value: 'Sprint Retro' } })
+    fireEvent.submit(view.container.querySelector('form'))
+    await waitFor(() => expect(view.container.querySelector('[role="alert"]')).not.toBeNull())
+    expect(mocks.prepareRoomQuestions).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledWith('[Platform AI] question preparation not invoked reason=room_creation_or_realtime_admission_failed')
+    expect(view.container.querySelector('button[type="submit"]').disabled).toBe(false)
   })
 })

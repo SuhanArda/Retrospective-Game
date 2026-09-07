@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RoomLobby from './RoomLobby.jsx'
+import { beginQuestionPreparation } from '../services/QuestionPreparationState'
 
 const mocks = vi.hoisted(() => ({
   currentPlayer: null,
@@ -85,5 +86,16 @@ describe('room lobby admission and sharing', () => {
 
     expect(mocks.writeText).toHaveBeenCalledWith(`${window.location.origin}/room/join?roomCode=ABC123`)
     expect(container.querySelector('[data-location]')).toBeNull()
+  })
+
+  it('shows preparation across lobby entry and updates when the background request settles', async () => {
+    mocks.currentPlayer = { id: 'host-1', displayName: 'Host', color: '#123456', isHost: true }
+    mocks.room = { code: 'ABC123', roomName: 'Retro', players: [mocks.currentPlayer], status: 'LOBBY', maxParticipants: 10 }
+    const finish = beginQuestionPreparation('ABC123')
+    await renderLobby()
+    expect(container.textContent).toContain('questionPreparation.preparing')
+    await act(async () => finish('fallback'))
+    expect(container.textContent).toContain('questionPreparation.fallback')
+    expect(container.textContent).not.toContain('questionPreparation.preparing')
   })
 })

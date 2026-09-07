@@ -23,6 +23,7 @@ function CreateRoom() {
   const [questionStyle, setQuestionStyle] = useState('dengeli')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
+  const [preparing, setPreparing] = useState(false)
 
   function validate() {
     const next = {}
@@ -41,7 +42,8 @@ function CreateRoom() {
     if (Object.keys(validation).length > 0 || !user) return
 
     setSubmitting(true)
-    const { room, player, reconnectToken } = await roomService.createRoom({
+    console.info(`[Platform AI] room creation started topicProvided=${Boolean(contextPrompt.trim())}`)
+    const admission = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
       avatarId: user.avatarId,
@@ -49,7 +51,15 @@ function CreateRoom() {
       maxParticipants: Number(maxParticipants),
       questionTimeSeconds: questionTime,
       votingTimeSeconds: votingTime,
+    }).catch(() => {
+      console.warn('[Platform AI] question preparation not invoked reason=room_creation_or_realtime_admission_failed')
+      setSubmitting(false)
+      setErrors((current) => ({ ...current, connection: 'Oda bağlantısı kurulamadı. Lütfen tekrar deneyin.' }))
+      return null
     })
+    if (!admission) return
+    const { room, player, reconnectToken } = admission
+    setPreparing(true)
     const questionPreparation = prepareRoomQuestions({
       roomCode: room.code,
       style: questionStyle,
@@ -58,14 +68,15 @@ function CreateRoom() {
       playerId: player.id,
       reconnectToken,
     })
-      .catch((cause) => {
-        if (import.meta.env.DEV) console.warn('[AIQuestion] room preparation failed; games will use authoritative defaults', cause)
+      .catch(() => {
+        console.warn(`[Platform AI] room preparation failed roomCode=${room.code}; games will use authoritative defaults`)
       })
     await Promise.race([
       questionPreparation,
       new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
     ])
     setSubmitting(false)
+    setPreparing(false)
     navigate(`/room/${room.code}`)
   }
 
@@ -167,10 +178,11 @@ function CreateRoom() {
             </select>
           </div>
 
+          {errors.connection && <span className="error-text" role="alert">{errors.connection}</span>}
           <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
             <span className="btn-content">
               {submitting && <span className="spinner" />}
-              {submitting ? t('createRoom.submitting') : t('createRoom.submit')}
+              {preparing ? t('questionPreparation.preparing') : submitting ? t('createRoom.submitting') : t('createRoom.submit')}
             </span>
           </button>
         </form>

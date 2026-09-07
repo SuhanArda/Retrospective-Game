@@ -9,6 +9,7 @@ import { buildRoomInviteUrl, roomJoinPath } from '../utils/roomInvite'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
+import QuestionPreparationNotice from '../components/QuestionPreparationNotice.jsx'
 import '../App.css'
 
 const CANDIDATE_IDS = gameRegistry.filter((game) => game.status === 'available').map((game) => game.id)
@@ -92,6 +93,7 @@ function RoomLobby() {
         <div className="brand">{t('lobby.brand')}</div>
         <HighlightTitle className="title title-sm" prefix={`${room.roomName} `} highlight={`#${canonicalCode}`} animate={false} />
         <p className="subtitle">{t('lobby.waiting')}</p>
+        <QuestionPreparationNotice roomCode={canonicalCode} />
         <div className={`connection-status ${connectionStatus}`} role="status">
           <span className="status-dot" />
           {isMockMode

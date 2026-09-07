@@ -95,6 +95,11 @@ export const translations = {
       submit: 'Katıl',
       submitting: 'Bağlanıyor...',
     },
+    questionPreparation: {
+      preparing: 'Sorular hazırlanıyor... Bu biraz zaman alabilir.',
+      ready: 'Sorular hazır.',
+      fallback: 'Hazır sorularla devam edebilirsiniz.',
+    },
     lobby: {
       brand: 'Oda Lobisi',
       mockStatus: 'Mock mod · yalnızca bu tarayıcı',
@@ -391,6 +396,11 @@ export const translations = {
       displayNameHint: 'Change this if you want to test as a different person on the same computer.',
       submit: 'Join',
       submitting: 'Connecting...',
+    },
+    questionPreparation: {
+      preparing: 'Preparing questions... This may take a little while.',
+      ready: 'Questions are ready.',
+      fallback: 'You can continue with the available questions.',
     },
     lobby: {
       brand: 'Room Lobby',

@@ -88,21 +88,26 @@ const server = createServer(async (request, response) => {
   }
   const url = new URL(request.url ?? "/", "http://request.invalid");
   if (request.method === "GET" && url.pathname === "/health") {
-    sendJson(response, 200, { status: "ok", provider: config.questionProvider, activeRoomCount: store.size });
+    sendJson(response, 200, { status: "ok" });
     return;
   }
   const isDirectGeneration = request.method === "POST" && url.pathname === "/questions/generate";
   const isRoomGeneration = request.method === "POST" && roomRoute.test(url.pathname);
   const generationRoute = isDirectGeneration ? "direct" : isRoomGeneration ? "room" : null;
-  if (generationRoute) console.log(`[AI Request] received route=${generationRoute}`);
+  // Use route templates, never query strings, raw paths, headers or request bodies.
+  const safeRoute = url.pathname === "/questions/generate" ? "/questions/generate"
+    : roomRoute.test(url.pathname) ? "/rooms/:code/questions"
+    : closeRoomRoute.test(url.pathname) ? "/rooms/:code" : "unmatched";
+  console.log(`[AI Request] received method=${request.method} route=${safeRoute}`);
+  response.once("finish", () => {
+    console.log(`[AI Request] response method=${request.method} route=${safeRoute} status=${response.statusCode}`);
+  });
   if (!isAuthorized(request)) {
-    if (generationRoute) console.warn(`[AI Request] authentication failed route=${generationRoute} status=401`);
+    console.warn(`[AI Request] authentication failed route=${safeRoute} status=401`);
     sendJson(response, 401, { error: "Yetkisiz servis isteği." });
     return;
   }
-  if (generationRoute) {
-    console.log(`[AI Request] authenticated route=${generationRoute} provider=${config.questionProvider}`);
-  }
+  console.log(`[AI Request] authenticated=true route=${safeRoute} provider=${config.questionProvider}`);
 
   const roomMatch = roomRoute.exec(url.pathname);
   const closeMatch = closeRoomRoute.exec(url.pathname);
@@ -219,6 +224,13 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(config.port, () => {
+  if (process.env.NODE_ENV === "production" && config.questionProvider === "local") {
+    console.warn("[AI Config] provider=local; Gemini will not be invoked. Set AI_PROVIDER=gemini and GEMINI_API_KEY to enable generation.");
+  }
+  if (process.env.AI_PROVIDER === undefined && process.env.QUESTION_PROVIDER?.trim()) {
+    console.warn("[AI Config] legacy QUESTION_PROVIDER in use; configure AI_PROVIDER explicitly.");
+  }
+  if (!config.internalServiceKey) console.warn("[AI Config] internalServiceKeyConfigured=false; development requests are unauthenticated");
   console.log(
     `[AI Config] provider=${config.questionProvider} geminiKeyConfigured=${Boolean(config.apiKey)} `
     + `model=${config.model} internalServiceKeyConfigured=${Boolean(config.internalServiceKey)} `

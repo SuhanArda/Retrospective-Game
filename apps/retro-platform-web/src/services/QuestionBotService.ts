@@ -1,8 +1,14 @@
 import type { RoomQuestionSet } from '@retro-platform/contracts';
 import { parseRoomQuestionSet } from '@retro-platform/realtime-client';
+import { beginQuestionPreparation } from './QuestionPreparationState';
+
+// Covers the default 90-second wake budget + 40-second generation + response margin.
+const preparationTimeoutSeconds = Number(import.meta.env.VITE_AI_PREPARATION_TIMEOUT_SECONDS ?? 135);
+if (!Number.isInteger(preparationTimeoutSeconds) || preparationTimeoutSeconds < 45 || preparationTimeoutSeconds > 600)
+  throw new Error('VITE_AI_PREPARATION_TIMEOUT_SECONDS must be an integer between 45 and 600');
 
 const questionApiUrl = typeof import.meta.env.VITE_API_URL === 'string' && import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL : null;
+  ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') : null;
 
 function requireApiUrl(): string {
   if (!questionApiUrl) throw new Error('QUESTION_BOT_UNAVAILABLE');
@@ -38,24 +44,41 @@ export async function prepareRoomQuestions(input: {
   reconnectToken: string;
   replaceExisting?: boolean;
 }): Promise<RoomQuestionSet> {
-  const reportFile = input.reportFile ? await encodeReportFile(input.reportFile) : null;
-  const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(input.roomCode)}/ai/questions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders(input.playerId, input.reconnectToken) },
-    keepalive: reportFile === null,
-    signal: AbortSignal.timeout(45_000),
-    body: JSON.stringify({
-      topic: input.contextPrompt?.trim() || null,
-      reportText: input.reportText?.trim() || null,
-      reportFile,
-      language: 'tr',
-      style: input.style,
-      count: 20,
-      replaceExisting: input.replaceExisting === true,
-    }),
-  });
-  if (!response.ok) throw new Error('QUESTION_PREPARATION_FAILED');
-  return parseRoomQuestionSet(await response.json());
+  console.info(`[Platform AI] question preparation requested roomCode=${input.roomCode} topicProvided=${Boolean(input.contextPrompt?.trim())}`);
+  const completePreparation = beginQuestionPreparation(input.roomCode);
+  let stage = 'report_read';
+  try {
+    const reportFile = input.reportFile ? await encodeReportFile(input.reportFile) : null;
+    stage = 'request';
+    console.info(`[Platform AI] requesting room questions roomCode=${input.roomCode}`);
+    const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(input.roomCode)}/ai/questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders(input.playerId, input.reconnectToken) },
+      keepalive: reportFile === null,
+      signal: AbortSignal.timeout(preparationTimeoutSeconds * 1000),
+      body: JSON.stringify({
+        topic: input.contextPrompt?.trim() || null,
+        reportText: input.reportText?.trim() || null,
+        reportFile,
+        language: 'tr',
+        style: input.style,
+        count: 20,
+        replaceExisting: input.replaceExisting === true,
+      }),
+    });
+    console.info(`[Platform AI] response roomCode=${input.roomCode} status=${response.status}`);
+    if (!response.ok) throw new Error('QUESTION_PREPARATION_FAILED');
+    stage = 'response_validation';
+    const result = parseRoomQuestionSet(await response.json());
+    completePreparation(result.provider === 'gemini' ? 'ready' : 'fallback');
+    return result;
+  } catch (error: unknown) {
+    const reason = error instanceof DOMException && error.name === 'TimeoutError' ? 'timeout'
+      : error instanceof TypeError ? 'network_or_cors' : stage;
+    console.warn(`[Platform AI] preparation failed roomCode=${input.roomCode} reason=${reason}`);
+    completePreparation('fallback');
+    throw error;
+  }
 }
 
 export async function roomQuestionsAreReady(roomCode: string, playerId: string, reconnectToken: string): Promise<boolean> {
