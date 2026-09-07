@@ -34,10 +34,11 @@ async function encodeReportFile(file: File): Promise<{ name: string; mimeType: s
   return { name: file.name, mimeType: file.type, dataBase64 };
 }
 
-// Preserve the single transient-response retry in addition to backend readiness.
-// Network/abort errors and other HTTP rejections are not retried here.
+// Retry only when the backend confirms generation was never sent.
+// Ambiguous gateway/network/abort failures may leave the original POST running.
 const wakeUpStatuses = new Set([502, 503, 504]);
 export const QUESTION_RETRY_DELAY_MS = 5_000;
+export const QUESTION_PREPARATION_WINDOW_MS = preparationTimeoutSeconds * 2_000 + QUESTION_RETRY_DELAY_MS;
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => { setTimeout(resolve, milliseconds); });
@@ -49,6 +50,7 @@ function wait(milliseconds: number): Promise<void> {
  */
 export function warmUpQuestionBot(): void {
   if (!questionApiUrl) return;
+  console.info('[Platform AI] warmup requested');
   void fetch(`${questionApiUrl}/api/ai/warmup`, {
     method: 'POST',
     signal: AbortSignal.timeout(120_000),
@@ -91,7 +93,9 @@ export async function prepareRoomQuestions(input: {
     });
     let response = await send();
     console.info(`[Platform AI] response roomCode=${input.roomCode} status=${response.status}`);
-    if (wakeUpStatuses.has(response.status)) {
+    const safeToRetry = wakeUpStatuses.has(response.status) &&
+      (await response.clone().json().catch(() => null))?.code === 'AI_NOT_READY';
+    if (safeToRetry) {
       console.info(`[Platform AI] retry scheduled roomCode=${input.roomCode} delayMs=${QUESTION_RETRY_DELAY_MS}`);
       await wait(QUESTION_RETRY_DELAY_MS);
       response = await send();
@@ -124,14 +128,26 @@ export async function readRoomQuestionStatus(
   playerId: string,
   reconnectToken: string,
 ): Promise<RoomQuestionStatus> {
-  const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(roomCode)}/ai/questions`, {
-    headers: authHeaders(playerId, reconnectToken),
-    signal: AbortSignal.timeout(3_000),
-  });
-  if (response.status === 204) return 'fallback'; // No AI source: use existing game defaults.
-  if (response.status === 404) return 'preparing';
-  if (!response.ok) throw new Error('QUESTION_BOT_UNAVAILABLE');
-  return parseRoomQuestionSet(await response.json()).provider === 'gemini' ? 'ai' : 'fallback';
+  try {
+    const response = await fetch(`${requireApiUrl()}/api/rooms/${encodeURIComponent(roomCode)}/ai/questions`, {
+      headers: authHeaders(playerId, reconnectToken),
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (response.status === 204) return 'fallback'; // No AI source: use existing game defaults.
+    if (response.status === 404) return 'preparing';
+    if (wakeUpStatuses.has(response.status)) {
+      console.info(`[Platform AI] lobby status query roomCode=${roomCode} status=${response.status} action=keep_preparing`);
+      return 'preparing';
+    }
+    if (response.status === 401 || response.status === 403) throw new Error('QUESTION_STATUS_AUTH_FAILED');
+    if (!response.ok) throw new Error('QUESTION_BOT_UNAVAILABLE');
+    return parseRoomQuestionSet(await response.json()).provider === 'gemini' ? 'ai' : 'fallback';
+  } catch (error: unknown) {
+    const timedOut = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    if (!timedOut && !(error instanceof TypeError)) throw error;
+    console.info(`[Platform AI] lobby status query roomCode=${roomCode} reason=${timedOut ? 'timeout' : 'network'} action=keep_preparing`);
+    return 'preparing';
+  }
 }
 
 export async function roomQuestionsAreReady(roomCode: string, playerId: string, reconnectToken: string): Promise<boolean> {

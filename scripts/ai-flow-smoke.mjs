@@ -55,9 +55,13 @@ async function checkBackend(port, expectedStatus, checkAuth = false) {
     const response = await fetch(url, { method: 'POST', headers,
       body: JSON.stringify({ topic, reportText: null, reportFile: null, language: 'tr', style: 'dengeli', count: 20, replaceExisting: false }),
     });
-    assert.ok(expectedStatus === 201 ? [200, 201].includes(response.status) : response.status === expectedStatus);
+    assert.ok(topic === null ? response.status === 400
+      : expectedStatus === 201 ? [200, 201].includes(response.status) : response.status === expectedStatus);
     const result = await response.json();
-    if (expectedStatus === 201) {
+    if (topic === null) {
+      assert.equal(result.code, 'AI_INPUT_REQUIRED');
+      assert.equal((await fetch(url, { headers })).status, 204);
+    } else if (expectedStatus === 201) {
       assert.equal(result.provider, 'demo');
       assert.equal(result.generationStatus, 'ready');
       assert.equal(result.questions.length, 20);
@@ -94,18 +98,27 @@ try {
   await Promise.all([
     checkBackend(configuredPort, 201, true),
     coldStart ? (async () => {
-      console.log('[Smoke] Backend running; ai-bot remains stopped for 12 seconds.');
-      await new Promise(resolve => setTimeout(resolve, 12_000));
+      console.log('[Smoke] Backend running; no warmup call; ai-bot remains stopped for 10 seconds.');
+      await new Promise(resolve => setTimeout(resolve, 10_000));
       assert.match(outputs.get('configured-backend'), /ai-bot not ready; waiting for cold start/);
+      assert.doesNotMatch(outputs.get('configured-backend'), /generation request started/);
       await startBot();
     })() : Promise.resolve(),
   ]);
   if (coldStart) {
-    assert.ok(Date.now() - startedAt >= 12_000);
+    assert.ok(Date.now() - startedAt >= 10_000);
     assert.match(outputs.get('configured-backend'), /ai-bot ready after/);
-    assert.equal(outputs.get('bot').match(/received method=POST route=\/rooms\/:code\/questions/g)?.length, 2);
+    assert.equal(outputs.get('bot').match(/received method=POST route=\/rooms\/:code\/questions/g)?.length, 1);
     console.log(`[Smoke] Cold start passed in ${((Date.now() - startedAt) / 1000).toFixed(1)}s; one POST per room.`);
   }
+  const readinessChecks = outputs.get('configured-backend').match(/readiness check started/g)?.length ?? 0;
+  const warmup = await fetch(`http://127.0.0.1:${configuredPort}/api/ai/warmup`, { method: 'POST' });
+  assert.equal(warmup.status, 200);
+  await warmup.arrayBuffer();
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.match(outputs.get('configured-backend'), /\[AI Warmup\] requested/);
+  assert.equal(outputs.get('configured-backend').match(/readiness check started/g)?.length, readinessChecks + 1);
+  console.log('[Smoke] Warmup endpoint reached shared readiness and public health.');
   const missingPort = await freePort();
   await start('unconfigured-production-backend', 'dotnet', args, serverDirectory, {
     ASPNETCORE_ENVIRONMENT: 'Production', DOTNET_ENVIRONMENT: 'Production', PORT: String(missingPort),
