@@ -238,6 +238,7 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public async Task LeaveRoom()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        var hadAiSource = rooms.HasAiQuestionSource(player.RoomCode);
         var room = rooms.Leave(Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(player.RoomCode));
         if (room.Players.Count > 0)
@@ -250,7 +251,7 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         }
         else
         {
-            await ai.DeleteSilently(player.RoomCode, room.Id, CancellationToken.None);
+            if (hadAiSource) await ai.DeleteSilently(player.RoomCode, room.Id, CancellationToken.None);
             await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
         }
     }

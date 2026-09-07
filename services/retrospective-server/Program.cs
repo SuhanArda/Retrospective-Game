@@ -114,8 +114,7 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
 app.MapPost("/api/ai/warmup", async (AiQuestionGateway ai) =>
 {
-    // The browser fires this while the moderator is still filling in the room
-    // form, so the wake overlaps with typing instead of the generation call.
+    // The browser fires this only after submitting a room with AI source input.
     // It must survive that browser navigating away, hence no request token.
     await ai.WarmUp(CancellationToken.None);
     return Results.Ok(new { warming = true });
@@ -149,6 +148,9 @@ app.MapGet("/api/rooms/{code}/ai/questions", async (string code, HttpRequest req
     try
     {
         var access = AuthorizeAiRequest(request, rooms, code, hostRequired: false);
+        // Guests and games may check for questions even when preparation was skipped.
+        // Keep that check local so it cannot wake a sleeping AI service.
+        if (!rooms.HasAiQuestionSource(access.RoomCode)) return Results.NoContent();
         return await ai.Get(
             access.RoomCode,
             access.RoomInstanceId,

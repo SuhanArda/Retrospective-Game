@@ -44,9 +44,8 @@ function wait(milliseconds: number): Promise<void> {
 }
 
 /**
- * Starts waking the AI service without waiting for it. Call this as soon as the
- * moderator opens the room form: on a free tier instance the wake can take about
- * a minute, and that minute should be spent while they type, not afterwards.
+ * Starts waking the AI service without waiting for it, once the moderator
+ * submits a room with a prompt or report that requires AI preparation.
  */
 export function warmUpQuestionBot(): void {
   if (!questionApiUrl) return;
@@ -129,6 +128,7 @@ export async function readRoomQuestionStatus(
     headers: authHeaders(playerId, reconnectToken),
     signal: AbortSignal.timeout(3_000),
   });
+  if (response.status === 204) return 'fallback'; // No AI source: use existing game defaults.
   if (response.status === 404) return 'preparing';
   if (!response.ok) throw new Error('QUESTION_BOT_UNAVAILABLE');
   return parseRoomQuestionSet(await response.json()).provider === 'gemini' ? 'ai' : 'fallback';
@@ -139,7 +139,7 @@ export async function roomQuestionsAreReady(roomCode: string, playerId: string, 
     headers: authHeaders(playerId, reconnectToken),
     signal: AbortSignal.timeout(3_000),
   });
-  if (response.status === 404) return false;
+  if (response.status === 204 || response.status === 404) return false;
   if (!response.ok) throw new Error('QUESTION_BOT_UNAVAILABLE');
   return parseRoomQuestionSet(await response.json()).questions.length === 20;
 }

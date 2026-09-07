@@ -6,6 +6,10 @@ let state: PreparationState = { roomCode: null, status: 'idle' };
 const listeners = new Set<() => void>();
 
 export function getQuestionPreparationState(): PreparationState { return state; }
+export function skipQuestionPreparation(roomCode: string): void {
+  state = { roomCode, status: 'idle' };
+  listeners.forEach(listener => listener());
+}
 export function subscribeQuestionPreparation(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };

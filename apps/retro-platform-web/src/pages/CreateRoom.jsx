@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { roomService } from '../services/roomServiceInstance'
 import { prepareRoomQuestions, warmUpQuestionBot } from '../services/QuestionBotService'
+import { hasAiQuestionInput } from '../services/RoomQuestionInput'
+import { skipQuestionPreparation } from '../services/QuestionPreparationState'
 import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
@@ -25,10 +27,6 @@ function CreateRoom() {
   const [submitting, setSubmitting] = useState(false)
   const [preparing, setPreparing] = useState(false)
 
-  // Wake the AI service while the form is being filled in, so question
-  // generation does not have to pay for a sleeping instance afterwards.
-  useEffect(() => { warmUpQuestionBot() }, [])
-
   function validate() {
     const next = {}
     if (roomName.trim().length < 3) next.roomName = t('createRoom.roomNameError')
@@ -46,7 +44,10 @@ function CreateRoom() {
     if (Object.keys(validation).length > 0 || !user) return
 
     setSubmitting(true)
-    console.info(`[Platform AI] room creation started topicProvided=${Boolean(contextPrompt.trim())}`)
+    const normalizedPrompt = contextPrompt?.trim() || undefined
+    const aiInput = { contextPrompt: normalizedPrompt, reportFile }
+    const hasAiInput = hasAiQuestionInput(aiInput)
+    console.info(`[Platform AI] room creation started topicProvided=${Boolean(normalizedPrompt)}`)
     const admission = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
@@ -63,22 +64,28 @@ function CreateRoom() {
     })
     if (!admission) return
     const { room, player, reconnectToken } = admission
-    setPreparing(true)
-    const questionPreparation = prepareRoomQuestions({
-      roomCode: room.code,
-      style: questionStyle,
-      contextPrompt: contextPrompt.trim() || undefined,
-      reportFile,
-      playerId: player.id,
-      reconnectToken,
-    })
-      .catch(() => {
-        console.warn(`[Platform AI] room preparation failed roomCode=${room.code}; games will use authoritative defaults`)
+    if (hasAiInput) {
+      console.info(`[Platform AI] preparation enabled roomCode=${room.code} source=${normalizedPrompt ? 'prompt' : 'report'}`)
+      warmUpQuestionBot()
+      setPreparing(true)
+      const questionPreparation = prepareRoomQuestions({
+        roomCode: room.code,
+        style: questionStyle,
+        ...aiInput,
+        playerId: player.id,
+        reconnectToken,
       })
-    await Promise.race([
-      questionPreparation,
-      new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
-    ])
+        .catch(() => {
+          console.warn(`[Platform AI] room preparation failed roomCode=${room.code}; games will use authoritative defaults`)
+        })
+      await Promise.race([
+        questionPreparation,
+        new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
+      ])
+    } else {
+      console.info(`[Platform AI] preparation skipped roomCode=${room.code} reason=no_ai_input`)
+      skipQuestionPreparation(room.code)
+    }
     setSubmitting(false)
     setPreparing(false)
     navigate(`/room/${room.code}`)
