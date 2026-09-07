@@ -114,6 +114,7 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
 app.MapPost("/api/ai/warmup", async (AiQuestionGateway ai) =>
 {
+    aiLogger.LogInformation("[AI Warmup] requested");
     // The browser fires this only after submitting a room with AI source input.
     // It must survive that browser navigating away, hence no request token.
     await ai.WarmUp(CancellationToken.None);

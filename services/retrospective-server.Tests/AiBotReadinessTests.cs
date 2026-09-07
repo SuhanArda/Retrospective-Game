@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
@@ -69,6 +70,8 @@ public sealed class AiBotReadinessTests
         Assert.InRange(elapsed.Elapsed.TotalSeconds, 0.8, 4);
         Assert.Equal(1, handler.HealthCalls);
         Assert.Equal(0, handler.Posts);
+        var payload = JsonSerializer.SerializeToElement(Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+        Assert.Equal("AI_NOT_READY", payload.GetProperty("code").GetString());
     }
 
     [Fact]
@@ -117,8 +120,25 @@ public sealed class AiBotReadinessTests
     public async Task AmbiguousGenerationTimeoutIsNotRetried()
     {
         var handler = new ScenarioHandler { Post = _ => throw new TaskCanceledException() };
-        Assert.Equal(504, Status(await Gateway(handler, Readiness(handler)).Generate("ABC234", "instance", Request(), default)));
+        var result = await Gateway(handler, Readiness(handler)).Generate("ABC234", "instance", Request(), default);
+        Assert.Equal(504, Status(result));
+        var payload = JsonSerializer.SerializeToElement(Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+        Assert.False(payload.TryGetProperty("code", out _));
         Assert.Equal(1, handler.Posts);
+    }
+
+    [Theory]
+    [InlineData(301)]
+    [InlineData(302)]
+    [InlineData(307)]
+    [InlineData(308)]
+    public async Task RedirectDoesNotCountAsHealthy(int status)
+    {
+        var handler = new ScenarioHandler { Health = (_, _) => Task.FromResult(Response(status)) };
+        var result = await Gateway(handler, Readiness(handler)).Generate("ABC234", "instance", Request(), default);
+        Assert.Equal(502, Status(result));
+        Assert.Equal(1, handler.HealthCalls);
+        Assert.Equal(0, handler.Posts);
     }
 
     [Fact]

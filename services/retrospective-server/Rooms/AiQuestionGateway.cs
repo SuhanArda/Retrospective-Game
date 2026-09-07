@@ -53,8 +53,8 @@ public sealed class AiQuestionGateway(
             onReady);
 
     /// <summary>
-    /// Starts the same bounded readiness task used by generation while the
-    /// moderator fills in the form. It never sends a generation request.
+    /// Starts the same bounded readiness task used by generation after the
+    /// moderator submits AI input. It never sends a generation request.
     /// </summary>
     public async Task WarmUp(CancellationToken cancellationToken)
     {
@@ -128,7 +128,9 @@ public sealed class AiQuestionGateway(
                 if (!ready.Ready)
                 {
                     logger.LogWarning("[AI Gateway] generation not sent reason={Reason}; using existing game fallback path", ready.Reason);
-                    return Results.Json(new { error = "AI question service is unavailable." }, statusCode: ready.StatusCode);
+                    // This is the only failure that explicitly permits a browser retry:
+                    // no generation request has left this backend yet.
+                    return Results.Json(new { error = "AI question service is unavailable.", code = "AI_NOT_READY" }, statusCode: ready.StatusCode);
                 }
                 logger.LogInformation("[AI Gateway] generation request started");
             }

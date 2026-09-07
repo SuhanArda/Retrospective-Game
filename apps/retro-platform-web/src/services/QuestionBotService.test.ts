@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareRoomQuestions, readRoomQuestionStatus, roomQuestionsAreReady, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
+import { prepareRoomQuestions, readRoomQuestionStatus, roomQuestionsAreReady, warmUpQuestionBot, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
 import { getQuestionPreparationState } from './QuestionPreparationState';
 
 const validQuestions = Array.from({ length: 20 }, (_, index) => ({
@@ -80,7 +80,7 @@ describe('QuestionBotService', () => {
   it.each([502, 503, 504])('retries once when the gateway reports a sleeping question service (status=%s)', async (status) => {
     vi.useFakeTimers();
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response('{}', { status }))
+      .mockResolvedValueOnce(new Response('{"code":"AI_NOT_READY"}', { status }))
       .mockResolvedValueOnce(new Response(JSON.stringify(validSet), { status: 201, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -116,7 +116,7 @@ describe('QuestionBotService', () => {
 
   it('stops after the single retry when the service remains unavailable', async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', { status: 503 })));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{"code":"AI_NOT_READY"}', { status: 503 })));
     vi.stubGlobal('fetch', fetchMock);
     const outcome = expect(prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli',
       playerId: 'player-1', reconnectToken: 'token-1' })).rejects.toThrow('QUESTION_PREPARATION_FAILED');
@@ -127,11 +127,57 @@ describe('QuestionBotService', () => {
     expect(getQuestionPreparationState().status).toBe('fallback');
   });
 
-  it.each([400, 401, 403, 404, 500])('does not retry non-transient HTTP %s', async (status) => {
+  it.each([400, 401, 403, 404, 500, 502, 503, 504])('does not retry HTTP %s without confirmation that generation was never sent', async (status) => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli',
       playerId: 'player-1', reconnectToken: 'token-1' })).rejects.toThrow('QUESTION_PREPARATION_FAILED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getQuestionPreparationState().status).toBe('fallback');
+  });
+
+  it('sends warmup to the backend endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    warmUpQuestionBot();
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:5281/api/ai/warmup',
+      expect.objectContaining({ method: 'POST', signal: expect.any(AbortSignal) }));
+  });
+
+  it.each([404, 502, 503, 504])('treats status GET %s as preparing', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })));
+    await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).resolves.toBe('preparing');
+  });
+
+  it.each([new DOMException('Timed out', 'TimeoutError'), new TypeError('Failed to fetch')])(
+    'treats a transient status GET error as preparing', async (error) => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error));
+      await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).resolves.toBe('preparing');
+    });
+
+  it.each([401, 403])('reports status GET authentication failure %s without retrying', async (status) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).rejects.toThrow('QUESTION_STATUS_AUTH_FAILED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps preparing if the status response body times out after headers arrive', async () => {
+    const body = new ReadableStream({ start(controller) { controller.error(new DOMException('Timed out', 'TimeoutError')); } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+    await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).resolves.toBe('preparing');
+  });
+
+  it.each(['gemini', 'demo'])('reads a completed %s question set', async (provider) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...validSet, provider }))));
+    await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).resolves.toBe(provider === 'gemini' ? 'ai' : 'fallback');
+  });
+
+  it('does not retry a generation timeout and finishes with fallback', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new DOMException('Timed out', 'TimeoutError'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli', contextPrompt: 'Sprint',
+      playerId: 'player-1', reconnectToken: 'token-1' })).rejects.toThrow('Timed out');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getQuestionPreparationState().status).toBe('fallback');
   });

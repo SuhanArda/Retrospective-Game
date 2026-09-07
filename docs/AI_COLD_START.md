@@ -1,5 +1,15 @@
 # Render Free AI-bot cold-start fix
 
+## Lobby status follow-up
+
+The merged lobby previously showed `unavailable` after two failed 3-second status GETs, independently of a still-pending generation POST. Readiness itself was already awaited by generation; warmup was not required for correctness.
+
+The initiating browser now subscribes to `QuestionPreparationState` and follows only its POST result (`preparing → ready/fallback`), without redundant status polling. Reconnected/other browsers keep the 3-second GET timeout and 3-second interval: timeout/network errors and 404/502/503/504 mean preparing, while 401/403 and other definitive errors mean unavailable. Polling stops at a deadline of twice the configured preparation timeout plus the 5-second optional retry delay (275 seconds by default). Status transitions log safe reasons without sources or credentials.
+
+Backend readiness owns waking the bot. One frontend retry is allowed only for 502/503/504 responses carrying `code: AI_NOT_READY`, which the backend emits before dispatching generation. An ambiguous generation timeout or gateway response must not resend a possibly active Gemini request. No-input rooms still skip warmup/preparation; their local status reads and cleanup do not contact AI-bot.
+
+`node scripts/ai-flow-smoke.mjs --cold-start --release` checks the actual backend/bot HTTP flow with the bot stopped for 10 seconds and no warmup call, then checks warmup separately. It uses the local question provider, so success verifies transport/readiness, not production Gemini availability. The platform regression tests separately verify that an in-flight status timeout cannot override the pending POST or its final ready/fallback state.
+
 The user confirmed the incident: generation works after manually opening the ai-bot URL, but can fail while the Free service is asleep. The backend now wakes/checks the bot on demand before sending generation. The previous production URL validation, authentication, diagnostics, optional prompt, and fallback changes remain intact. This patch has been exercised locally; it has not been deployed to Render.
 
 ## 1. Previous timeout chain
