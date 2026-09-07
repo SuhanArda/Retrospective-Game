@@ -31,10 +31,22 @@ export const HideSeekConfig = {
    * `HideSeekConfig.FootprintSenseRadius`.
    */
   FOOTPRINT_SENSE_RADIUS: 8,
-  /** Hider movement speed, px/sec. */
-  PLAYER_SPEED: 140,
-  /** Seeker speed as a multiplier of PLAYER_SPEED. */
-  SEEKER_SPEED_MULT: 1.2,
+  /**
+   * Hider movement speed, px/sec. Came down from 140, which was fast enough
+   * to outrun your own lantern: at 140 you cross the whole `VISION_RADIUS`
+   * (4 tiles, 80px) in 0.57s, so you enter ground you cannot see yet faster
+   * than it can be shown to you. 95 puts that at ~0.85s and the map's full
+   * 960px width at ~10s.
+   */
+  PLAYER_SPEED: 95,
+  /**
+   * Seeker speed as a multiplier of PLAYER_SPEED. Was 1.2, which made catches
+   * too cheap — with a catch bar that never falls back (see
+   * `CATCH_DURATION_SEC`), a seeker that much faster wins every straight-line
+   * chase quickly. At 1.1 the seeker still closes on a hider running in the
+   * open, just slowly enough that corners and walls are worth playing.
+   */
+  SEEKER_SPEED_MULT: 1.1,
   /** Half-width of a player's collision box, in px — kept well under half a
    * tile (10px) so two players can still pass each other in a corridor. */
   PLAYER_RADIUS: 7,

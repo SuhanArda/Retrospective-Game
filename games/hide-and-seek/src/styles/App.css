@@ -271,15 +271,28 @@
   color: #b8b0c9;
 }
 
-.results-return-button {
+.results-actions {
   margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.results-button {
   padding: 10px 20px;
   border-radius: 999px;
   border: 1px solid rgba(108, 92, 231, 0.5);
-  background: #6c5ce7;
-  color: #f5f4f8;
+  background: transparent;
+  color: #d9d4e6;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/** The rematch is the expected next step, so it carries the filled treatment the single old button had. */
+.results-button-primary {
+  background: #6c5ce7;
+  color: #f5f4f8;
 }
 
 .prep-countdown {

@@ -692,6 +692,29 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     }
 
     /// <summary>
+    /// Host-only rematch: throws the finished round away and starts a fresh
+    /// one for whoever is still in the room, without going back through the
+    /// lobby and the game vote. Only valid once the round has actually ended;
+    /// mid-round this would silently discard a game in progress. Roles and
+    /// spawns are drawn again from scratch, exactly as at the first start.
+    /// </summary>
+    public RoomSnapshot RestartHideAndSeek(string connectionId)
+    {
+        var (room, _) = Authorize(connectionId, hostRequired: true);
+        lock (room.Gate)
+        {
+            if (room.CurrentGameSession?.GameId != "hide-and-seek") throw new RoomException("NO_ACTIVE_ROUND");
+            if (room.HideAndSeekState?.Phase != "ENDED") throw new RoomException("ROUND_IN_PROGRESS");
+            if (!IsGamePlayable(room, "hide-and-seek")) throw new RoomException("NOT_ENOUGH_PLAYERS");
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = hideSeek.StartGame(
+                room.Code,
+                room.Players.Values.Select(player => (player.Id, player.ConnectionId)).ToArray());
+            return Snapshot(room);
+        }
+    }
+
+    /// <summary>
     /// Called by <see cref="HideSeek.HideSeekGameLoopService"/> — not by a
     /// client — whenever a tick actually changes the public phase/state.
     /// Caches it on the room the same way every other game's state lives on

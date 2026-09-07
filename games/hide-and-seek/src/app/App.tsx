@@ -81,7 +81,11 @@ type ConnectionView =
   | { kind: 'connecting' }
   | { kind: 'waiting-for-game' }
   | { kind: 'map-mismatch' }
-  | { kind: 'ready'; grid: HideSeekTileGrid; role: HideAndSeekRole }
+  // `roundKey` remounts the canvas on a rematch. Everything the canvas tracks
+  // per round — this tab's role, the spectator latch, explored fog, footprints
+  // — lives in its mount effect's own closure, so a second round played on the
+  // first round's canvas would keep a caught player a frozen spectator.
+  | { kind: 'ready'; grid: HideSeekTileGrid; role: HideAndSeekRole; roundKey: string }
   | { kind: 'error'; message: string };
 
 function OnlineGame({ launchContext }: OnlineGameProps) {
@@ -185,7 +189,14 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
         }
         const grid = parseTileGrid(event.map);
         const isSeeker = event.state.seekerPlayerId === launchContext.playerId;
-        setView({ kind: 'ready', grid, role: isSeeker ? 'SEEKER' : 'HIDER' });
+        setView({
+          kind: 'ready',
+          grid,
+          role: isSeeker ? 'SEEKER' : 'HIDER',
+          // Decided once per round at start and never moved after, so it is
+          // stable within a round and different in the next one.
+          roundKey: String(event.state.gameEndsAtUtc),
+        });
       })();
     });
     const disposeStateChanged = bridge.onStateChanged(setGameState);
@@ -284,6 +295,13 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
     void roomClientRef.current?.returnToGameSelection().catch(() => setView({ kind: 'error', message: 'Oda bağlantısı kurulamadı' }));
   }
 
+  // The new round reaches every client (this one included) as a fresh
+  // `hideAndSeekGameStarted`, so there is nothing to apply from the reply here
+  // — a failed call is the only thing worth reacting to.
+  function handlePlayAgain() {
+    void roomClientRef.current?.restartHideAndSeek().catch(() => setView({ kind: 'error', message: 'Yeni tur başlatılamadı' }));
+  }
+
   // Read fresh off `rosterRef` on every call rather than closing over the
   // roster itself — `HideSeekCanvas` grabs whatever function is in `online`
   // once, at mount, and calls it every frame after that; only a lookup that
@@ -311,7 +329,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
       <FullscreenButton className="fullscreen-button" />
       <RoleLegend localRole={view.role} />
       <HideSeekCanvas
-        key={launchContext.gameSessionId}
+        key={`${launchContext.gameSessionId}:${view.roundKey}`}
         grid={view.grid}
         phase={gameState?.phase}
         online={{
@@ -335,6 +353,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
           caughtCount={gameState.caughtPlayerIds.length}
           localRole={view.role}
           isHost={isHost}
+          onPlayAgain={handlePlayAgain}
           onReturnToGames={handleReturnToGames}
         />
       )}

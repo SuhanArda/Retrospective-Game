@@ -37,6 +37,10 @@ export class HideSeekRoomBridge {
     this.disposers.push(
       client.on('hideAndSeekGameStarted', (event) => {
         this.latestGameStarted = event;
+        // A rematch is a brand new game whose revisions restart at 1. Without
+        // forgetting the finished round first, `applyState` would read the new
+        // round as stale and never report a single one of its phases.
+        this.latestState = null;
         this.gameStartedListeners.forEach((listener) => listener(event));
         this.applyState(event.state);
       }),

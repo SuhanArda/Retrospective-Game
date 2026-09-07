@@ -251,6 +251,10 @@ export class RoomRealtimeClient {
   sendHideAndSeekInput(request: HideAndSeekInputRequest): Promise<void> {
     return this.invoke('SendHideAndSeekInput', request);
   }
+  /** Host-only rematch once the round has ended — the new round arrives as a fresh `hideAndSeekGameStarted`, not through this promise. */
+  restartHideAndSeek(): Promise<RoomSnapshot> {
+    return this.invoke('RestartHideAndSeek');
+  }
   addWheelQuestion(request: WheelQuestionRequest): Promise<WheelOfFortuneStateSnapshot> {
     return this.invoke('AddWheelQuestion', request);
   }
