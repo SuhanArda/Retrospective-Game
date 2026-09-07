@@ -546,6 +546,10 @@
   background: #e0a33a;
 }
 
+.question-status.unavailable .status-dot {
+  background: #e05a5a;
+}
+
 @keyframes pulse {
   0%,
   100% {

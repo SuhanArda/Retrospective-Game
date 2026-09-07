@@ -15,6 +15,15 @@ import '../App.css'
 
 const CANDIDATE_IDS = gameRegistry.filter((game) => game.status === 'available').map((game) => game.id)
 const QUESTION_STATUS_POLL_MS = 3000
+// One failed poll is a hiccup; a service that keeps refusing is exactly what
+// this badge exists to surface, so say so instead of staying blank.
+const QUESTION_STATUS_FAILURES = 2
+const QUESTION_STATUS_LABELS = {
+  preparing: 'lobby.questionsPreparing',
+  ai: 'lobby.questionsReady',
+  fallback: 'lobby.questionsFallback',
+  unavailable: 'lobby.questionsUnavailable',
+}
 // Enough to cover a sleeping question service waking up and generating; after
 // that the badge simply stays hidden instead of polling a dead endpoint.
 const QUESTION_STATUS_ATTEMPTS = 40
@@ -58,18 +67,28 @@ function RoomLobby() {
     let cancelled = false
     let timer = null
     let attempt = 0
+    let failures = 0
 
     async function poll() {
       try {
         const status = await readRoomQuestionStatus(roomCode, session.playerId, session.reconnectToken)
         if (cancelled) return
+        failures = 0
         setQuestionStatus(status)
         if (status !== 'preparing') return
       } catch {
         if (cancelled) return
+        failures += 1
+        if (failures >= QUESTION_STATUS_FAILURES) setQuestionStatus('unavailable')
       }
       attempt += 1
-      if (attempt < QUESTION_STATUS_ATTEMPTS) timer = window.setTimeout(poll, QUESTION_STATUS_POLL_MS)
+      if (attempt < QUESTION_STATUS_ATTEMPTS) {
+        timer = window.setTimeout(poll, QUESTION_STATUS_POLL_MS)
+      } else {
+        // Still nothing after the whole window: the room is playing with the
+        // built-in questions whether or not the bot ever answers.
+        setQuestionStatus((current) => (current === 'preparing' ? 'unavailable' : current))
+      }
     }
 
     poll()
@@ -144,11 +163,7 @@ function RoomLobby() {
         {questionStatus && (
           <div className={`connection-status question-status ${questionStatus}`} role="status">
             <span className="status-dot" />
-            {questionStatus === 'preparing'
-              ? t('lobby.questionsPreparing')
-              : questionStatus === 'ai'
-                ? t('lobby.questionsReady')
-                : t('lobby.questionsFallback')}
+            {t(QUESTION_STATUS_LABELS[questionStatus])}
           </div>
         )}
 
