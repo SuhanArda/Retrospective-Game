@@ -6,7 +6,10 @@ namespace Retrospective.Server.Rooms;
 public sealed class AiQuestionGateway(
     HttpClient client,
     IConfiguration configuration,
-    ILogger<AiQuestionGateway> logger)
+    ILogger<AiQuestionGateway> logger,
+    AiQuestionConfiguration aiConfiguration,
+    IHostEnvironment environment,
+    AiBotReadiness readiness)
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -50,23 +53,29 @@ public sealed class AiQuestionGateway(
             onReady);
 
     /// <summary>
-    /// Pings the AI service so a sleeping free tier instance starts waking up
-    /// before the moderator submits the room form. Failures are irrelevant: the
-    /// request that matters is the generation call that follows.
+    /// Starts the same bounded readiness task used by generation while the
+    /// moderator fills in the form. It never sends a generation request.
     /// </summary>
     public async Task WarmUp(CancellationToken cancellationToken)
     {
+        var configurationError = aiConfiguration.Error ??
+            (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(_serviceKey) ? "internal_service_key_missing" : null);
+        if (configurationError is not null)
+        {
+            logger.LogError("[AI Gateway] warmup not sent reason={Reason}", configurationError);
+            return;
+        }
         var last = Interlocked.Read(ref _lastWarmUpTicks);
         if (last != 0 && DateTime.UtcNow.Ticks - last < WarmUpInterval.Ticks) return;
         if (!await WarmUpGate.WaitAsync(0, cancellationToken)) return;
         try
         {
-            using var message = Create(HttpMethod.Get, "health");
-            using var response = await client.SendAsync(message, cancellationToken);
-            Interlocked.Exchange(ref _lastWarmUpTicks, DateTime.UtcNow.Ticks);
+            var result = await readiness.WaitUntilReady(cancellationToken);
+            if (result.Ready) Interlocked.Exchange(ref _lastWarmUpTicks, DateTime.UtcNow.Ticks);
+            else logger.LogWarning("[AI Gateway] warmup failed status={StatusCode} reason={Reason}", result.StatusCode, result.Reason);
         }
-        catch (HttpRequestException) { /* The generation call reports real failures. */ }
-        catch (OperationCanceledException) { /* A slow wake still helps the next call. */ }
+        catch (HttpRequestException error) { logger.LogWarning("[AI Gateway] warmup failed reason={HttpError}", error.HttpRequestError); }
+        catch (OperationCanceledException) { logger.LogWarning("[AI Gateway] warmup cancelled"); }
         finally { WarmUpGate.Release(); }
     }
 
@@ -78,7 +87,10 @@ public sealed class AiQuestionGateway(
     public async Task DeleteSilently(string roomCode, string roomInstanceId, CancellationToken cancellationToken)
     {
         try { _ = await Delete(roomCode, roomInstanceId, cancellationToken); }
-        catch { /* Room cleanup must not expose AI provider details or stop maintenance. */ }
+        catch (Exception error)
+        {
+            logger.LogWarning("[AI Gateway] cleanup failed reason={ErrorType}", error.GetType().Name);
+        }
     }
 
     private HttpRequestMessage Create(HttpMethod method, string path)
@@ -101,9 +113,27 @@ public sealed class AiQuestionGateway(
     {
         var baseUrl = client.BaseAddress?.GetLeftPart(UriPartial.Authority) ?? "unconfigured";
         logger.LogInformation("[AI Gateway] {Operation} requested", operation);
-        logger.LogInformation("[AI Gateway] calling ai-bot operation={Operation} baseUrl={BaseUrl}", operation, baseUrl);
+        var configurationError = aiConfiguration.Error ??
+            (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(_serviceKey) ? "internal_service_key_missing" : null);
+        if (configurationError is not null)
+        {
+            logger.LogError("[AI Gateway] request not sent operation={Operation} reason={Reason}", operation, configurationError);
+            return Results.Json(new { error = "AI question service is not configured." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
         try
         {
+            if (operation == "generation")
+            {
+                var ready = await readiness.WaitUntilReady(cancellationToken);
+                if (!ready.Ready)
+                {
+                    logger.LogWarning("[AI Gateway] generation not sent reason={Reason}; using existing game fallback path", ready.Reason);
+                    return Results.Json(new { error = "AI question service is unavailable." }, statusCode: ready.StatusCode);
+                }
+                logger.LogInformation("[AI Gateway] generation request started");
+            }
+            logger.LogInformation("[AI Gateway] calling ai-bot operation={Operation} baseUrl={BaseUrl}", operation, baseUrl);
+            // Send once. An ambiguous POST timeout must never trigger a second Gemini call.
             using var response = await client.SendAsync(message, cancellationToken);
             logger.LogInformation(
                 "[AI Gateway] ai-bot response operation={Operation} status={StatusCode}",
@@ -134,6 +164,10 @@ public sealed class AiQuestionGateway(
                     {
                         await onReady(set);
                     }
+                    else
+                    {
+                        logger.LogWarning("[AI Gateway] successful ai-bot response failed room question-set validation");
+                    }
                 }
                 catch (JsonException)
                 {
@@ -147,6 +181,11 @@ public sealed class AiQuestionGateway(
         {
             logger.LogWarning("[AI Gateway] request failed operation={Operation} reason=timeout", operation);
             return Results.Json(new { error = "AI soru servisi zaman aşımına uğradı." }, statusCode: StatusCodes.Status504GatewayTimeout);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("[AI Gateway] request cancelled operation={Operation} reason=caller_cancelled", operation);
+            throw;
         }
         catch (HttpRequestException error)
         {

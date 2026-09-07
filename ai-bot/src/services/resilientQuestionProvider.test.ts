@@ -103,7 +103,8 @@ test("a persistence failure never hides successful Gemini questions", async () =
     { log: () => undefined, warn: (message) => warnings.push(message) },
   );
   assert.equal(await service.generate(request), response);
-  assert.ok(warnings.some((message) => message.includes("read-only volume")));
+  assert.ok(warnings.some((message) => message.includes("reason=storage_error")));
+  assert.ok(warnings.every((message) => !message.includes("read-only volume")));
 });
 
 test("bank read failure still reaches the existing local fallback", async () => {
