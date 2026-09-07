@@ -26,10 +26,20 @@ public static class HideSeekConfig
     /// is longer. See <see cref="HideSeekGame.Tick"/>.
     /// </summary>
     public const int FootprintSenseRadius = 8;
-    /// <summary>Hider movement speed, px/sec.</summary>
-    public const double PlayerSpeed = 140;
-    /// <summary>Seeker speed as a multiplier of PlayerSpeed.</summary>
-    public const double SeekerSpeedMultiplier = 1.2;
+    /// <summary>
+    /// Hider movement speed, px/sec. Came down from 140, which was fast
+    /// enough to outrun your own lantern: at 140 a player crosses the whole
+    /// <see cref="VisionRadius"/> (4 tiles, 80px) in 0.57s, entering ground
+    /// they cannot see yet faster than it can be shown to them.
+    /// </summary>
+    public const double PlayerSpeed = 95;
+    /// <summary>
+    /// Seeker speed as a multiplier of PlayerSpeed. Was 1.2, which made
+    /// catches too cheap — with a catch bar that never falls back (see
+    /// <see cref="CatchDurationSec"/>), a seeker that much faster wins every
+    /// straight-line chase quickly.
+    /// </summary>
+    public const double SeekerSpeedMultiplier = 1.1;
     /// <summary>Half-width of a player's collision box, in px.</summary>
     public const double PlayerRadius = 7;
 

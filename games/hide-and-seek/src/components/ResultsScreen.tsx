@@ -5,17 +5,19 @@ interface ResultsScreenProps {
   caughtCount: number;
   localRole: HideAndSeekRole;
   isHost: boolean;
+  onPlayAgain: () => void;
   onReturnToGames: () => void;
 }
 
 /**
  * Shown once `phase` reaches `ENDED`. Deliberately modest for v1 — winner,
- * a caught count, and (host-only) a way back to the vote screen, the same
- * "Oyunlara Dön" pattern draw-and-guess's results moment uses. A roster with
- * names/roles would need this game's own player list plumbed through from
- * the room snapshot, which nothing here needs yet.
+ * a caught count, and (host-only) two ways out: another round with the same
+ * players, or back to the vote screen the same "Oyunlara Dön" way
+ * draw-and-guess's results moment does it. A roster with names/roles would
+ * need this game's own player list plumbed through from the room snapshot,
+ * which nothing here needs yet.
  */
-export function ResultsScreen({ winner, caughtCount, localRole, isHost, onReturnToGames }: ResultsScreenProps) {
+export function ResultsScreen({ winner, caughtCount, localRole, isHost, onPlayAgain, onReturnToGames }: ResultsScreenProps) {
   const localWon = (winner === 'SEEKER') === (localRole === 'SEEKER');
   return (
     <div className="results-screen">
@@ -24,10 +26,17 @@ export function ResultsScreen({ winner, caughtCount, localRole, isHost, onReturn
         {localWon ? 'Kazandın!' : 'Kaybettin.'}
       </span>
       <span className="results-detail">{caughtCount} oyuncu yakalandı</span>
-      {isHost && (
-        <button type="button" className="results-return-button" onClick={onReturnToGames}>
-          Oyunlara Dön
-        </button>
+      {isHost ? (
+        <div className="results-actions">
+          <button type="button" className="results-button results-button-primary" onClick={onPlayAgain}>
+            Tekrar Oyna
+          </button>
+          <button type="button" className="results-button" onClick={onReturnToGames}>
+            Oyunlara Dön
+          </button>
+        </div>
+      ) : (
+        <span className="results-detail">Oda kurucusu yeni turu başlatabilir.</span>
       )}
     </div>
   );

@@ -103,6 +103,63 @@ public sealed class HideSeekRoomManagerTests
         Assert.Equal(2, game.Tick(0).Players.Count);
     }
 
+    [Fact]
+    public void RestartingAnEndedRoundStartsAFreshGameWithoutLeavingTheGameSession()
+    {
+        var (manager, hideSeek) = CreateManager();
+        var hostConnection = AttachThreePlayersAndReturnHostConnectionId(manager, out _);
+        manager.BeginGameSelection(hostConnection, ["hide-and-seek"]);
+        var resolution = manager.ResolveVote(hostConnection);
+        var firstGame = hideSeek.ActiveGames.Single();
+        EndTheRound(manager, resolution.Snapshot);
+
+        var snapshot = manager.RestartHideAndSeek(hostConnection);
+
+        // Still the same game session — a rematch never passes back through
+        // the lobby or the vote screen.
+        Assert.Equal("hide-and-seek", snapshot.CurrentGameSession?.GameId);
+        Assert.Equal("PREP", snapshot.HideAndSeekState!.Phase);
+        Assert.Null(snapshot.HideAndSeekState.Winner);
+        var secondGame = hideSeek.ActiveGames.Single();
+        Assert.NotSame(firstGame, secondGame);
+        Assert.Equal(3, secondGame.Tick(0).Players.Count);
+    }
+
+    [Fact]
+    public void RestartingIsRefusedWhileTheRoundIsStillRunning()
+    {
+        var (manager, hideSeek) = CreateManager();
+        var hostConnection = AttachThreePlayersAndReturnHostConnectionId(manager, out _);
+        manager.BeginGameSelection(hostConnection, ["hide-and-seek"]);
+        manager.ResolveVote(hostConnection);
+        var game = hideSeek.ActiveGames.Single();
+
+        var error = Assert.Throws<RoomException>(() => manager.RestartHideAndSeek(hostConnection));
+
+        Assert.Equal("ROUND_IN_PROGRESS", error.Code);
+        Assert.Same(game, hideSeek.ActiveGames.Single());
+    }
+
+    [Fact]
+    public void OnlyTheHostCanRestartAnEndedRound()
+    {
+        var (manager, hideSeek) = CreateManager();
+        var hostConnection = AttachThreePlayersAndReturnHostConnectionId(manager, out var connectionIds);
+        manager.BeginGameSelection(hostConnection, ["hide-and-seek"]);
+        var resolution = manager.ResolveVote(hostConnection);
+        var game = hideSeek.ActiveGames.Single();
+        EndTheRound(manager, resolution.Snapshot);
+
+        var error = Assert.Throws<RoomException>(() => manager.RestartHideAndSeek(connectionIds[1]));
+
+        Assert.Equal("HOST_REQUIRED", error.Code);
+        Assert.Same(game, hideSeek.ActiveGames.Single());
+    }
+
+    /// <summary>Reports an ENDED phase the way the tick loop does, without having to simulate a whole round.</summary>
+    private static void EndTheRound(RoomManager manager, RoomSnapshot room) =>
+        manager.SetHideAndSeekState(room.Code, room.HideAndSeekState! with { Phase = "ENDED", Winner = "SEEKER" });
+
     private sealed class FixedRoomRandom : IRoomRandom
     {
         public int Next(int maximumExclusive) => 0;

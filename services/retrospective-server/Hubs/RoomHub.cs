@@ -222,6 +222,19 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Host-only "tekrar oyna" from the results screen. Re-broadcasts
+    /// <c>HideAndSeekGameStarted</c> exactly as the first start did, so every
+    /// client re-reads its role and map the same way it already knows how to.
+    /// </summary>
+    public async Task<RoomSnapshot> RestartHideAndSeek()
+    {
+        var room = rooms.RestartHideAndSeek(Context.ConnectionId);
+        await Broadcast(room);
+        await Clients.Group(GroupName(room.Code)).HideAndSeekGameStarted(hideSeek.GetMapPayload(), room.HideAndSeekState!);
+        return room;
+    }
+
     public async Task LeaveRoom()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
