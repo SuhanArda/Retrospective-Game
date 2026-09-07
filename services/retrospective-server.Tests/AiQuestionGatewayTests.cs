@@ -29,6 +29,7 @@ public sealed class AiQuestionGatewayTests
         var handler = new RecordingHandler();
         var result = await Gateway(config, handler).Generate("ABC234", "instance", Request(null), default);
         Assert.Equal(503, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        await Gateway(config, handler).WarmUp(default);
         Assert.Equal(0, handler.Calls);
     }
 
@@ -45,6 +46,7 @@ public sealed class AiQuestionGatewayTests
         var result = await Gateway(AiQuestionConfiguration.Resolve("https://bot.example", false), handler, null)
             .Generate("ABC234", "instance", Request(null), default);
         Assert.Equal(503, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        await Gateway(AiQuestionConfiguration.Resolve("https://bot.example", false), handler, null).WarmUp(default);
         Assert.Equal(0, handler.Calls);
     }
 

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   currentPlayer: null,
   room: null,
   writeText: vi.fn(),
+  readRoomQuestionStatus: vi.fn(),
 }))
 
 vi.mock('../context/LanguageContext.jsx', () => ({ useLanguage: () => ({ t: (key) => key }) }))
@@ -25,6 +26,7 @@ vi.mock('../hooks/useRoom', () => ({
 }))
 vi.mock('../games/gameRegistry', () => ({ findGame: () => null, gameRegistry: [] }))
 vi.mock('../services/RoomQuestionDraftStore', () => ({ deleteRoomQuestionDraft: vi.fn() }))
+vi.mock('../services/QuestionBotService', () => ({ readRoomQuestionStatus: mocks.readRoomQuestionStatus }))
 vi.mock('../components/RoomReactions.jsx', () => ({ default: () => null }))
 
 function Location() {
@@ -41,6 +43,8 @@ describe('room lobby admission and sharing', () => {
     mocks.currentPlayer = null
     mocks.room = null
     mocks.writeText.mockReset().mockResolvedValue(undefined)
+    mocks.readRoomQuestionStatus.mockReset().mockResolvedValue('preparing')
+    window.sessionStorage.clear()
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: mocks.writeText } })
     container = document.createElement('div')
     document.body.append(container)
@@ -50,6 +54,7 @@ describe('room lobby admission and sharing', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.useRealTimers()
   })
 
   async function renderLobby() {
@@ -97,5 +102,46 @@ describe('room lobby admission and sharing', () => {
     await act(async () => finish('fallback'))
     expect(container.textContent).toContain('questionPreparation.fallback')
     expect(container.textContent).not.toContain('questionPreparation.preparing')
+  })
+
+  // The room has no other way to tell an AI question set apart from the shared
+  // built-in one, so an unreachable service must still say something.
+  it.each([
+    ['ai', 'lobby.questionsReady'],
+    ['fallback', 'lobby.questionsFallback'],
+  ])('reports %s question sets in the lobby', async (status, label) => {
+    mocks.currentPlayer = { id: 'host-1', displayName: 'Host', color: '#123456', isHost: true, isReady: true }
+    mocks.room = {
+      id: 'room-1', code: 'ABC123', roomName: 'Retro', hostPlayerId: 'host-1',
+      players: [mocks.currentPlayer], status: 'LOBBY', maxParticipants: 10,
+      questionTimeSeconds: 30, votingTimeSeconds: 30, createdAt: 1,
+    }
+    window.sessionStorage.setItem('retro-platform.session', JSON.stringify({
+      playerId: 'host-1', displayName: 'Host', roomCode: 'ABC123', isHost: true, reconnectToken: 'token-1',
+    }))
+    mocks.readRoomQuestionStatus.mockResolvedValue(status)
+
+    await renderLobby()
+
+    expect(container.textContent).toContain(label)
+  })
+
+  it('reports an unreachable question service instead of staying silent', async () => {
+    mocks.currentPlayer = { id: 'host-1', displayName: 'Host', color: '#123456', isHost: true, isReady: true }
+    mocks.room = {
+      id: 'room-1', code: 'ABC123', roomName: 'Retro', hostPlayerId: 'host-1',
+      players: [mocks.currentPlayer], status: 'LOBBY', maxParticipants: 10,
+      questionTimeSeconds: 30, votingTimeSeconds: 30, createdAt: 1,
+    }
+    window.sessionStorage.setItem('retro-platform.session', JSON.stringify({
+      playerId: 'host-1', displayName: 'Host', roomCode: 'ABC123', isHost: true, reconnectToken: 'token-1',
+    }))
+    mocks.readRoomQuestionStatus.mockRejectedValue(new Error('QUESTION_BOT_UNAVAILABLE'))
+    vi.useFakeTimers()
+
+    await renderLobby()
+    await act(async () => { vi.advanceTimersByTime(3000) })
+
+    expect(container.textContent).toContain('lobby.questionsUnavailable')
   })
 })

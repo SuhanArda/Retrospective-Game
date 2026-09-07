@@ -20,6 +20,17 @@ export const HideSeekConfig = {
   TICK_RATE: 20,
   /** How far (in tiles) a player can see, both for fog and for who is visible. */
   VISION_RADIUS: 4,
+  /**
+   * How far (in tiles) a player's footsteps carry down a clear sightline —
+   * wider than `VISION_RADIUS` so a trail can be sensed (footprints only,
+   * no player token — see `HideSeekCanvas`'s `isFullyVisible` handling)
+   * before the person leaving it is close enough to actually see. Still
+   * requires the same unobstructed line of sight as `VISION_RADIUS`; a
+   * wall or corner blocks this exactly as it blocks direct vision, only
+   * the straight-line range is longer. Mirrors the server's
+   * `HideSeekConfig.FootprintSenseRadius`.
+   */
+  FOOTPRINT_SENSE_RADIUS: 8,
   /** Hider movement speed, px/sec. */
   PLAYER_SPEED: 140,
   /** Seeker speed as a multiplier of PLAYER_SPEED. */

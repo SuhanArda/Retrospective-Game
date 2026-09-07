@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareRoomQuestions, roomQuestionsAreReady } from './QuestionBotService';
+import { prepareRoomQuestions, roomQuestionsAreReady, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
 import { getQuestionPreparationState } from './QuestionPreparationState';
 
 const validQuestions = Array.from({ length: 20 }, (_, index) => ({
@@ -16,7 +16,11 @@ const validSet = {
 };
 
 describe('QuestionBotService', () => {
-  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
 
   it.each([
     [undefined, null], ['', null], ['   ', null],
@@ -71,6 +75,50 @@ describe('QuestionBotService', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
     await expect(roomQuestionsAreReady('ABC234', 'player-1', 'token-1')).rejects.toThrow('INVALID_ROOM_QUESTIONS');
+  });
+
+  it.each([502, 503, 504])('retries once when the gateway reports a sleeping question service (status=%s)', async (status) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(validSet), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const preparation = prepareRoomQuestions({
+      roomCode: 'ABC234', style: 'dengeli',
+      playerId: 'player-1', reconnectToken: 'token-1',
+    });
+    await vi.advanceTimersByTimeAsync(QUESTION_RETRY_DELAY_MS - 1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getQuestionPreparationState().status).toBe('preparing');
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(preparation).resolves.toMatchObject({ roomId: 'ABC234' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]![1].body).toBe(fetchMock.mock.calls[0]![1].body);
+    expect(getQuestionPreparationState().status).toBe('fallback');
+  });
+
+  it('stops after the single retry when the service remains unavailable', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', { status: 503 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const outcome = expect(prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli',
+      playerId: 'player-1', reconnectToken: 'token-1' })).rejects.toThrow('QUESTION_PREPARATION_FAILED');
+    await vi.advanceTimersByTimeAsync(QUESTION_RETRY_DELAY_MS);
+    await outcome;
+    await vi.advanceTimersByTimeAsync(QUESTION_RETRY_DELAY_MS * 2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getQuestionPreparationState().status).toBe('fallback');
+  });
+
+  it.each([400, 401, 403, 404, 500])('does not retry non-transient HTTP %s', async (status) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli',
+      playerId: 'player-1', reconnectToken: 'token-1' })).rejects.toThrow('QUESTION_PREPARATION_FAILED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getQuestionPreparationState().status).toBe('fallback');
   });
 
   it('treats a failed question endpoint as unavailable even when health can be healthy', async () => {

@@ -112,6 +112,14 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
     return Results.Created($"/api/rooms/{admission.RoomCode}", admission);
 }));
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
+app.MapPost("/api/ai/warmup", async (AiQuestionGateway ai) =>
+{
+    // The browser fires this while the moderator is still filling in the room
+    // form, so the wake overlaps with typing instead of the generation call.
+    // It must survive that browser navigating away, hence no request token.
+    await ai.WarmUp(CancellationToken.None);
+    return Results.Ok(new { warming = true });
+});
 app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
     aiLogger.LogInformation("[AI API] request received roomCode={RoomCode} topicProvided={TopicProvided}", code, !string.IsNullOrWhiteSpace(body.Topic));

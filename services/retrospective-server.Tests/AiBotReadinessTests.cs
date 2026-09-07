@@ -127,6 +127,7 @@ public sealed class AiBotReadinessTests
         var health = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         var handler = new ScenarioHandler { Health = (_, token) => health.Task.WaitAsync(token) };
         var readiness = Readiness(handler);
+        var warmup = Gateway(handler, readiness).WarmUp(default);
         using var cancelled = new CancellationTokenSource();
         var leaving = readiness.WaitUntilReady(cancelled.Token);
         var rooms = Enumerable.Range(0, 8).Select(i => Gateway(handler, readiness).Generate($"ABC23{i}", "instance", Request(), default)).ToArray();
@@ -136,6 +137,7 @@ public sealed class AiBotReadinessTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leaving);
         health.SetResult(Healthy());
         var results = await Task.WhenAll(rooms);
+        await warmup;
         Assert.All(results, result => Assert.Equal(201, Status(result)));
         Assert.Equal(1, handler.HealthCalls);
         Assert.Equal(8, handler.Posts);

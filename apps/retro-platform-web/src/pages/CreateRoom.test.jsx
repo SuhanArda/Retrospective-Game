@@ -7,6 +7,7 @@ import CreateRoom from './CreateRoom.jsx'
 const mocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
   prepareRoomQuestions: vi.fn(),
+  warmUpQuestionBot: vi.fn(),
 }))
 
 vi.mock('../context/UserContext.jsx', () => ({
@@ -14,7 +15,10 @@ vi.mock('../context/UserContext.jsx', () => ({
 }))
 vi.mock('../context/LanguageContext.jsx', () => ({ useLanguage: () => ({ t: (key) => key }) }))
 vi.mock('../services/roomServiceInstance', () => ({ roomService: { createRoom: mocks.createRoom } }))
-vi.mock('../services/QuestionBotService', () => ({ prepareRoomQuestions: mocks.prepareRoomQuestions }))
+vi.mock('../services/QuestionBotService', () => ({
+  prepareRoomQuestions: mocks.prepareRoomQuestions,
+  warmUpQuestionBot: mocks.warmUpQuestionBot,
+}))
 
 function Location() {
   const location = useLocation()
@@ -35,6 +39,7 @@ describe('optional room question prompt', () => {
       reconnectToken: 'reconnect-token',
     })
     mocks.prepareRoomQuestions.mockReset().mockResolvedValue(undefined)
+    mocks.warmUpQuestionBot.mockReset()
   })
 
   it.each([

@@ -122,6 +122,8 @@ const KEY_TO_AXIS: Record<string, keyof MovementInput> = {
 
 interface RemotePlayerTrack {
   role: HideAndSeekRole;
+  /** False for a player only picked up by the wider footprint-sense radius (see `HideAndSeekVisiblePlayer.isFullyVisible`) — tracked here so their trail keeps growing, but their token must not be drawn. */
+  isFullyVisible: boolean;
   prevX: number;
   prevY: number;
   targetX: number;
@@ -417,9 +419,11 @@ export function HideSeekCanvas({ grid, online, phase }: HideSeekCanvasProps) {
         existing.receivedAtMs = now;
         existing.role = visible.role;
         existing.catchProgress = visible.catchProgress;
+        existing.isFullyVisible = visible.isFullyVisible;
       } else {
         remotePlayers.set(visible.playerId, {
           role: visible.role,
+          isFullyVisible: visible.isFullyVisible,
           prevX: visible.x,
           prevY: visible.y,
           targetX: visible.x,
@@ -601,12 +605,14 @@ export function HideSeekCanvas({ grid, online, phase }: HideSeekCanvasProps) {
         }
       }
 
-      drawFootprints();
-
       // Other players — interpolated between the last two snapshots that
       // mentioned them, drawn before the fog so the fog can still hide them.
+      // A footprint-sense-only track (see `RemotePlayerTrack.isFullyVisible`)
+      // still gets tracked above for its trail, but has no token: it wasn't
+      // actually seen, only sensed by its footsteps.
       const now = performance.now();
       for (const [playerId, track] of remotePlayers.entries()) {
+        if (!track.isFullyVisible) continue;
         const alpha = computeInterpolationAlpha(track.receivedAtMs, now);
         const drawX = lerp(track.prevX, track.targetX, alpha);
         const drawY = lerp(track.prevY, track.targetY, alpha);
@@ -677,6 +683,14 @@ export function HideSeekCanvas({ grid, online, phase }: HideSeekCanvasProps) {
         ctx.restore();
       }
 
+      // Footprints are placed only while the player leaving them is actually
+      // visible (see `applyRemoteUpdate`), so a mark is always a real memory
+      // of something just seen — drawn after the fog composite, on top of
+      // it, so that memory reads clearly by its own fade for the rest of
+      // FOOTPRINT_LIFETIME_MS instead of getting crushed under
+      // FOG_EXPLORED_ALPHA the instant the tile stops being live-visible.
+      drawFootprints();
+
       drawCatchBursts();
 
       // A spectator has no body on the map anymore — worldX/Y is a free
@@ -739,9 +753,9 @@ export function HideSeekCanvas({ grid, online, phase }: HideSeekCanvasProps) {
      * The floor trail: small ovals, long axis along the direction of
      * travel, alternating either side of the straight path (see
      * `FootprintMark.side`) so it reads as a walking gait instead of a
-     * dotted line. Drawn on the floor — before any player token, and
-     * before the fog composite so out-of-vision marks still get dimmed the
-     * same way the floor under them does.
+     * dotted line. Drawn last (see call site) — on top of players and fog
+     * alike — so a mark stays fully legible for its own fade regardless of
+     * whether the tile it's on is still live-visible right now.
      */
     function drawFootprints() {
       if (!ctx) return;

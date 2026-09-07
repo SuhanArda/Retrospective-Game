@@ -13,6 +13,9 @@ public sealed class AiQuestionGateway(
 {
     private readonly string? _serviceKey = configuration["AiQuestions:InternalServiceKey"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly SemaphoreSlim WarmUpGate = new(1, 1);
+    private static readonly TimeSpan WarmUpInterval = TimeSpan.FromMinutes(1);
+    private static long _lastWarmUpTicks;
 
     public async Task<IResult> Generate(
         string roomCode,
@@ -48,6 +51,33 @@ public sealed class AiQuestionGateway(
             $"rooms/{Uri.EscapeDataString(roomCode)}/questions?roomInstanceId={Uri.EscapeDataString(roomInstanceId)}"),
             cancellationToken, "get",
             onReady);
+
+    /// <summary>
+    /// Starts the same bounded readiness task used by generation while the
+    /// moderator fills in the form. It never sends a generation request.
+    /// </summary>
+    public async Task WarmUp(CancellationToken cancellationToken)
+    {
+        var configurationError = aiConfiguration.Error ??
+            (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(_serviceKey) ? "internal_service_key_missing" : null);
+        if (configurationError is not null)
+        {
+            logger.LogError("[AI Gateway] warmup not sent reason={Reason}", configurationError);
+            return;
+        }
+        var last = Interlocked.Read(ref _lastWarmUpTicks);
+        if (last != 0 && DateTime.UtcNow.Ticks - last < WarmUpInterval.Ticks) return;
+        if (!await WarmUpGate.WaitAsync(0, cancellationToken)) return;
+        try
+        {
+            var result = await readiness.WaitUntilReady(cancellationToken);
+            if (result.Ready) Interlocked.Exchange(ref _lastWarmUpTicks, DateTime.UtcNow.Ticks);
+            else logger.LogWarning("[AI Gateway] warmup failed status={StatusCode} reason={Reason}", result.StatusCode, result.Reason);
+        }
+        catch (HttpRequestException error) { logger.LogWarning("[AI Gateway] warmup failed reason={HttpError}", error.HttpRequestError); }
+        catch (OperationCanceledException) { logger.LogWarning("[AI Gateway] warmup cancelled"); }
+        finally { WarmUpGate.Release(); }
+    }
 
     public Task<IResult> Delete(string roomCode, string roomInstanceId, CancellationToken cancellationToken) =>
         Forward(Create(HttpMethod.Delete,
