@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareRoomQuestions, roomQuestionsAreReady, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
+import { prepareRoomQuestions, readRoomQuestionStatus, roomQuestionsAreReady, QUESTION_RETRY_DELAY_MS } from './QuestionBotService';
 import { getQuestionPreparationState } from './QuestionPreparationState';
 
 const validQuestions = Array.from({ length: 20 }, (_, index) => ({
@@ -97,6 +97,21 @@ describe('QuestionBotService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]![1].body).toBe(fetchMock.mock.calls[0]![1].body);
     expect(getQuestionPreparationState().status).toBe('fallback');
+  });
+
+  it('prepares trimmed report text without a prompt', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(validSet), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await prepareRoomQuestions({ roomCode: 'ABC234', style: 'dengeli', reportText: '  Sprint report  ',
+      playerId: 'player-1', reconnectToken: 'token-1' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toMatchObject({ topic: null, reportText: 'Sprint report' });
+  });
+
+  it('treats a local no-source response as defaults instead of pending AI', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(null, { status: 204 }))));
+    await expect(readRoomQuestionStatus('ABC234', 'player-1', 'token-1')).resolves.toBe('fallback');
+    await expect(roomQuestionsAreReady('ABC234', 'player-1', 'token-1')).resolves.toBe(false);
   });
 
   it('stops after the single retry when the service remains unavailable', async () => {

@@ -6,6 +6,7 @@ import { findGame, gameRegistry } from '../games/gameRegistry'
 import { useRoom } from '../hooks/useRoom'
 import { deleteRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
 import { readRoomQuestionStatus } from '../services/QuestionBotService'
+import { getQuestionPreparationState } from '../services/QuestionPreparationState'
 import { loadPlatformSession } from '../session/platformSession'
 import { buildRoomInviteUrl, roomJoinPath } from '../utils/roomInvite'
 import Avatar from '../components/Avatar.jsx'
@@ -62,6 +63,8 @@ function RoomLobby() {
   // moderator's prompt or the built-in set.
   useEffect(() => {
     if (isMockMode || !roomCode) return undefined
+    const preparation = getQuestionPreparationState()
+    if (preparation.roomCode === roomCode && preparation.status === 'idle') return undefined
     const session = loadPlatformSession(window.sessionStorage)
     if (!session?.reconnectToken) return undefined
 

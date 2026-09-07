@@ -213,6 +213,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    public bool HasAiQuestionSource(string rawCode)
+    {
+        var room = Find(rawCode);
+        lock (room.Gate) return room.AiQuestionSource is not null;
+    }
+
     public GenerateRoomQuestionsRequest RememberOrRestoreAiQuestionSource(
         string rawCode,
         GenerateRoomQuestionsRequest request)
@@ -230,7 +236,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 return request with { Topic = topic, ReportText = reportText };
             }
 
-            if (room.AiQuestionSource is not { } source) return request;
+            if (room.AiQuestionSource is not { } source) throw new RoomException("AI_INPUT_REQUIRED");
 
             return request with
             {
@@ -782,7 +788,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 if (room.Players.Count == 0)
                 {
                     _rooms.TryRemove(room.Code, out _);
-                    changes.Add(new RoomChange(room.Code, room.Id, null));
+                    changes.Add(new RoomChange(room.Code, room.Id, null, room.AiQuestionSource is not null));
                 }
                 else changes.Add(new RoomChange(room.Code, room.Id, Snapshot(room)));
             }
@@ -1328,7 +1334,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 }
 
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
-public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
+public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot, bool HadAiSource = false);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
 public sealed record TimedRoomChange(
     string RoomCode,

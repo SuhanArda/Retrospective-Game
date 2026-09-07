@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RoomLobby from './RoomLobby.jsx'
-import { beginQuestionPreparation } from '../services/QuestionPreparationState'
+import { beginQuestionPreparation, skipQuestionPreparation } from '../services/QuestionPreparationState'
 
 const mocks = vi.hoisted(() => ({
   currentPlayer: null,
@@ -39,6 +39,7 @@ describe('room lobby admission and sharing', () => {
   let root
 
   beforeEach(() => {
+    skipQuestionPreparation('previous-room')
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     mocks.currentPlayer = null
     mocks.room = null
@@ -106,6 +107,21 @@ describe('room lobby admission and sharing', () => {
 
   // The room has no other way to tell an AI question set apart from the shared
   // built-in one, so an unreachable service must still say something.
+  it('does not poll or show preparation when the moderator skipped AI', async () => {
+    mocks.currentPlayer = { id: 'host-1', displayName: 'Host', color: '#123456', isHost: true }
+    mocks.room = { code: 'ABC123', roomName: 'Retro', players: [mocks.currentPlayer], status: 'LOBBY', maxParticipants: 10 }
+    window.sessionStorage.setItem('retro-platform.session', JSON.stringify({
+      playerId: 'host-1', displayName: 'Host', roomCode: 'ABC123', isHost: true, reconnectToken: 'token-1',
+    }))
+    skipQuestionPreparation('ABC123')
+    vi.useFakeTimers()
+    await renderLobby()
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+    expect(mocks.readRoomQuestionStatus).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('questionPreparation.preparing')
+    expect(container.querySelector('.question-status')).toBeNull()
+  })
+
   it.each([
     ['ai', 'lobby.questionsReady'],
     ['fallback', 'lobby.questionsFallback'],
