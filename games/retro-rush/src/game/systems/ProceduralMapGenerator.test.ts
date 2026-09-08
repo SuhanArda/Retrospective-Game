@@ -218,18 +218,20 @@ describe('ProceduralMapGenerator', () => {
     }
   });
 
-  it('anchors every pickup to an authored reachable platform slot', () => {
+  it('no longer materializes pickups, but every authored pickup slot still sits on a reachable platform', () => {
+    // Special-ability pickups were removed from the generated course (see
+    // ProceduralMapGenerator's pickup loop), but the authored slots remain in
+    // the templates and still have to resolve to a real, reachable platform —
+    // the random stream they used to consume is deliberately still consumed
+    // for seed parity, so their placement rules stay worth checking.
     const map = generate(8675309, 320);
-    const pickups = map.activeChunks.flatMap((chunk) => chunk.pickups);
-    expect(pickups.length).toBeGreaterThan(20);
     for (const chunk of map.activeChunks) {
+      expect(chunk.pickups).toEqual([]);
       const template = findChunkTemplate(chunk.templateId);
-      for (const pickup of chunk.pickups) {
-        const platform = chunk.platforms.find((candidate) => candidate.id === pickup.platformId)!;
-        const slot = template!.pickups.find((candidate) => candidate.platformIndex === platform.templateIndex)!;
+      if (!template) continue;
+      for (const slot of template.pickups) {
+        const platform = chunk.platforms[slot.platformIndex]!;
         expect(platform).toBeDefined();
-        expect(pickup.x).toBe(platform.x + slot.localOffsetX);
-        expect(pickup.y).toBe(platform.y - platform.height / 2 - 32);
         expect(platform.mandatory || chunk.optionalPlatformIds.includes(platform.id)).toBe(true);
       }
       if (template?.optionalRoute) {
@@ -241,15 +243,18 @@ describe('ProceduralMapGenerator', () => {
     }
   });
 
-  it('uses the tuned authored pickup chances without sacrificing seeded determinism', () => {
+  it('keeps the authored pickup chances driving the random stream deterministically, even though pickups are never materialized', () => {
     expect(findChunkTemplate('elevated-optional-route')?.pickups[0]?.chance).toBe(0.8);
     expect(findChunkTemplate('ability-upper-platform')?.pickups[0]?.chance).toBeUndefined();
     expect(findChunkTemplate('split-route')?.pickups[0]?.chance).toBe(0.9);
 
-    const first = generate(20260814, 240).activeChunks.flatMap((chunk) => chunk.pickups);
-    const replay = generate(20260814, 240).activeChunks.flatMap((chunk) => chunk.pickups);
-    expect(first.length).toBeGreaterThan(20);
-    expect(first).toEqual(replay);
+    const first = generate(20260814, 240).activeChunks;
+    const replay = generate(20260814, 240).activeChunks;
+    expect(first.every((chunk) => chunk.pickups.length === 0)).toBe(true);
+    // Pickup chances still draw from the shared random stream (just without
+    // materializing a pickup), so if that draw ever drifted, the decorations
+    // generated right after it for the same seed would drift too.
+    expect(serialize(first)).toEqual(serialize(replay));
   });
 
   it.each(['shrub', 'sign', 'lantern'] as const)('keeps every %s terrain-anchored', (decorationType) => {

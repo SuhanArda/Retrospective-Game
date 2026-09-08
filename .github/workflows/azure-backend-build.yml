@@ -7,6 +7,11 @@ on:
       - "services/retrospective-server/**"
       - "services/retrospective-server.Tests/**"
       - ".github/workflows/azure-backend-build.yml"
+  pull_request:
+    paths:
+      - "services/retrospective-server/**"
+      - "services/retrospective-server.Tests/**"
+      - ".github/workflows/azure-backend-build.yml"
 
 permissions:
   contents: read
