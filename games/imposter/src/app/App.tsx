@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import type { ImposterGameSnapshot, ImposterPlayerSnapshot } from '@retro-platform/contracts';
+import { FullscreenButton } from './FullscreenButton';
 import { PlayerLineup } from './PlayerLineup';
 import { Avatar } from './Avatar';
 import { useSuspicionMusic } from './useSuspicionMusic';
@@ -308,6 +309,7 @@ export function App() {
             {launchContext && <span>Oda {launchContext.roomCode}</span>}
             {launchContext && <span className={connected ? 'online' : 'offline'}>{connected ? 'Bağlı' : 'Bağlanıyor'}</span>}
           </div>
+          <FullscreenButton className="back-to-games-button fullscreen-toggle" />
         </div>
       </header>
 

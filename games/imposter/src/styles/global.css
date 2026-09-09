@@ -460,6 +460,15 @@ input {
 
 .music-toggle:hover { background: #ffd979; }
 
+/* Üst şeritteki tam ekran düğmesi: geri dön düğmesiyle aynı kutu, ama
+   metin yerine ikon olduğu için kare orana çekiliyor. */
+.fullscreen-toggle {
+  display: grid;
+  place-items: center;
+  padding: 10px 13px;
+  font-size: 19px;
+}
+
 .music-icon {
   position: relative;
   display: block;

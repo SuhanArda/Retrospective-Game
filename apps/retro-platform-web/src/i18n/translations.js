@@ -95,12 +95,21 @@ export const translations = {
       submit: 'Katıl',
       submitting: 'Bağlanıyor...',
     },
+    questionPreparation: {
+      preparing: 'Sorular hazırlanıyor... Bu biraz zaman alabilir.',
+      ready: 'Sorular hazır.',
+      fallback: 'Hazır sorularla devam edebilirsiniz.',
+    },
     lobby: {
       brand: 'Oda Lobisi',
       mockStatus: 'Mock mod · yalnızca bu tarayıcı',
       liveStatus: 'Sunucuya bağlı · herkes katılabilir',
       reconnectingStatus: 'Oda bağlantısı yeniden kuruluyor...',
       disconnectedStatus: 'Oda bağlantısı kesildi · yeniden deneniyor',
+      questionsPreparing: 'AI botu senin promptundan soruları hazırlıyor...',
+      questionsReady: 'AI soruları hazır · senin promptundan üretildi',
+      questionsFallback: 'AI soru üretemedi · hazır soru deposundan gidiliyor',
+      questionsUnavailable: 'AI soru servisine ulaşılamıyor · hazır sorularla devam edilecek',
       roomCodeLabel: 'Oda Kodu',
       selectedGamePrefix: 'Seçilen Oyun: ',
       ready: 'Hazır',
@@ -196,6 +205,15 @@ export const translations = {
     },
     games: {
       // Oyun adları çevrilmez — özel isimler. Sadece açıklamalar çevrilir.
+      'tank-battle': {
+        description: 'Takımını savun, parabolik atışlarla rakip tankları vur ve araziyi parçala.',
+        detail: 'Kırmızı ve Mavi takım engebeli bir pixel-art savaş alanında karşılaşır. Fareyle nişan alır, atış gücünü ayarlar ve yıkılabilir zemini taktiksel olarak kullanırsınız. Üç canını ya da ayağının altındaki toprağı kaybeden tank elenir; kaybeden takım retrospektif soruyu yanıtlar.',
+        steps: [
+          'A ve D ile tankını güvenli bir konuma taşı; fareyle top açısını ve gücünü ayarla.',
+          'Sol tıkla parabolik mermi gönder; isabetle can azalt veya zemini oyarak rakibi suya düşür.',
+          'Rakip takımın tüm tanklarını ele; kaybeden takımın retrospektif sorusunu birlikte tamamla.',
+        ],
+      },
       imposter: {
         description:
           'Gizli Imposter’ı bulmak için kelimeyi ele vermeden sırayla ipucu ver ve şüphelendiğin kişiye oy ver.',
@@ -248,6 +266,25 @@ export const translations = {
           'Sıra sendeyse verilen kelimeyi çiz, değilse sohbete tahminini yaz.',
           'Doğru bilenler sırayla puan kazanır, kimse kelimeyi görmez.',
           'Tur bitince yeni bir çizen ve yeni kelime gelir.',
+        ],
+      },
+      'hide-and-seek': {
+        description: 'Biri ebe, gerisi saklanır. Harita karanlık, herkes yalnızca yakın çevresini görür.',
+        detail:
+          'Bir oyuncu rastgele ebe seçilir, geri kalanı saklanandır. Harita karanlıktır, herkes sadece kendi etrafındaki dar alanı görür; periyodik olarak harita kısa süreliğine tamamen aydınlanır. Ebe bir saklananı yakalarsa o oyuncu izleyiciye döner. Süre dolduğunda hâlâ saklanan biri varsa saklananlar, herkes yakalanırsa ebe kazanır.',
+        steps: [
+          'Ebe donmuşken saklananlar haritaya dağılır, sonra karanlık başlar.',
+          'Sadece yakın çevreni görebilirsin — periyodik aydınlanmalarda herkes birbirini görür.',
+          'Yakalanan izleyiciye döner; süre dolduğunda hayatta kalan olursa saklananlar kazanır.',
+        ],
+      },
+      'wheel-of-fortune': {
+        description: 'Çarkı çevir, sıradaki oyuncuyu ve konuşulacak retro sorusunu belirle.',
+        detail: 'Oda kurucusu soruları yazar; iki çark önce kimin konuşacağını, sonra hangi soruyu yanıtlayacağını seçer. Sonuçlar sunucuda belirlenir ve bütün ekip aynı dönüşü izler.',
+        steps: [
+          'Oda kurucusu retrospektif sorularını hazırlayıp oyunu başlatır.',
+          'Oyuncu çarkını çevir ve konuşacak kişiyi belirle.',
+          'Soru çarkını çevir, gelen soruyu sesli yanıtlayıp sonraki tura geç.',
         ],
       },
       platform: {
@@ -364,12 +401,21 @@ export const translations = {
       submit: 'Join',
       submitting: 'Connecting...',
     },
+    questionPreparation: {
+      preparing: 'Preparing questions... This may take a little while.',
+      ready: 'Questions are ready.',
+      fallback: 'You can continue with the available questions.',
+    },
     lobby: {
       brand: 'Room Lobby',
       mockStatus: 'Mock mode · this browser only',
       liveStatus: 'Connected to the server · others can join',
       reconnectingStatus: 'Reconnecting to the room...',
       disconnectedStatus: 'Room connection lost · retrying',
+      questionsPreparing: 'The AI bot is writing questions from your prompt...',
+      questionsReady: 'AI questions ready · generated from your prompt',
+      questionsFallback: 'The AI could not generate · using the built-in question set',
+      questionsUnavailable: 'The AI question service is unreachable · built-in questions will be used',
       roomCodeLabel: 'Room Code',
       selectedGamePrefix: 'Selected Game: ',
       ready: 'Ready',
@@ -464,6 +510,15 @@ export const translations = {
       backToLobby: 'Back to Lobby',
     },
     games: {
+      'tank-battle': {
+        description: 'Defend your team, arc shells into rival tanks, and reshape the battlefield.',
+        detail: 'Red and Blue teams face off on a rugged pixel-art battlefield. Aim with the mouse, choose shot power, and use destructible terrain tactically. A tank is eliminated after losing three health or falling into the water; the losing team answers a retrospective question.',
+        steps: [
+          'Move to safer ground with A and D, then set your cannon angle and power with the mouse.',
+          'Left-click to launch an arcing shell; damage a rival or crater the ground beneath them.',
+          'Eliminate every rival tank, then let the losing team complete its retrospective question.',
+        ],
+      },
       imposter: {
         description:
           'Give clues without revealing the word, then vote to uncover the hidden Imposter.',
@@ -516,6 +571,25 @@ export const translations = {
           "If it's your turn, draw the given word; otherwise, type your guess in the chat.",
           'Correct guessers score in order — the word itself stays hidden.',
           'When the round ends, a new drawer and a new word come up.',
+        ],
+      },
+      'hide-and-seek': {
+        description: 'One seeker, everyone else hides. The map is dark — you only see what is right around you.',
+        detail:
+          'One random player becomes the seeker, everyone else hides. The map stays dark — each player only sees a small area around themselves — but the whole map lights up for everyone, briefly, every so often. A caught hider becomes a spectator. If any hider is still free when time runs out, the hiders win; if everyone gets caught first, the seeker wins.',
+        steps: [
+          'The seeker starts frozen while hiders scatter across the map.',
+          'You only see your own small radius — until the map briefly lights up for everyone.',
+          'A caught hider becomes a spectator; the hiders win if anyone is still free when time runs out.',
+        ],
+      },
+      'wheel-of-fortune': {
+        description: 'Spin the wheels to choose the next player and retrospective question.',
+        detail: 'The host writes the questions; two wheels choose who speaks and which prompt they answer. Results are decided by the server, so the whole team watches the same spin.',
+        steps: [
+          'The host prepares the retrospective questions and starts the game.',
+          'Spin the player wheel to choose who will speak.',
+          'Spin the question wheel, discuss the prompt aloud, then start the next round.',
         ],
       },
       platform: {

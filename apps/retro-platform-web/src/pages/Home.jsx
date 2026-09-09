@@ -44,7 +44,7 @@ function Home() {
   const features = t('home.features')
 
   return (
-    <div className="page">
+    <div className="page home-page">
       <div className="page-content">
         <div className="brand">{t('home.brand')}</div>
         <HighlightTitle

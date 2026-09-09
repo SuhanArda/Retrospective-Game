@@ -5,7 +5,7 @@ This monorepo contains the entry platform and independently runnable retrospecti
 ## Repository layout
 
 - `apps/retro-platform-web/` — the existing React/Vite Website, now the main create/join/lobby/game-selection application.
-- `games/retro-rush/` — the existing React/TypeScript/Vite/Phaser game. It remains an independent application.
+- `games/` — the independently runnable games: `retro-rush`, `tank-battle`, `spin-the-bottle`, `rus-ruleti`, `draw-and-guess`, `imposter`, `hide-and-seek`, `wheel-of-fortune`. Each is its own application, launched from the platform with a room/player context.
 - `packages/platform-contracts/` — the small typed launch contract shared by the platform and games.
 - `packages/realtime-client/` — shared SignalR connection, reconnect, and room/game event client.
 - `services/retrospective-server/` — ASP.NET Core room and game-session authority.
@@ -21,13 +21,21 @@ npm install
 npm run dev:all
 ```
 
-The combined command starts:
+The combined command starts every frontend, the room server, and the demo AI question service:
 
 - Platform Website: <http://localhost:5173>
 - Retro Rush: <http://localhost:5174>
 - Spin the Bottle: <http://localhost:5175>
+- Rus Ruleti: <http://localhost:5176>
+- Draw & Guess: <http://localhost:5177>
+- Imposter: <http://localhost:5178>
+- Tank Battle: <http://localhost:5179>
+- Hide and Seek: <http://localhost:5180>
+- Çarkı Felek: <http://localhost:5181>
 - Room server: <http://localhost:5281>
 - Demo AI question service: <http://localhost:3002>
+
+`npm run dev` (without `:all`) starts just the frontends above, without the room server or AI question service — useful for isolated frontend work with `VITE_ROOM_SERVICE=mock`.
 
 The applications can also be started separately:
 
@@ -46,9 +54,9 @@ npm run build
 
 ## Current user flow
 
-Open the platform, create or join a room, enter the lobby, choose Retro Rush, and launch it in the same browser tab. Retro Rush receives the room/player launch context and shows **Return to Lobby** when it was opened by the platform. Opening Retro Rush directly still uses its standalone mock room and player.
+Open the platform, create or join a room, enter the lobby, vote on a game, and launch it in the same browser tab. Each game receives the room/player launch context and shows **Return to Lobby** when it was opened by the platform. Opening a game directly still uses its standalone mock room and player.
 
-Game endpoints are configuration-driven:
+Game endpoints are configuration-driven, e.g. for Retro Rush:
 
 ```dotenv
 # apps/retro-platform-web

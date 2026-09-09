@@ -4,6 +4,9 @@ export interface GameRuntimeConfig {
   rusRuletiUrl: string;
   drawAndGuessUrl: string;
   imposterUrl: string;
+  tankBattleUrl: string;
+  hideAndSeekUrl: string;
+  wheelOfFortuneUrl: string;
 }
 
 export function parseGameRuntimeConfig(
@@ -21,6 +24,9 @@ export function parseGameRuntimeConfig(
     rusRuletiUrl: requiredUrl('VITE_RUS_RULETI_URL'),
     drawAndGuessUrl: requiredUrl('VITE_DRAW_AND_GUESS_URL'),
     imposterUrl: requiredUrl('VITE_IMPOSTER_URL'),
+    tankBattleUrl: requiredUrl('VITE_TANK_BATTLE_URL'),
+    hideAndSeekUrl: requiredUrl('VITE_HIDE_AND_SEEK_URL'),
+    wheelOfFortuneUrl: requiredUrl('VITE_WHEEL_OF_FORTUNE_URL'),
   };
 }
 

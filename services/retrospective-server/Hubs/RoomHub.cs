@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.SignalR;
 using Retrospective.Server.Contracts;
 using Retrospective.Server.Rooms;
+using Retrospective.Server.Rooms.HideSeek;
 
 namespace Retrospective.Server.Hubs;
 
-public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger, AiQuestionGateway ai) : Hub<IRoomClient>
+public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogger<RoomHub> logger, AiQuestionGateway ai, HideSeekManager hideSeek) : Hub<IRoomClient>
 {
     public static string GroupName(string roomCode) => $"room:{roomCode}";
 
@@ -19,6 +20,11 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             if (room.CurrentGameSession?.GameId == "retro-rush")
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(
                     rooms.GetRetroRushSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
+            if (room.CurrentGameSession?.GameId == "tank-battle")
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(
+                    rooms.GetTankBattleSnapshot(Context.ConnectionId, room.CurrentGameSession.GameSessionId));
+            if (room.CurrentGameSession?.GameId == "hide-and-seek" && room.HideAndSeekState is { } hideAndSeekState)
+                await Clients.Client(Context.ConnectionId).HideAndSeekGameStarted(hideSeek.GetMapPayload(), hideAndSeekState);
             return new HubJoinResult(true, room);
         }
         catch (RoomException error)
@@ -44,12 +50,23 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         return room;
     }
 
+    public async Task<RoomSnapshot> UpdateAvatar(string? avatarId)
+    {
+        var room = rooms.UpdateAvatar(Context.ConnectionId, avatarId);
+        await Broadcast(room);
+        return room;
+    }
+
     public async Task<RoomSnapshot> ResolveVote()
     {
         var resolution = rooms.ResolveVote(Context.ConnectionId);
         await Broadcast(resolution.Snapshot);
         if (resolution.GameStarted)
+        {
             await Clients.Group(GroupName(resolution.Snapshot.Code)).GameStarted(resolution.Snapshot.CurrentGameSession!);
+            if (resolution.Snapshot.CurrentGameSession?.GameId == "hide-and-seek" && resolution.Snapshot.HideAndSeekState is { } hideAndSeekState)
+                await Clients.Group(GroupName(resolution.Snapshot.Code)).HideAndSeekGameStarted(hideSeek.GetMapPayload(), hideAndSeekState);
+        }
         return resolution.Snapshot;
     }
 
@@ -107,6 +124,27 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
 
     public Task<RoomSnapshot> CompleteFireQuestion(int expectedRevision) =>
         MutateRouletteState(rooms.CompleteFireQuestion(Context.ConnectionId, expectedRevision));
+
+    public Task<WheelOfFortuneStateSnapshot> AddWheelQuestion(WheelQuestionRequest request) =>
+        MutateWheel(rooms.AddWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> UpdateWheelQuestion(UpdateWheelQuestionRequest request) =>
+        MutateWheel(rooms.UpdateWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> RemoveWheelQuestion(string gameSessionId, string questionId) =>
+        MutateWheel(rooms.RemoveWheelQuestion(Context.ConnectionId, gameSessionId, questionId));
+
+    public Task<WheelOfFortuneStateSnapshot> StartWheelGame(WheelGameRequest request) =>
+        MutateWheel(rooms.StartWheelGame(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> SpinWheelPlayer(WheelGameRequest request) =>
+        MutateWheel(rooms.SpinWheelPlayer(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> SpinWheelQuestion(WheelGameRequest request) =>
+        MutateWheel(rooms.SpinWheelQuestion(Context.ConnectionId, request));
+
+    public Task<WheelOfFortuneStateSnapshot> NextWheelRound(WheelGameRequest request) =>
+        MutateWheel(rooms.NextWheelRound(Context.ConnectionId, request));
 
     /// <summary>Return value only — SignalR delivers it to the caller alone, never broadcasts it.</summary>
     public Task<string> RequestDrawAndGuessWord() =>
@@ -171,9 +209,36 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessCanvasCleared();
     }
 
+    /// <summary>
+    /// Fire-and-forget, at most `TICK_RATE` times per second: which directions
+    /// are held right now. The tick loop applies it server-side and reports
+    /// each player's position back through <c>HideAndSeekSnapshot</c>, unicast
+    /// per connection — never through this method's return value or any
+    /// group broadcast.
+    /// </summary>
+    public Task SendHideAndSeekInput(HideAndSeekInputRequest request)
+    {
+        rooms.SetHideAndSeekInput(Context.ConnectionId, request);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Host-only "tekrar oyna" from the results screen. Re-broadcasts
+    /// <c>HideAndSeekGameStarted</c> exactly as the first start did, so every
+    /// client re-reads its role and map the same way it already knows how to.
+    /// </summary>
+    public async Task<RoomSnapshot> RestartHideAndSeek()
+    {
+        var room = rooms.RestartHideAndSeek(Context.ConnectionId);
+        await Broadcast(room);
+        await Clients.Group(GroupName(room.Code)).HideAndSeekGameStarted(hideSeek.GetMapPayload(), room.HideAndSeekState!);
+        return room;
+    }
+
     public async Task LeaveRoom()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        var hadAiSource = rooms.HasAiQuestionSource(player.RoomCode);
         var room = rooms.Leave(Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(player.RoomCode));
         if (room.Players.Count > 0)
@@ -181,10 +246,12 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Broadcast(room);
             if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+            if (rooms.GetTankBattleSnapshotForRoom(room.Code) is { } tankBattle)
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(tankBattle);
         }
         else
         {
-            await ai.DeleteSilently(player.RoomCode, room.Id, CancellationToken.None);
+            if (hadAiSource) await ai.DeleteSilently(player.RoomCode, room.Id, CancellationToken.None);
             await Clients.Group(GroupName(player.RoomCode)).RoomClosed();
         }
     }
@@ -259,6 +326,18 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Clients.Group(GroupName(mutation.RoomCode)).RetroRushAbilityApplied(mutation.Event);
     }
 
+    public Task<TankBattleGameSnapshot> GetTankBattleSnapshot(string gameSessionId) =>
+        Task.FromResult(rooms.GetTankBattleSnapshot(Context.ConnectionId, gameSessionId));
+
+    public Task<TankBattleGameSnapshot> MoveTankBattleTank(MoveTankBattleTankRequest request) =>
+        MutateTankBattle(rooms.MoveTankBattleTank(Context.ConnectionId, request));
+
+    public Task<TankBattleGameSnapshot> FireTankBattleShot(FireTankBattleShotRequest request) =>
+        MutateTankBattle(rooms.FireTankBattleShot(Context.ConnectionId, request));
+
+    public Task<TankBattleGameSnapshot> CompleteTankBattleQuestion(CompleteTankBattleQuestionRequest request) =>
+        MutateTankBattle(rooms.CompleteTankBattleQuestion(Context.ConnectionId, request));
+
     public Task<ImposterGameSnapshot> GetImposterSnapshot(string gameSessionId) =>
         Task.FromResult(rooms.GetImposterSnapshot(Context.ConnectionId, gameSessionId));
 
@@ -284,11 +363,19 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
             await Broadcast(room);
             if (rooms.GetRetroRushSnapshotForRoom(room.Code) is { } retroRush)
                 await Clients.Group(GroupName(room.Code)).RetroRushSnapshot(retroRush);
+            if (rooms.GetTankBattleSnapshotForRoom(room.Code) is { } tankBattle)
+                await Clients.Group(GroupName(room.Code)).TankBattleSnapshot(tankBattle);
         }
         await base.OnDisconnectedAsync(exception);
     }
 
     private Task Broadcast(RoomSnapshot room) => Clients.Group(GroupName(room.Code)).RoomSnapshot(room);
+
+    private async Task<TankBattleGameSnapshot> MutateTankBattle(TankBattleMutation mutation)
+    {
+        await Clients.Group(GroupName(mutation.RoomCode)).TankBattleSnapshot(mutation.Snapshot);
+        return mutation.Snapshot;
+    }
 
     private async Task<RoomSnapshot> MutateSpinState(RoomSnapshot room)
     {
@@ -308,5 +395,13 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         await Clients.Group(GroupName(mutation.RoomCode)).ImposterStateChanged(mutation.Event);
         return rooms.GetImposterSnapshot(Context.ConnectionId, mutation.Event.GameSessionId);
+    }
+
+    private async Task<WheelOfFortuneStateSnapshot> MutateWheel(WheelMutation mutation)
+    {
+        await Clients.Group(GroupName(mutation.RoomCode)).WheelOfFortuneStateChanged(mutation.Snapshot);
+        var room = rooms.Get(mutation.RoomCode);
+        if (room is not null) await Broadcast(room);
+        return mutation.Snapshot;
     }
 }

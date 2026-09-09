@@ -26,6 +26,12 @@ Use `npm run build:web` from the repository root and publish
 |---|---|---|
 | `/*` | `/index.html` | `Rewrite` |
 
+The production build validates every public service URL. In particular, the
+Render Static Site must define `VITE_TANK_BATTLE_URL` as the deployed Tank
+Battle site's absolute HTTPS URL. This is public build-time configuration, not
+a secret. Local development defaults to `http://localhost:5179`; see
+`.env.example` for the complete variable list.
+
 Use a rewrite, not a redirect, so the requested route remains in the address
 bar for React Router. Render serves existing static files before applying the
 wildcard, so `/assets/*`, the favicon, and other generated files remain direct

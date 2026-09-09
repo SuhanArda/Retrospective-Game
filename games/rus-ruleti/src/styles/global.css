@@ -83,6 +83,17 @@ body {
   line-height: 1.6;
 }
 
+/* Ses ve tam ekran düğmeleri yan yana: sidebar ekranın sağ üst köşesi,
+   yani iki düğme de oyuncunun beklediği yerde kalıyor. */
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebar-actions .sound-toggle {
+  flex: 1;
+}
+
 .sidebar-players {
   list-style: none;
   margin: 0;
@@ -123,6 +134,13 @@ body {
   cursor: pointer;
   flex-shrink: 0;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.fullscreen-toggle {
+  display: grid;
+  place-items: center;
+  padding: 10px 12px;
+  font-size: 15px;
 }
 
 .toast {

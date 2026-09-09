@@ -240,6 +240,14 @@ export class MockRoomService implements RoomService {
     });
   }
 
+  async updateAvatar(avatarId: string | undefined): Promise<RetroRoom> {
+    return this.updateCurrentRoom((room, session) => ({
+      ...room,
+      players: room.players.map((player) =>
+        (player.id === session.playerId ? { ...player, avatarId } : player)),
+    }));
+  }
+
   async resolveVote(candidateIds: readonly string[]): Promise<RetroRoom> {
     return this.updateCurrentRoom((room, session) => {
       if (!session.isHost) throw new RoomServiceError('HOST_REQUIRED');

@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { roomService } from '../services/roomServiceInstance'
-import { prepareRoomQuestions } from '../services/QuestionBotService'
+import { prepareRoomQuestions, warmUpQuestionBot } from '../services/QuestionBotService'
+import { hasAiQuestionInput } from '../services/RoomQuestionInput'
+import { skipQuestionPreparation } from '../services/QuestionPreparationState'
 import '../App.css'
 
 const QUESTION_TIME_OPTIONS = [15, 30, 45, 60]
@@ -23,6 +25,7 @@ function CreateRoom() {
   const [questionStyle, setQuestionStyle] = useState('dengeli')
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
+  const [preparing, setPreparing] = useState(false)
 
   function validate() {
     const next = {}
@@ -31,7 +34,6 @@ function CreateRoom() {
     if (!Number.isInteger(max) || max < 2 || max > 50) {
       next.maxParticipants = t('createRoom.maxParticipantsError')
     }
-    if (!contextPrompt.trim() && !reportFile) next.report = 'Kısa bir prompt gir veya TXT, PDF ya da DOCX raporu ekle.'
     return next
   }
 
@@ -42,7 +44,11 @@ function CreateRoom() {
     if (Object.keys(validation).length > 0 || !user) return
 
     setSubmitting(true)
-    const { room, player, reconnectToken } = await roomService.createRoom({
+    const normalizedPrompt = contextPrompt?.trim() || undefined
+    const aiInput = { contextPrompt: normalizedPrompt, reportFile }
+    const hasAiInput = hasAiQuestionInput(aiInput)
+    console.info(`[Platform AI] room creation started topicProvided=${Boolean(normalizedPrompt)}`)
+    const admission = await roomService.createRoom({
       displayName: user.name,
       color: user.color,
       avatarId: user.avatarId,
@@ -50,23 +56,38 @@ function CreateRoom() {
       maxParticipants: Number(maxParticipants),
       questionTimeSeconds: questionTime,
       votingTimeSeconds: votingTime,
+    }).catch(() => {
+      console.warn('[Platform AI] question preparation not invoked reason=room_creation_or_realtime_admission_failed')
+      setSubmitting(false)
+      setErrors((current) => ({ ...current, connection: 'Oda bağlantısı kurulamadı. Lütfen tekrar deneyin.' }))
+      return null
     })
-    const questionPreparation = prepareRoomQuestions({
-      roomCode: room.code,
-      style: questionStyle,
-      contextPrompt: contextPrompt.trim(),
-      reportFile,
-      playerId: player.id,
-      reconnectToken,
-    })
-      .catch((cause) => {
-        if (import.meta.env.DEV) console.warn('[AIQuestion] room preparation failed; games will use authoritative defaults', cause)
+    if (!admission) return
+    const { room, player, reconnectToken } = admission
+    if (hasAiInput) {
+      console.info(`[Platform AI] preparation enabled roomCode=${room.code} source=${normalizedPrompt ? 'prompt' : 'report'}`)
+      warmUpQuestionBot()
+      setPreparing(true)
+      const questionPreparation = prepareRoomQuestions({
+        roomCode: room.code,
+        style: questionStyle,
+        ...aiInput,
+        playerId: player.id,
+        reconnectToken,
       })
-    await Promise.race([
-      questionPreparation,
-      new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
-    ])
+        .catch(() => {
+          console.warn(`[Platform AI] room preparation failed roomCode=${room.code}; games will use authoritative defaults`)
+        })
+      await Promise.race([
+        questionPreparation,
+        new Promise((resolve) => window.setTimeout(resolve, QUESTION_PREPARATION_GRACE_MS)),
+      ])
+    } else {
+      console.info(`[Platform AI] preparation skipped roomCode=${room.code} reason=no_ai_input`)
+      skipQuestionPreparation(room.code)
+    }
     setSubmitting(false)
+    setPreparing(false)
     navigate(`/room/${room.code}`)
   }
 
@@ -145,7 +166,7 @@ function CreateRoom() {
           </div>
 
           <div className="field">
-            <label htmlFor="roomPrompt">Kısa prompt (zorunlu)</label>
+            <label htmlFor="roomPrompt">Kısa prompt (opsiyonel)</label>
             <textarea id="roomPrompt" className="input textarea" value={contextPrompt} onChange={(event) => setContextPrompt(event.target.value)} maxLength={1000} rows={3} placeholder="Örn. Son sprintte yaşanan iletişim sorunlarına odaklan." />
           </div>
 
@@ -168,10 +189,11 @@ function CreateRoom() {
             </select>
           </div>
 
+          {errors.connection && <span className="error-text" role="alert">{errors.connection}</span>}
           <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
             <span className="btn-content">
               {submitting && <span className="spinner" />}
-              {submitting ? t('createRoom.submitting') : t('createRoom.submit')}
+              {preparing ? t('questionPreparation.preparing') : submitting ? t('createRoom.submitting') : t('createRoom.submit')}
             </span>
           </button>
         </form>

@@ -3,6 +3,7 @@ import { useUser } from '../context/UserContext.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import Avatar from './Avatar.jsx'
 import { AVATAR_OPTIONS, avatarImageSrc } from '../utils/avatarOptions.js'
+import { roomService } from '../services/roomServiceInstance'
 import '../App.css'
 
 const PREVIEW_COLOR = '#5b2a86'
@@ -59,6 +60,14 @@ function IdentityGate({ children }) {
       return
     }
     saveUser(name, avatarId)
+    // This dialog also opens from inside an already-joined room (the
+    // Header's "edit" link) — when it does, the room's own copy of your
+    // avatar needs updating too, or the lobby keeps showing the old one.
+    // Silently skipped outside a room: getCurrentPlayer() is null before
+    // you've ever joined one, which is the common case for first-time setup.
+    if (roomService.getCurrentPlayer()) {
+      void roomService.updateAvatar(avatarId ?? undefined).catch(() => {})
+    }
     setName('')
     setError('')
   }

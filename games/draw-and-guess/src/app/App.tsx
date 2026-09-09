@@ -6,10 +6,11 @@ import { PlayerList } from '../components/PlayerList';
 import { GuessChat, type ChatMessage } from '../components/GuessChat';
 import { ScoreBoard } from '../components/ScoreBoard';
 import { ScorePop } from '../components/ScorePop';
+import { FullscreenButton } from '../components/FullscreenButton';
 import { RoundTimer } from '../components/RoundTimer';
 import { WordHint } from '../components/WordHint';
 import { pickRandomWord } from '../data/words';
-import { MOCK_PLAYERS, pickRandomDrawer } from '../data/mockPlayers';
+import { MOCK_PLAYERS, pickNextDrawer } from '../data/mockPlayers';
 import type { DisplayPlayer } from '../domain/displayPlayer';
 import { DrawAndGuessRoomBridge, type DrawAndGuessBridgeState } from './roomBridge';
 import {
@@ -19,7 +20,8 @@ import {
 } from './platformIntegration';
 import '../styles/App.css';
 
-const RECENT_WORD_MEMORY = 8;
+/** Matches the server's `DrawAndGuessRecentWordMemory` — with 1000+ words now in the pool, a wider memory still barely dents it while cutting repeats over a longer session much further than the old 8 did. */
+const RECENT_WORD_MEMORY = 50;
 const YOU_ID = 'you';
 const BOT_MIN_DELAY_MS = 1500;
 const BOT_MAX_DELAY_MS = 5000;
@@ -217,6 +219,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 
   return (
     <div className="page">
+      <FullscreenButton className="fullscreen-button" />
       {scorePop && <ScorePop key={scorePop.id} points={scorePop.points} onDone={() => setScorePop(null)} />}
       <div className="page-content">
         <div className="brand">Draw & Guess</div>
@@ -306,7 +309,7 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
 function StandaloneGame() {
   const [word, setWord] = useState(() => pickRandomWord());
   const [recentWords, setRecentWords] = useState<string[]>([word]);
-  const [drawerId, setDrawerId] = useState(() => pickRandomDrawer(MOCK_PLAYERS).id);
+  const [drawerId, setDrawerId] = useState(() => pickNextDrawer(MOCK_PLAYERS).id);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -379,7 +382,7 @@ function StandaloneGame() {
     const nextWord = pickRandomWord(recentWords);
     setWord(nextWord);
     setRecentWords((current) => [nextWord, ...current].slice(0, RECENT_WORD_MEMORY));
-    setDrawerId((current) => pickRandomDrawer(MOCK_PLAYERS, current).id);
+    setDrawerId((current) => pickNextDrawer(MOCK_PLAYERS, current).id);
   }
 
   return (

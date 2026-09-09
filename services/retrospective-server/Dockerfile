@@ -5,6 +5,7 @@ COPY services/retrospective-server/retrospective-server.csproj services/retrospe
 RUN dotnet restore services/retrospective-server/retrospective-server.csproj
 
 COPY services/retrospective-server/ services/retrospective-server/
+COPY games/hide-and-seek/src/data/maps/ games/hide-and-seek/src/data/maps/
 RUN dotnet publish services/retrospective-server/retrospective-server.csproj \
     --configuration Release \
     --no-restore \

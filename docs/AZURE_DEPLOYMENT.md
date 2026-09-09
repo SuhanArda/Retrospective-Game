@@ -12,8 +12,9 @@ This runbook prepares the repository for Azure and documents the deployment work
 | Rus Ruleti | `games/rus-ruleti` | Azure Static Web Apps | `stapp-retro-game-rus-ruleti-dev-001` |
 | Draw and Guess | `games/draw-and-guess` | Azure Static Web Apps | `stapp-retro-game-draw-dev-001` |
 | Imposter | `games/imposter` | Azure Static Web Apps | `stapp-retro-game-imposter-dev-001` |
+| Çarkı Felek | `games/wheel-of-fortune` | Azure Static Web Apps | `<WHEEL_OF_FORTUNE_SWA>` — not created yet |
 | Realtime backend | `services/retrospective-server` | Azure App Service, ASP.NET Core | `app-retro-game-api-dev-001` |
-| AI Bot | `ai-bot` | Azure App Service, Node.js | `app-retro-game-bot-dev-001` |
+| AI Bot | `ai-bot` | Azure App Service, Node.js | `app-retro-game-bot-dev-001` — not created yet |
 | Optional realtime fan-out | backend integration | Azure SignalR Service | `<SIGNALR_RESOURCE>` |
 
 Place all resources in `rg-innovation-dev`, on a dedicated App Service Plan named `plan-retro-game-dev-001`. `services/retro-platform-api` is a legacy service and is not part of this target architecture.
@@ -42,7 +43,8 @@ All `VITE_*` values are public build-time browser configuration. Never place key
 | `VITE_RUS_RULETI_URL` | Platform | `http://localhost:5176` | `https://<rus-ruleti-host>` | No |
 | `VITE_DRAW_AND_GUESS_URL` | Platform | `http://localhost:5177` | `https://<draw-and-guess-host>` | No |
 | `VITE_IMPOSTER_URL` | Platform | `http://localhost:5178` | `https://<imposter-host>` | No |
-| `VITE_PLATFORM_URL` | All five games | `http://localhost:5173` | `https://<platform-host>` for Back to Games | No |
+| `VITE_WHEEL_OF_FORTUNE_URL` | Platform | `http://localhost:5181` | `https://<wheel-of-fortune-host>` | No |
+| `VITE_PLATFORM_URL` | Every game | `http://localhost:5173` | `https://<platform-host>` for Back to Games | No |
 | `VITE_ROOM_SERVICE` | Platform | `real` | Keep `real`; `mock` is isolated UI development only | No |
 | `VITE_TRANSPORT_MODE` | Retro Rush standalone configuration | `mock` | Set `signalr` in its production build | No |
 | `AllowedOrigins__0` | Backend | `http://localhost:5173` from Development JSON | Exact `https://<platform-host>` | No |
@@ -56,7 +58,7 @@ All `VITE_*` values are public build-time browser configuration. Never place key
 | `Azure__SignalR__ConnectionString` | Backend, optional later | unset | Azure SignalR SDK configuration after optional integration | Yes |
 | `AI_PROVIDER` | AI Bot | `local` | `local` or `gemini` | No |
 | `GEMINI_API_KEY` | AI Bot | `your-api-key-here` | Required when provider is `gemini` | Yes |
-| `GEMINI_MODEL` | AI Bot | `gemini-2.5-flash-lite` | Provider model name | No |
+| `GEMINI_MODEL` | AI Bot | `gemini-3.1-flash-lite` | Provider model name | No |
 | `PORT` | Spin and AI Bot | `3000` / `3002` | Assigned by App Service; do not hardcode it | No |
 | `NODE_ENV` | AI Bot | `development` or unset | `production`, enabling fail-closed CORS validation | No |
 | `ALLOWED_ORIGINS` | AI Bot | comma-separated local origins | Comma-separated exact HTTPS frontend origins | No |
@@ -83,6 +85,7 @@ npm run build:all
 | Rus Ruleti SWA | `/` | `npm run build:rus-ruleti` | `games/rus-ruleti/dist` |
 | Draw and Guess SWA | `/` | `npm run build:draw-and-guess` | `games/draw-and-guess/dist` |
 | Imposter SWA | `/` | `npm run build:imposter` | `games/imposter/dist` |
+| Çarkı Felek SWA | `/` | `npm run build:wheel-of-fortune` | `games/wheel-of-fortune/dist` |
 | Spin App Service | `/` | `npm run build:spin-the-bottle && npm run package:spin-the-bottle` | `artifacts/spin-the-bottle` (`dist/` plus a generated `package.json`) |
 | Backend App Service | `/` | `dotnet publish services/retrospective-server -c Release -o <PUBLISH_DIR>` | `<PUBLISH_DIR>` |
 | AI Bot App Service | `/` | `npm run build:ai-bot` | `ai-bot/dist` |

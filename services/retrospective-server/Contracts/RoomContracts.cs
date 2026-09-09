@@ -164,7 +164,9 @@ public sealed record RoomSnapshot(
     GameSessionSnapshot? CurrentGameSession,
     SpinBottleStateSnapshot? SpinBottleState,
     RussianRouletteStateSnapshot? RussianRouletteState,
-    DrawAndGuessStateSnapshot? DrawAndGuessState);
+    DrawAndGuessStateSnapshot? DrawAndGuessState,
+    HideAndSeekStateSnapshot? HideAndSeekState,
+    WheelOfFortuneStateSnapshot? WheelOfFortuneState);
 
 public sealed record SpinResult(
     string SpinId,

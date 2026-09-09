@@ -14,8 +14,8 @@ export const MOCK_PLAYERS: readonly MockPlayer[] = [
   { id: 'ece', name: 'Ece', color: '#c23b6b' },
 ];
 
-export function pickRandomDrawer(players: readonly MockPlayer[], excludeId?: string): MockPlayer {
-  const pool = players.filter((player) => player.id !== excludeId);
-  const source = pool.length > 0 ? pool : players;
-  return source[Math.floor(Math.random() * source.length)];
+/** Sequential rotation by list order, not random — whoever comes right after `previousDrawerId` on this list, wrapping back to the start. No previous drawer starts the rotation back at the top. */
+export function pickNextDrawer(players: readonly MockPlayer[], previousDrawerId?: string): MockPlayer {
+  const previousIndex = previousDrawerId ? players.findIndex((player) => player.id === previousDrawerId) : -1;
+  return players[(previousIndex + 1) % players.length];
 }

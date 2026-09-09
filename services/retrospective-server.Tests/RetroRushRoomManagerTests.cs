@@ -387,7 +387,7 @@ public sealed class RetroRushRoomManagerTests
         {
             DisconnectGraceSeconds = 25,
             QuestionLoadingMilliseconds = 1800,
-        }), new FixedRoomRandom(7));
+        }), new FixedRoomRandom(7), HideSeekTestSupport.CreateManager());
         var host = manager.Create(new CreateRoomRequest("Arda", "#654321", "Retro", 8, 30, 30));
         var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
         var extraPlayers = Enumerable.Range(0, extraPlayerCount)

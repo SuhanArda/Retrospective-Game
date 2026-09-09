@@ -8,6 +8,56 @@ public sealed class RoomManagerTests
 {
     private static readonly string[] Games = ["retro-rush", "spin-the-bottle"];
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyAiInputIsRejectedWithoutRecordingASource(string? input)
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        Assert.False(manager.HasAiQuestionSource(host.RoomCode));
+        var error = Assert.Throws<RoomException>(() => manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(input, input, "tr", "dengeli")));
+        Assert.Equal("AI_INPUT_REQUIRED", error.Code);
+        Assert.False(manager.HasAiQuestionSource(host.RoomCode));
+        Assert.NotNull(manager.Get(host.RoomCode));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReportOnlyInputEnablesAiAndCanBeRestored(bool upload)
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var file = upload ? new ReportFilePayload("retro.txt", "text/plain", "cmV0cm8=") : null;
+        var request = new GenerateRoomQuestionsRequest("   ", upload ? null : "  Sprint report  ", "tr", "dengeli", 20, file);
+        var normalized = manager.RememberOrRestoreAiQuestionSource(host.RoomCode, request);
+        Assert.True(manager.HasAiQuestionSource(host.RoomCode));
+        Assert.Null(normalized.Topic);
+        Assert.Equal(upload ? null : "Sprint report", normalized.ReportText);
+        Assert.Equal(file, normalized.ReportFile);
+        Assert.Equal(normalized, manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(null, null, "tr", "dengeli")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoomExpiryOnlyRequestsAiCleanupWhenASourceWasProvided(bool hasSource)
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+        if (hasSource) manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest("Sprint", null, "tr", "dengeli"));
+        clock.Advance(TimeSpan.FromSeconds(25));
+        var change = Assert.Single(manager.SweepDisconnected());
+        Assert.Null(change.Snapshot);
+        Assert.Equal(hasSource, change.HadAiSource);
+    }
+
     [Fact]
     public void AiAccessUsesRoomIdentityWithoutRequiringAnActiveGame()
     {
@@ -610,6 +660,30 @@ public sealed class RoomManagerTests
     }
 
     [Fact]
+    public void DrawAndGuessRotatesTheDrawerInSequentialJoinOrderNotRandomly()
+    {
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var second = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        var third = manager.Join(host.RoomCode, new JoinRoomRequest("Ece", "#abcdef"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "c1");
+        manager.Attach(host.RoomCode, second.PlayerId, second.ReconnectToken, "c2");
+        manager.Attach(host.RoomCode, third.PlayerId, third.ReconnectToken, "c3");
+        manager.BeginGameSelection("c1", ["draw-and-guess"]);
+        manager.CastVote("c1", "draw-and-guess");
+        manager.ResolveVote("c1");
+
+        // Join order: host, second, third — the drawer cycles through
+        // exactly that order, wrapping back to the start, never at random
+        // (a random-excluding-the-last-drawer pick could coincidentally
+        // produce this same sequence once; it couldn't keep doing it).
+        Assert.Equal(host.PlayerId, manager.Get(host.RoomCode)!.DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(second.PlayerId, manager.NextDrawAndGuessRound("c1").DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(third.PlayerId, manager.NextDrawAndGuessRound("c2").DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(host.PlayerId, manager.NextDrawAndGuessRound("c3").DrawAndGuessState!.DrawerPlayerId); // wraps back to the top
+    }
+
+    [Fact]
     public void HostTransfersAfterDisconnectGraceButNotBefore()
     {
         var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
@@ -633,6 +707,22 @@ public sealed class RoomManagerTests
         Assert.Equal("GAME_SELECTION", manager.ReturnToGameSelection("guest").Status);
     }
 
+    [Fact]
+    public void UpdateAvatarChangesTheStoredPortraitAndNormalizesUnknownIds()
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+
+        var updated = manager.UpdateAvatar("host", "wizard");
+        Assert.Equal("wizard", updated.Players.Single(player => player.Id == host.PlayerId).AvatarId);
+
+        // Same normalization as at join time — a tampered client or a stale
+        // option silently clears the avatar rather than being rejected.
+        var cleared = manager.UpdateAvatar("host", "not-a-real-avatar");
+        Assert.Null(cleared.Players.Single(player => player.Id == host.PlayerId).AvatarId);
+    }
+
     private static RoomManager CreateManager(TimeProvider? timeProvider = null, IRoomRandom? random = null) => new(
         timeProvider ?? TimeProvider.System,
         Options.Create(new RoomOptions
@@ -640,7 +730,8 @@ public sealed class RoomManagerTests
             DisconnectGraceSeconds = 25,
             QuestionLoadingMilliseconds = 1800,
         }),
-        random ?? new FixedRoomRandom(0));
+        random ?? new FixedRoomRandom(0),
+        HideSeekTestSupport.CreateManager());
 
     private static CreateRoomRequest CreateRequest(string name, int votingTimeSeconds = 30) =>
         new(name, "#654321", "Sprint Retro", 10, 30, votingTimeSeconds);

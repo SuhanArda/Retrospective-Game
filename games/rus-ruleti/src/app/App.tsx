@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
 import { RoomQuestionProvider } from '@retro-platform/realtime-client';
 import type { RoomPlayerSnapshot } from '@retro-platform/contracts';
+import { FullscreenButton } from './FullscreenButton';
 import { GameCanvas } from '../game/GameCanvas';
 import { buildOpponentSeats, spriteForLocalPlayer } from './seats';
 import { RouletteRoomBridge } from './roomBridge';
@@ -144,9 +145,12 @@ export function App() {
               : 'Yerel prototip — örnek oyuncularla.'}
           </p>
         </div>
-        <button className="button sound-toggle" type="button" onClick={toggleMuted} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>
-          {muted ? 'SES KAPALI' : 'SES AÇIK'}
-        </button>
+        <div className="sidebar-actions">
+          <button className="button sound-toggle" type="button" onClick={toggleMuted} aria-label={muted ? 'Sesi aç' : 'Sesi kapat'}>
+            {muted ? 'SES KAPALI' : 'SES AÇIK'}
+          </button>
+          <FullscreenButton className="button fullscreen-toggle" />
+        </div>
         {roster && (
           <ul className="sidebar-players">
             {roster.map((player) => (

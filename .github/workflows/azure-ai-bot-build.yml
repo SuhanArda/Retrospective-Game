@@ -8,6 +8,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/azure-ai-bot-build.yml"
+  pull_request:
+    paths:
+      - "ai-bot/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/azure-ai-bot-build.yml"
 
 permissions:
   contents: read

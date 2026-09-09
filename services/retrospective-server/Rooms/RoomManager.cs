@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Retrospective.Server.Contracts;
+using Retrospective.Server.Rooms.HideSeek;
 
 namespace Retrospective.Server.Rooms;
 
-public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom)
+public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<RoomOptions> options, IRoomRandom roomRandom, HideSeekManager hideSeek)
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter"];
+    private static readonly HashSet<string> SupportedGames = ["retro-rush", "spin-the-bottle", "rus-ruleti", "draw-and-guess", "imposter", "tank-battle", "hide-and-seek", "wheel-of-fortune"];
     private static readonly string[] RouletteQuestions =
     [
         "Bu sprintte seni en çok ne yordu?",
@@ -45,29 +46,104 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// Same list the standalone client prototype ships (games/draw-and-guess/src/data/words.ts)
     /// — kept in sync by hand since a word only needs to match on this side
     /// once a real room is involved; the client's own copy still backs its
-    /// offline demo mode.
+    /// offline demo mode. Filtered hard for actually-easy-to-draw, common
+    /// nouns — obscure animals/instruments/tools and near-duplicate
+    /// lookalikes (five near-identical spotted cats, say) were cut on
+    /// purpose even though that meant a smaller list than "as many words as
+    /// possible" would have. Still wide enough that
+    /// <see cref="DrawAndGuessRecentWordMemory"/> keeps repeats rare.
     /// </summary>
     private static readonly string[] DrawAndGuessWords =
     [
-        "kedi", "köpek", "aslan", "fil", "zürafa", "penguen", "kaplumbağa",
-        "tavşan", "kartal", "balina", "yılan", "maymun", "ayı", "kelebek",
-        "örümcek", "papağan", "at", "inek", "koyun", "tavuk",
-        "kurbağa", "timsah", "zebra", "panda", "koala", "kanguru", "yunus",
-        "ahtapot", "karınca", "arı", "sincap", "geyik", "kurt", "tilki",
-        "baykuş", "flamingo", "deve", "fare", "keçi", "ördek",
-        "araba", "otobüs", "uçak", "tren", "bisiklet", "motosiklet", "gemi",
-        "helikopter", "kamyon", "traktör", "roket", "denizaltı", "scooter",
-        "ambulans", "itfaiye arabası",
-        "taksi", "vapur", "yelkenli", "uçurtma", "paraşüt", "teleferik",
-        "forklift", "çöp kamyonu", "polis arabası", "kaykay",
-        "pizza", "hamburger", "elma", "muz", "karpuz", "dondurma", "pasta",
-        "makarna", "çikolata", "ekmek", "peynir", "yumurta", "kahve", "çay",
-        "patates kızartması", "sushi", "taco", "simit",
-        "portakal", "çilek", "üzüm", "ananas", "limon", "salatalık", "domates",
-        "havuç", "bal", "süt", "çorba", "kek",
+        "kedi", "köpek", "aslan", "fil", "zürafa", "penguen", "kaplumbağa", "tavşan",
+        "kartal", "balina", "yılan", "maymun", "ayı", "kelebek", "örümcek", "papağan",
+        "at", "inek", "koyun", "tavuk", "kurbağa", "timsah", "zebra", "panda", "koala",
+        "kanguru", "yunus", "ahtapot", "karınca", "arı", "sincap", "geyik", "kurt",
+        "tilki", "baykuş", "flamingo", "deve", "fare", "keçi", "ördek", "yarasa",
+        "kirpi", "salyangoz", "uğur böceği", "çekirge", "kertenkele", "yengeç", "balık",
+        "köpekbalığı", "fok", "kaplan", "gergedan", "boğa", "eşek", "karga", "kaz",
+        "hindi", "güvercin", "tavus kuşu", "devekuşu", "bukalemun", "tukan", "rakun",
+        "kokarca", "denizyıldızı", "deniz atı", "kunduz", "leylek", "araba", "otobüs",
+        "uçak", "tren", "bisiklet", "motosiklet", "gemi", "helikopter", "kamyon",
+        "traktör", "roket", "denizaltı", "scooter", "ambulans", "itfaiye arabası",
+        "taksi", "yelkenli", "uçurtma", "paraşüt", "forklift", "çöp kamyonu",
+        "polis arabası", "kaykay", "paten", "kızak", "sıcak hava balonu", "tank", "vinç",
+        "buldozer", "karavan", "minibüs", "tramvay", "uzay gemisi", "kano", "sandal",
+        "yat", "golf arabası", "çift katlı otobüs", "okul otobüsü", "gondol",
+        "at arabası", "füze", "yarış arabası", "pizza", "hamburger", "elma", "muz",
+        "karpuz", "dondurma", "pasta", "makarna", "çikolata", "ekmek", "peynir",
+        "yumurta", "kahve", "çay", "patates kızartması", "sushi", "taco", "simit",
+        "portakal", "çilek", "üzüm", "ananas", "limon", "salatalık", "domates", "havuç",
+        "bal", "çorba", "kek", "köfte", "döner", "lahmacun", "pide", "börek", "baklava",
+        "dondurmalı külah", "kurabiye", "krep", "sandviç", "tost", "kebap", "şiş kebap",
+        "karides", "dolma", "salata", "mısır", "patates", "soğan", "sarımsak", "biber",
+        "patlıcan", "kabak", "ıspanak", "brokoli", "lahana", "marul", "kavun", "şeftali",
+        "kiraz", "erik", "armut", "incir", "nar", "kayısı", "hindistan cevizi", "ceviz",
+        "fındık", "badem", "tuz", "şeker", "tereyağı", "zeytin", "un", "pirinç",
+        "yoğurt", "ayran", "meyve suyu", "gazoz", "cips", "patlamış mısır", "lolipop",
+        "sakız", "pankek", "omlet", "sahanda yumurta", "pilav", "kızarmış tavuk",
+        "hot dog", "burrito", "nachos", "kruvasan", "donut", "muffin", "lokum", "sütlaç",
+        "kurabiye adam", "pastırma", "sosis", "sucuk", "kumpir", "gözleme",
+        "balık ekmek", "mercimek", "fasulye", "enginar", "nane", "tarçın", "masa",
+        "sandalye", "koltuk", "kanepe", "yatak", "dolap", "ayna", "lamba", "halı",
+        "perde", "kapı", "pencere", "saat", "televizyon", "buzdolabı", "fırın",
+        "mikrodalga", "ocak", "çamaşır makinesi", "ütü", "süpürge", "çöp kutusu", "kova",
+        "bardak", "tabak", "çatal", "kaşık", "bıçak", "tencere", "tava", "termos",
+        "çaydanlık", "vazo", "resim çerçevesi", "kitaplık", "merdiven", "anahtar",
+        "kilit", "ampul", "mum", "fener", "şemsiye", "cüzdan", "çanta", "sırt çantası",
+        "valiz", "gözlük", "güneş gözlüğü", "kol saati", "yüzük", "kolye", "tarak",
+        "diş fırçası", "sabun", "havlu", "yastık", "battaniye", "çadır", "lavabo",
+        "küvet", "musluk", "tost makinesi", "kahve makinesi", "kevgir", "kesme tahtası",
+        "avize", "salıncak", "bebek arabası", "beşik", "biberon", "emzik", "tişört",
+        "gömlek", "pantolon", "etek", "elbise", "ceket", "mont", "kazak", "şort",
+        "çorap", "ayakkabı", "bot", "terlik", "şapka", "bere", "atkı", "eldiven",
+        "kravat", "kemer", "mayo", "pijama", "kask", "yağmurluk", "bornoz", "gelinlik",
+        "papyon", "kovboy şapkası", "kar botu", "spor ayakkabı", "topuklu ayakkabı",
+        "güneş", "ay", "yıldız", "bulut", "gökkuşağı", "yağmur", "kar", "kar tanesi",
+        "kardan adam", "şimşek", "dağ", "orman", "ağaç", "çiçek", "gül", "papatya",
+        "lale", "ayçiçeği", "yaprak", "çim", "taş", "kum", "deniz", "dalga", "göl",
+        "nehir", "şelale", "mağara", "ada", "volkan", "çöl", "gezegen", "dünya",
+        "astronot", "uzaylı", "kasırga", "çam ağacı", "palmiye ağacı", "kaktüs",
+        "mantar", "futbol topu", "basketbol topu", "voleybol", "tenis raketi",
+        "kale direği", "koşu", "yüzme", "kayak", "buz pateni", "boks eldiveni",
+        "ağırlık", "ip atlama", "yoga", "satranç", "bowling", "ok ve yay", "golf sopası",
+        "kürek çekme", "sörf", "tırmanma", "beyzbol sopası", "hokey sopası",
+        "masa tenisi", "düdük", "kupa", "madalya", "dalış tüpü", "can yeleği",
+        "eskrim kılıcı", "gitar", "piyano", "davul", "keman", "flüt", "saksafon",
+        "trompet", "akordeon", "ukulele", "bateri", "çello", "tef", "darbuka", "gong",
+        "nota", "doktor", "hemşire", "polis", "itfaiyeci", "öğretmen", "aşçı", "garson",
+        "pilot", "ressam", "müzisyen", "berber", "terzi", "marangoz", "çiftçi",
+        "balıkçı", "korsan", "şövalye", "kral", "kraliçe", "prens", "prenses", "cadı",
+        "büyücü", "süperkahraman", "palyaço", "akrobat", "dansçı", "madenci", "kasap",
+        "fırıncı", "kuaför", "diş hekimi", "veteriner", "hakem", "asker", "çoban",
+        "arıcı", "bahçıvan", "sihirbaz", "ev", "apartman", "gökdelen", "kale", "köprü",
+        "kilise", "cami", "okul", "hastane", "market", "restoran", "kütüphane", "müze",
+        "sinema", "stadyum", "havalimanı", "tren istasyonu", "otopark", "çiftlik",
+        "değirmen", "deniz feneri", "fabrika", "banka", "otel", "saat kulesi", "piramit",
+        "saray", "ahır", "tünel", "oyun parkı", "hayvanat bahçesi", "eczane", "plaj",
+        "telefon", "bilgisayar", "laptop", "tablet", "klavye", "kulaklık", "kamera",
+        "mikrofon", "hoparlör", "oyun kolu", "robot", "drone", "yazıcı", "pil",
+        "şarj aleti", "akıllı saat", "projektör", "uydu", "kalem", "kurşun kalem",
+        "silgi", "cetvel", "makas", "zımba", "ataç", "yapışkan not", "defter", "dosya",
+        "hesap makinesi", "pergel", "boya kalemi", "fırça", "takvim", "beyaz tahta",
+        "kalemtıraş", "sulu boya", "yapıştırıcı", "zarf", "pul", "küre", "mikroskop",
+        "teleskop", "büyüteç", "mühür", "top", "oyuncak bebek", "oyuncak ayı", "yapboz",
+        "lego", "bilye", "topaç", "yoyo", "balon", "kukla", "tahterevalli", "kaydırak",
+        "atlıkarınca", "dönme dolap", "oyuncak araba", "oyuncak tren", "oyuncak uçak",
+        "oyuncak robot", "trambolin", "sapan", "göz", "kulak", "burun", "ağız", "diş",
+        "saç", "el", "parmak", "ayak", "kol", "bacak", "kalp", "beyin", "iskelet",
+        "kafatası", "gülen yüz", "ağlayan yüz", "kızgın yüz", "şaşkın yüz", "daire",
+        "kare", "üçgen", "dikdörtgen", "yıldız şekli", "kalp şekli", "pasaport", "bilet",
+        "harita", "pusula", "dürbün", "kamp çadırı", "matara", "ejderha",
+        "tek boynuzlu at", "peri", "hayalet", "zombi", "vampir", "dev", "canavar",
+        "deniz kızı", "anka kuşu", "çekiç", "tornavida", "matkap", "testere",
+        "somun anahtarı", "pense", "çivi", "balta", "kürek", "tırmık",
+        "çim biçme makinesi", "bahçe hortumu", "saksı", "parti şapkası", "konfeti",
+        "hediye kutusu", "doğum günü pastası", "kurdele", "havai fişek", "balon demeti",
+        "kafes", "akvaryum", "kuş yuvası", "köpek kulübesi", "arı kovanı",
     ];
     /// <summary>words.ts'deki RECENT_WORD_MEMORY ile aynı — son bu kadar kelime bir daha çıkmaz.</summary>
-    private const int DrawAndGuessRecentWordMemory = 8;
+    private const int DrawAndGuessRecentWordMemory = 50;
     private static readonly int[] DrawAndGuessRankPoints = [10, 7, 5];
     private const int DrawAndGuessFallbackPoints = 3;
     private const int DrawAndGuessDrawerPointsPerCorrectGuesser = 2;
@@ -137,6 +213,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    public bool HasAiQuestionSource(string rawCode)
+    {
+        var room = Find(rawCode);
+        lock (room.Gate) return room.AiQuestionSource is not null;
+    }
+
     public GenerateRoomQuestionsRequest RememberOrRestoreAiQuestionSource(
         string rawCode,
         GenerateRoomQuestionsRequest request)
@@ -154,7 +236,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 return request with { Topic = topic, ReportText = reportText };
             }
 
-            if (room.AiQuestionSource is not { } source) return request;
+            if (room.AiQuestionSource is not { } source) throw new RoomException("AI_INPUT_REQUIRED");
 
             return request with
             {
@@ -208,6 +290,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             player.DisconnectExpiresAt = null;
             _connections[connectionId] = new PlayerConnection(room.Code, player.Id, player.ConnectionGeneration);
             SetRetroRushPlayerConnected(room, player.Id, true);
+            SetTankBattlePlayerConnected(room, player.Id, true);
+            hideSeek.SetConnected(room.Code, player.Id, connectionId, true);
             return Snapshot(room);
         }
     }
@@ -252,6 +336,24 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    /// <summary>
+    /// Unlike <see cref="DisplayName"/>/<see cref="Color"/> (set once at
+    /// join, never revisited), a picked portrait can change any time a
+    /// player is in the room — the profile editor is reachable from the
+    /// room lobby, not just before joining. An unrecognized id (a tampered
+    /// client, a stale option) is silently normalized to "no avatar" rather
+    /// than rejected, same as at join time.
+    /// </summary>
+    public RoomSnapshot UpdateAvatar(string connectionId, string? avatarId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate)
+        {
+            player.AvatarId = NormalizeAvatarId(avatarId);
+            return Snapshot(room);
+        }
+    }
+
     public VoteResolution ResolveVote(string connectionId)
     {
         var (room, _) = Authorize(connectionId, hostRequired: true);
@@ -284,6 +386,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.SpinBottleState = null;
             room.RussianRouletteState = null;
             room.DrawAndGuessState = null;
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = null;
             room.Votes.Clear();
             room.VotingStartedAt = null;
             room.VotingEndsAt = null;
@@ -581,6 +685,60 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         }
     }
 
+    /// <summary>
+    /// Pure passthrough into <see cref="HideSeekManager"/> — position, wall
+    /// collision, and vision all live there, not in <see cref="RoomManager"/>,
+    /// so there's nothing to mutate on <see cref="GameRoom"/> here beyond
+    /// resolving who's calling.
+    /// </summary>
+    public void SetHideAndSeekInput(string connectionId, HideAndSeekInputRequest request)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        hideSeek.SetInput(room.Code, player.Id, request);
+    }
+
+    /// <summary>
+    /// Host-only rematch: throws the finished round away and starts a fresh
+    /// one for whoever is still in the room, without going back through the
+    /// lobby and the game vote. Only valid once the round has actually ended;
+    /// mid-round this would silently discard a game in progress. Roles and
+    /// spawns are drawn again from scratch, exactly as at the first start.
+    /// </summary>
+    public RoomSnapshot RestartHideAndSeek(string connectionId)
+    {
+        var (room, _) = Authorize(connectionId, hostRequired: true);
+        lock (room.Gate)
+        {
+            if (room.CurrentGameSession?.GameId != "hide-and-seek") throw new RoomException("NO_ACTIVE_ROUND");
+            if (room.HideAndSeekState?.Phase != "ENDED") throw new RoomException("ROUND_IN_PROGRESS");
+            if (!IsGamePlayable(room, "hide-and-seek")) throw new RoomException("NOT_ENOUGH_PLAYERS");
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = hideSeek.StartGame(
+                room.Code,
+                room.Players.Values.Select(player => (player.Id, player.ConnectionId)).ToArray());
+            return Snapshot(room);
+        }
+    }
+
+    /// <summary>
+    /// Called by <see cref="HideSeek.HideSeekGameLoopService"/> — not by a
+    /// client — whenever a tick actually changes the public phase/state.
+    /// Caches it on the room the same way every other game's state lives on
+    /// <see cref="GameRoom"/>, and hands back the fresh <see cref="RoomSnapshot"/>
+    /// to broadcast. Returns null if the room is gone by the time the tick
+    /// that changed it gets around to reporting it (a room can close between
+    /// a tick starting and this call landing; nothing to update at that point).
+    /// </summary>
+    public RoomSnapshot? SetHideAndSeekState(string roomCode, HideAndSeekStateSnapshot state)
+    {
+        if (!_rooms.TryGetValue(Normalize(roomCode), out var room)) return null;
+        lock (room.Gate)
+        {
+            room.HideAndSeekState = state;
+            return Snapshot(room);
+        }
+    }
+
     public RoomSnapshot Leave(string connectionId)
     {
         var (room, player) = Authorize(connectionId, hostRequired: false);
@@ -589,7 +747,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             RemoveConnectionMapping(player);
             room.Players.Remove(player.Id);
             RemoveRetroRushPlayer(room, player.Id);
+            RemoveTankBattlePlayer(room, player.Id);
             RemoveImposterPlayer(room, player.Id);
+            hideSeek.RemovePlayer(room.Code, player.Id);
             ElectHost(room);
             if (room.Players.Count == 0) _rooms.TryRemove(room.Code, out _);
             return Snapshot(room);
@@ -617,6 +777,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             player.DisconnectedAt = disconnectedAt;
             player.DisconnectExpiresAt = disconnectedAt + _disconnectGrace;
             SetRetroRushPlayerConnected(room, player.Id, false);
+            SetTankBattlePlayerConnected(room, player.Id, false);
+            hideSeek.SetConnected(room.Code, player.Id, null, false);
             return Snapshot(room);
         }
     }
@@ -641,13 +803,15 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     RemoveConnectionMapping(room.Players[playerId]);
                     room.Players.Remove(playerId);
                     RemoveRetroRushPlayer(room, playerId);
+                    RemoveTankBattlePlayer(room, playerId);
                     RemoveImposterPlayer(room, playerId);
+                    hideSeek.RemovePlayer(room.Code, playerId);
                 }
                 ElectHost(room);
                 if (room.Players.Count == 0)
                 {
                     _rooms.TryRemove(room.Code, out _);
-                    changes.Add(new RoomChange(room.Code, room.Id, null));
+                    changes.Add(new RoomChange(room.Code, room.Id, null, room.AiQuestionSource is not null));
                 }
                 else changes.Add(new RoomChange(room.Code, room.Id, Snapshot(room)));
             }
@@ -666,7 +830,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                 var gameStarted = false;
                 var spinStateChanged = false;
                 RetroRushGameSnapshot? retroRushSnapshot = null;
+                TankBattleGameSnapshot? tankBattleSnapshot = null;
                 var drawAndGuessStateChanged = false;
+                var wheelOfFortuneStateChanged = false;
                 if (room.Status == RoomPhase.GameSelection &&
                     room.VotingEndsAt is { } votingEnd && votingEnd <= now)
                 {
@@ -689,7 +855,11 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 
                 DrawAndGuessWordReveal? drawAndGuessWordReveal = null;
                 if (room.Status == RoomPhase.Playing)
+                {
                     retroRushSnapshot = AdvanceRetroRushTimedState(room);
+                    tankBattleSnapshot = AdvanceTankBattleTimedState(room, now);
+                    wheelOfFortuneStateChanged = AdvanceExpiredWheelSpin(room);
+                }
 
                 if (room.DrawAndGuessState?.RoundCompletedAtUtc is { } roundCompletesAt && roundCompletesAt <= now)
                 {
@@ -705,16 +875,24 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
                     drawAndGuessStateChanged = true;
                 }
 
-                if (gameStarted || spinStateChanged || retroRushSnapshot is not null || drawAndGuessStateChanged)
+                if (gameStarted ||
+                    spinStateChanged ||
+                    retroRushSnapshot is not null ||
+                    tankBattleSnapshot is not null ||
+                    drawAndGuessStateChanged ||
+                    drawAndGuessWordReveal is not null ||
+                    wheelOfFortuneStateChanged)
                 {
                     changes.Add(new TimedRoomChange(
                         RoomCode: room.Code,
                         Snapshot: Snapshot(room),
                         GameStarted: gameStarted,
                         SpinStateChanged: spinStateChanged,
+                        RetroRushSnapshot: retroRushSnapshot,
+                        TankBattleSnapshot: tankBattleSnapshot,
                         DrawAndGuessStateChanged: drawAndGuessStateChanged,
                         DrawAndGuessWordReveal: drawAndGuessWordReveal,
-                        RetroRushSnapshot: retroRushSnapshot));
+                        WheelOfFortuneStateChanged: wheelOfFortuneStateChanged));
                 }
             }
         }
@@ -739,6 +917,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.SpinBottleState = null;
         room.RussianRouletteState = null;
         room.DrawAndGuessState = null;
+        hideSeek.EndGame(room.Code);
+        room.HideAndSeekState = null;
         room.Votes.Clear();
         room.CandidateGameIds = candidates;
         room.VotingStartedAt = now;
@@ -775,15 +955,37 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.CurrentGameSession = new GameSession(
             Guid.NewGuid().ToString("N"), winner, Guid.NewGuid().ToString("N"),
             RandomNumberGenerator.GetInt32(int.MaxValue), "ACTIVE");
+        if (winner == "wheel-of-fortune")
+            room.CurrentGameSession.WheelOfFortune = new WheelOfFortuneState(
+                room.CurrentGameSession.Id, timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
         room.RussianRouletteState = winner == "rus-ruleti" ? CreateRouletteState(room) : null;
         room.DrawAndGuessState = winner == "draw-and-guess" ? CreateDrawAndGuessState(room, previousScores: null) : null;
         if (winner == "retro-rush") InitializeRetroRush(room, room.CurrentGameSession);
         if (winner == "imposter") InitializeImposter(room, room.CurrentGameSession);
+        if (winner == "tank-battle") InitializeTankBattle(room, room.CurrentGameSession);
+        if (winner == "hide-and-seek")
+        {
+            room.HideAndSeekState = hideSeek.StartGame(room.Code, room.Players.Values.Select(player => (player.Id, player.ConnectionId)).ToArray());
+        }
+        else
+        {
+            // A previous round in this same room may still be ticking in
+            // HideSeekManager's own dictionary — stop it, or its loop keeps
+            // simulating and unicasting to players who moved on to a
+            // different game.
+            hideSeek.EndGame(room.Code);
+            room.HideAndSeekState = null;
+        }
         return true;
     }
 
-    private static bool IsGamePlayable(GameRoom room, string gameId) =>
-        gameId != "imposter" || room.Players.Count is >= 3 and <= 10;
+    private static bool IsGamePlayable(GameRoom room, string gameId) => gameId switch
+    {
+        "imposter" => room.Players.Count is >= 3 and <= 10,
+        "tank-battle" => room.Players.Count >= 2,
+        "hide-and-seek" => room.Players.Count is >= HideSeekConfig.MinPlayers and <= HideSeekConfig.MaxPlayers,
+        _ => true,
+    };
 
     /// <summary>
     /// Chamber count is deliberately not equal to the player count (same
@@ -809,12 +1011,15 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// </summary>
     private DrawAndGuessState CreateDrawAndGuessState(GameRoom room, IReadOnlyDictionary<string, int>? previousScores)
     {
+        // Sequential rotation by join order, not random — the drawer is
+        // always whoever comes right after the previous one on that list,
+        // wrapping back to the start. No previous drawer (first round of
+        // the room, or the previous drawer has since left) starts the
+        // rotation back at the top rather than picking anyone at random.
         var players = room.Players.Values.OrderBy(player => player.JoinedAt).ToArray();
         var previousDrawerId = room.DrawAndGuessState?.DrawerPlayerId;
-        var eligibleDrawers = players.Length > 1 && previousDrawerId is not null
-            ? players.Where(player => player.Id != previousDrawerId).ToArray()
-            : players;
-        var drawer = eligibleDrawers[roomRandom.Next(eligibleDrawers.Length)];
+        var previousDrawerIndex = previousDrawerId is null ? -1 : Array.FindIndex(players, player => player.Id == previousDrawerId);
+        var drawer = players[(previousDrawerIndex + 1) % players.Length];
         var previousRecentWords = room.DrawAndGuessState?.RecentWords ?? [];
         var wordPool = DrawAndGuessWords.Where(candidate => !previousRecentWords.Contains(candidate, StringComparer.Ordinal)).ToArray();
         var wordSource = wordPool.Length > 0 ? wordPool : DrawAndGuessWords;
@@ -969,7 +1174,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         return new string(result);
     }
 
-    private static RoomSnapshot Snapshot(GameRoom room) => new(
+    private RoomSnapshot Snapshot(GameRoom room) => new(
         room.Id, room.Code, room.RoomName, room.HostPlayerId,
         room.Players.Values.OrderBy(player => player.JoinedAt).Select(player => PlayerSnapshot(room, player)).ToArray(),
         room.SelectedGameId, room.Status.ToWire(), room.MaxParticipants, room.QuestionTimeSeconds, room.VotingTimeSeconds,
@@ -979,7 +1184,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         room.FileName, room.Description, room.CreatedAt,
         room.CurrentGameSession is null ? null : new GameSessionSnapshot(room.CurrentGameSession.Id, room.CurrentGameSession.GameId,
             room.CurrentGameSession.RoundId, room.CurrentGameSession.Seed,
-            room.CurrentGameSession.RetroRush?.RoundStartAtUnixMs, room.CurrentGameSession.State),
+            room.CurrentGameSession.RetroRush?.RoundStartAtUnixMs ?? room.CurrentGameSession.TankBattle?.StartedAtUnixMs,
+            room.CurrentGameSession.State),
         room.SpinBottleState is null ? null : new SpinBottleStateSnapshot(room.SpinBottleState.SpinId,
             room.SpinBottleState.SpinnerPlayerId, room.SpinBottleState.TargetPlayerId, room.SpinBottleState.TargetIndex,
             room.SpinBottleState.Category, room.SpinBottleState.QuestionId, room.SpinBottleState.QuestionText,
@@ -998,7 +1204,9 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             room.DrawAndGuessState.Revision, room.DrawAndGuessState.UpdatedAtUtc,
             room.DrawAndGuessState.RoundEndsAtUtc, room.DrawAndGuessState.Word.Length,
             room.DrawAndGuessState.RevealedLetterIndices.ToDictionary(index => index, index => room.DrawAndGuessState.Word[index]),
-            room.DrawAndGuessState.LastRevealedIndex));
+            room.DrawAndGuessState.LastRevealedIndex),
+        room.HideAndSeekState,
+        room.CurrentGameSession?.WheelOfFortune is { } wheel ? WheelSnapshot(wheel) : null);
 
     private static RoomPlayerSnapshot PlayerSnapshot(GameRoom room, RoomPlayer player) => new(
         player.Id, player.DisplayName, player.Color, player.Id == room.HostPlayerId, true,
@@ -1031,6 +1239,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public SpinBottleState? SpinBottleState { get; set; }
         public RussianRouletteState? RussianRouletteState { get; set; }
         public DrawAndGuessState? DrawAndGuessState { get; set; }
+        public HideAndSeekStateSnapshot? HideAndSeekState { get; set; }
         public AiQuestionSource? AiQuestionSource { get; set; }
         public AiRoomQuestionSet? AiQuestionSet { get; set; }
     }
@@ -1040,7 +1249,13 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public string Id { get; } = id;
         public string DisplayName { get; } = displayName;
         public string Color { get; } = color;
-        public string? AvatarId { get; } = avatarId;
+        /// <summary>
+        /// Mutable — unlike <see cref="DisplayName"/>/<see cref="Color"/>, a
+        /// player can change their picked portrait after joining (see
+        /// <see cref="RoomManager.UpdateAvatar"/>). Still only ever set
+        /// through <see cref="NormalizeAvatarId"/>, at join time and here.
+        /// </summary>
+        public string? AvatarId { get; set; } = avatarId;
         public byte[] TokenHash { get; } = tokenHash;
         public long JoinedAt { get; } = joinedAt;
         public string? ConnectionId { get; set; }
@@ -1058,6 +1273,8 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         public string State { get; set; } = state;
         public RetroRushState? RetroRush { get; set; }
         public ImposterState? Imposter { get; set; }
+        public TankBattleState? TankBattle { get; set; }
+        public WheelOfFortuneState? WheelOfFortune { get; set; }
     }
 
     private sealed record TieBreakState(IReadOnlyList<string> Candidates, string Winner);
@@ -1140,16 +1357,18 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 }
 
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
-public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot);
+public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot, bool HadAiSource = false);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
 public sealed record TimedRoomChange(
     string RoomCode,
     RoomSnapshot Snapshot,
     bool GameStarted,
     bool SpinStateChanged,
+    RetroRushGameSnapshot? RetroRushSnapshot,
+    TankBattleGameSnapshot? TankBattleSnapshot,
     bool DrawAndGuessStateChanged,
     DrawAndGuessWordReveal? DrawAndGuessWordReveal = null,
-    RetroRushGameSnapshot? RetroRushSnapshot = null);
+    bool WheelOfFortuneStateChanged = false);
 public sealed class RoomException(string code) : Exception(code) { public string Code { get; } = code; }
 internal enum RoomPhase { Lobby, GameSelection, Playing, Closed }
 internal static class RoomPhaseExtensions

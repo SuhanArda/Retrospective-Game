@@ -13,6 +13,11 @@ import type {
   FireResult,
   GameLaunchContext,
   GameSessionSnapshot,
+  HideAndSeekInputRequest,
+  HideAndSeekMapPayload,
+  HideAndSeekPersonalSnapshot,
+  HideAndSeekPlayerCaughtEvent,
+  HideAndSeekStateSnapshot,
   ImposterGameSnapshot,
   ImposterStateChanged,
   CastImposterVoteRequest,
@@ -36,6 +41,14 @@ import type {
   RetroRushShoveCommandResult,
   UpdateRetroRushPlayerRequest,
   UseRetroRushAbilityRequest,
+  CompleteTankBattleQuestionRequest,
+  FireTankBattleShotRequest,
+  MoveTankBattleTankRequest,
+  TankBattleGameSnapshot,
+  UpdateWheelQuestionRequest,
+  WheelGameRequest,
+  WheelOfFortuneStateSnapshot,
+  WheelQuestionRequest,
 } from '@retro-platform/contracts';
 
 export { RoomQuestionProvider, parseRoomQuestionSet, questionForStableKey } from './roomQuestionProvider';
@@ -78,6 +91,12 @@ type EventMap = {
   retroRushPlayerEliminated: RetroRushPlayerEliminated;
   retroRushRoundStarted: RetroRushGameSnapshot;
   imposterStateChanged: ImposterStateChanged;
+  tankBattleSnapshot: TankBattleGameSnapshot;
+  hideAndSeekGameStarted: { map: HideAndSeekMapPayload; state: HideAndSeekStateSnapshot };
+  hideAndSeekSnapshot: HideAndSeekPersonalSnapshot;
+  hideAndSeekStateChanged: HideAndSeekStateSnapshot;
+  playerCaught: HideAndSeekPlayerCaughtEvent;
+  wheelOfFortuneStateChanged: WheelOfFortuneStateSnapshot;
 };
 
 type Listener<K extends keyof EventMap> = (event: EventMap[K]) => void;
@@ -125,6 +144,8 @@ export class RoomRealtimeClient {
     return this.invoke('BeginGameSelection', candidateGameIds);
   }
   castVote(gameId: string): Promise<RoomSnapshot> { return this.invoke('CastVote', gameId); }
+  /** Unlike display name/color, a picked portrait can change any time while in the room — not just before joining. */
+  updateAvatar(avatarId: string | undefined): Promise<RoomSnapshot> { return this.invoke('UpdateAvatar', avatarId); }
   resolveVote(): Promise<RoomSnapshot> { return this.invoke('ResolveVote'); }
   returnToGameSelection(): Promise<RoomSnapshot> { return this.invoke('ReturnToGameSelection'); }
   returnToLobby(): Promise<RoomSnapshot> { return this.invoke('ReturnToLobby'); }
@@ -193,6 +214,18 @@ export class RoomRealtimeClient {
   completeRetroRushQuestion(request: CompleteRetroRushQuestionRequest): Promise<void> {
     return this.invoke('CompleteRetroRushQuestion', request);
   }
+  getTankBattleSnapshot(gameSessionId: string): Promise<TankBattleGameSnapshot> {
+    return this.invoke('GetTankBattleSnapshot', gameSessionId);
+  }
+  moveTankBattleTank(request: MoveTankBattleTankRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('MoveTankBattleTank', request);
+  }
+  fireTankBattleShot(request: FireTankBattleShotRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('FireTankBattleShot', request);
+  }
+  completeTankBattleQuestion(request: CompleteTankBattleQuestionRequest): Promise<TankBattleGameSnapshot> {
+    return this.invoke('CompleteTankBattleQuestion', request);
+  }
   useRetroRushAbility(request: UseRetroRushAbilityRequest): Promise<void> {
     return this.invoke('UseRetroRushAbility', request);
   }
@@ -213,6 +246,35 @@ export class RoomRealtimeClient {
   }
   setImposterBackground(gameSessionId: string, backgroundId: string): Promise<ImposterGameSnapshot> {
     return this.invoke('SetImposterBackground', gameSessionId, backgroundId);
+  }
+  /** Fire-and-forget — the server's reply arrives as `hideAndSeekSnapshot` events, never through this call's own promise. */
+  sendHideAndSeekInput(request: HideAndSeekInputRequest): Promise<void> {
+    return this.invoke('SendHideAndSeekInput', request);
+  }
+  /** Host-only rematch once the round has ended — the new round arrives as a fresh `hideAndSeekGameStarted`, not through this promise. */
+  restartHideAndSeek(): Promise<RoomSnapshot> {
+    return this.invoke('RestartHideAndSeek');
+  }
+  addWheelQuestion(request: WheelQuestionRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('AddWheelQuestion', request);
+  }
+  updateWheelQuestion(request: UpdateWheelQuestionRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('UpdateWheelQuestion', request);
+  }
+  removeWheelQuestion(gameSessionId: string, questionId: string): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('RemoveWheelQuestion', gameSessionId, questionId);
+  }
+  startWheelGame(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('StartWheelGame', request);
+  }
+  spinWheelPlayer(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('SpinWheelPlayer', request);
+  }
+  spinWheelQuestion(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('SpinWheelQuestion', request);
+  }
+  nextWheelRound(request: WheelGameRequest): Promise<WheelOfFortuneStateSnapshot> {
+    return this.invoke('NextWheelRound', request);
   }
 
   private async open(): Promise<RoomSnapshot> {
@@ -246,6 +308,14 @@ export class RoomRealtimeClient {
     connection.on('RetroRushPlayerEliminated', (elimination: RetroRushPlayerEliminated) => this.emit('retroRushPlayerEliminated', elimination));
     connection.on('RetroRushRoundStarted', (snapshot: RetroRushGameSnapshot) => this.emit('retroRushRoundStarted', snapshot));
     connection.on('ImposterStateChanged', (state: ImposterStateChanged) => this.emit('imposterStateChanged', state));
+    connection.on('TankBattleSnapshot', (snapshot: TankBattleGameSnapshot) => this.emit('tankBattleSnapshot', snapshot));
+    connection.on('HideAndSeekGameStarted', (map: HideAndSeekMapPayload, state: HideAndSeekStateSnapshot) =>
+      this.emit('hideAndSeekGameStarted', { map, state }));
+    connection.on('HideAndSeekSnapshot', (snapshot: HideAndSeekPersonalSnapshot) => this.emit('hideAndSeekSnapshot', snapshot));
+    connection.on('HideAndSeekStateChanged', (state: HideAndSeekStateSnapshot) => this.emit('hideAndSeekStateChanged', state));
+    connection.on('PlayerCaught', (evt: HideAndSeekPlayerCaughtEvent) => this.emit('playerCaught', evt));
+    connection.on('WheelOfFortuneStateChanged', (state: WheelOfFortuneStateSnapshot) =>
+      this.emit('wheelOfFortuneStateChanged', state));
     connection.onreconnecting(() => this.emit('connectionChanged', 'reconnecting'));
     connection.onreconnected(() => {
       this.emit('connectionChanged', 'connected');

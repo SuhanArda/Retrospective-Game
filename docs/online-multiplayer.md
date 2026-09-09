@@ -9,7 +9,7 @@ npm install
 npm run dev:all
 ```
 
-This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, Spin the Bottle on `5175`, Rus Ruleti on `5176`, and Imposter on `5177`. `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
+This starts the room server on `http://localhost:5281`, the platform on `5173`, Retro Rush on `5174`, Spin the Bottle on `5175`, Rus Ruleti on `5176`, Draw & Guess on `5177`, Imposter on `5178`, and Saklambaç (Hide & Seek) on `5180` (`5179` is taken by another game workspace). `npm run dev` remains the frontend-only workflow. The platform uses the real server by default; opt into the browser-only implementation with `VITE_ROOM_SERVICE=mock`.
 
 ## Authority and boundaries
 
@@ -25,6 +25,7 @@ Platform / games
        Spin the Bottle result
        Rus Ruleti cylinder + shot outcome
        Imposter roles + clue turn + secret votes
+       Saklambaç seeker id + round status (never a position — see below)
 ```
 
 - `services/retrospective-server` is the room and game-session authority. Its `ConcurrentDictionary` is intentionally process-local for this milestone.
@@ -51,6 +52,8 @@ For Rus Ruleti, the server owns the cylinder: chamber count, bullet position, an
 
 For Imposter, the server chooses the word and role, records each participant's ready state, advances the spoken-clue turn, and resolves secret votes. Shared room snapshots never contain the secret word or Imposter identity. Each authenticated participant fetches a private game snapshot; the Imposter receives no word until results. Reconnects reuse the room identity and fetch the latest authoritative round state.
 
+Saklambaç is deliberately not built on the pattern above: it is server-*simulated*, not just server-arbitrated, and it is the first game whose positional state must never appear in the shared `RoomSnapshot` at all, not even filtered — a client reading its own WebSocket traffic must never see where a player it can't see actually is. `Retrospective.Server.Rooms.HideSeek.HideSeekManager` owns this simulation independently of `RoomManager` (constructor-injected, no dependency back), driven by its own 20Hz `HideSeekGameLoopService` — separate from the 10Hz `RoomMaintenanceService` every other game shares, because this one computes a different, vision-filtered payload per connection and unicasts it (`Clients.Client(connectionId)`), rather than broadcasting one shared snapshot to the room group. The client predicts its own movement each frame with the exact same collision code the server runs (`games/hide-and-seek/src/domain/movement.ts` mirrors `HideSeekGame.Move`), sends held input at 20Hz, and eases toward each authoritative reply. Its fog-of-war and player-visibility rules are grid shadowcasting plus a Bresenham line check, ported by hand into both C# (`HideSeekVision.cs`) and TypeScript (`vision.ts`); a fixture the C# side regenerates on every test run (`packages/platform-contracts/test-fixtures/hide-seek-vision-cases.json`) is what actually proves the two still agree, tile-for-tile. `RoomManager`'s only awareness of any of this is a handful of lifecycle hooks (game start, leave, disconnect, reconnect) and a small, non-secret `HideAndSeekStateSnapshot` (seeker id, round status) cached on the room — the same shape every other game's public state already takes.
+
 ## REST and SignalR surface
 
 | Surface | Purpose |
@@ -59,7 +62,7 @@ For Imposter, the server chooses the word and role, records each participant's r
 | `POST /api/rooms/{code}/join` | Join before play starts |
 | `GET /api/rooms/{code}` | Public non-secret snapshot |
 | `GET /health` | Liveness |
-| `/hubs/room` | Rejoin, leave, host lifecycle, reactions, spin, fire |
+| `/hubs/room` | Rejoin, leave, host lifecycle, reactions, spin, fire, Saklambaç input |
 
 SignalR groups are deterministically named `room:{ROOM_CODE}`. State-changing hub methods resolve player and host authority from server state, never from client-provided `isHost` flags.
 
@@ -73,10 +76,12 @@ $env:AllowedOrigins__1='http://192.168.1.50:5174'
 $env:AllowedOrigins__2='http://192.168.1.50:5175'
 $env:AllowedOrigins__3='http://192.168.1.50:5176'
 $env:AllowedOrigins__4='http://192.168.1.50:5177'
+$env:AllowedOrigins__5='http://192.168.1.50:5178'
+$env:AllowedOrigins__6='http://192.168.1.50:5180'
 dotnet run --project services/retrospective-server --urls http://0.0.0.0:5281
 ```
 
-Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5177` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
+Set each frontend's `VITE_API_URL=http://192.168.1.50:5281`; set the platform game URLs and each game's `VITE_PLATFORM_URL` to the same LAN host. Start Vite/Vinext with host exposure as appropriate, allow ports `5173-5180` and `5281` through the local firewall, then open the platform from two devices. Never expose this HTTP development setup to the public internet.
 
 ## Verification
 
@@ -85,6 +90,7 @@ npm run test:server
 npm run test:web
 npm run test:retro-rush
 npm run test:imposter
+npm run test:hide-and-seek
 npm run build
 npm run lint
 npm run smoke:imposter

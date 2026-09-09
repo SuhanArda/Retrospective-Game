@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" shape-rendering="crispEdges">
+  <rect width="900" height="520" fill="#0b1026"/><path fill="#151b3b" d="M0 390h900v130H0z"/>
+  <g transform="translate(450 215)" stroke="#080b1a" stroke-width="12">
+    <path fill="#f6c453" d="M0-178a178 178 0 0 1 154 89L0 0z"/><path fill="#28c7c9" d="M154-89a178 178 0 0 1 0 178L0 0z"/>
+    <path fill="#ec5b87" d="M154 89A178 178 0 0 1 0 178V0z"/><path fill="#7568d8" d="M0 178a178 178 0 0 1-154-89L0 0z"/>
+    <path fill="#2e8acb" d="M-154 89a178 178 0 0 1 0-178L0 0z"/><path fill="#e68b3a" d="M-154-89A178 178 0 0 1 0-178V0z"/>
+    <circle r="40" fill="#fff0c2"/><path d="M0-190l-26-37h52z" fill="#fff0c2"/>
+  </g><text x="450" y="464" text-anchor="middle" fill="#fff0c2" font-family="monospace" font-size="48" font-weight="bold">ÇARKI FELEK</text>
+</svg>
