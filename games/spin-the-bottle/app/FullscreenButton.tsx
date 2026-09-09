@@ -1,4 +1,30 @@
-import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
+import { useSyncExternalStore, type ButtonHTMLAttributes } from 'react';
+
+// `document.fullscreenElement` is an external (non-React) data source, and
+// `requestFullscreen` support never changes at runtime — `useSyncExternalStore`
+// is the tool React itself recommends for exactly this: it reads a value that
+// must default to the SSR-safe answer (`false`, so Next's server render and
+// the first client render match — no hydration mismatch) and only switches to
+// the real answer once mounted, without an effect calling `setState` directly.
+function subscribeToFullscreenChange(onChange: () => void) {
+  document.addEventListener('fullscreenchange', onChange);
+  return () => document.removeEventListener('fullscreenchange', onChange);
+}
+const neverChanges = () => () => {};
+
+function getIsFullscreen() {
+  return document.fullscreenElement !== null;
+}
+function getIsFullscreenServer() {
+  return false;
+}
+
+function getSupportsFullscreen() {
+  return typeof document.documentElement.requestFullscreen === 'function';
+}
+function getSupportsFullscreenServer() {
+  return false;
+}
 
 /**
  * Tam ekran aç/kapa düğmesi. Oyunlar platformdan iframe ile değil tam sayfa
@@ -11,18 +37,11 @@ import { useEffect, useState, type ButtonHTMLAttributes } from 'react';
  * olduğu için `className` dışarıdan verilir.
  */
 export function FullscreenButton({ className, ...buttonProps }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  // Destek kontrolü de effect içinde: sunucuda render edilen oyunlarda (Next)
-  // ilk render'ın sunucuyla aynı olması, hydration uyuşmazlığını önler.
-  const [supported, setSupported] = useState(false);
-
-  useEffect(() => {
-    setSupported(typeof document.documentElement.requestFullscreen === 'function');
-    const sync = () => setIsFullscreen(document.fullscreenElement !== null);
-    sync();
-    document.addEventListener('fullscreenchange', sync);
-    return () => document.removeEventListener('fullscreenchange', sync);
-  }, []);
+  const isFullscreen = useSyncExternalStore(subscribeToFullscreenChange, getIsFullscreen, getIsFullscreenServer);
+  // Destek kontrolü de aynı mekanizmayla okunur: sunucuda render edilen
+  // oyunlarda (Next) ilk render'ın sunucuyla aynı olması, hydration
+  // uyuşmazlığını önler.
+  const supported = useSyncExternalStore(neverChanges, getSupportsFullscreen, getSupportsFullscreenServer);
 
   // iOS Safari `requestFullscreen` desteklemez; orada düğmeyi hiç göstermemek,
   // basınca sessizce hiçbir şey olmayan bir düğme göstermekten iyidir.

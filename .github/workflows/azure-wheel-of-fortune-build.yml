@@ -10,6 +10,14 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/azure-wheel-of-fortune-build.yml"
+  pull_request:
+    paths:
+      - "games/wheel-of-fortune/**"
+      - "packages/platform-contracts/**"
+      - "packages/realtime-client/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/azure-wheel-of-fortune-build.yml"
 
 permissions:
   contents: read
