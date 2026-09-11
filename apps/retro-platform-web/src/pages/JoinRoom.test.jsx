@@ -9,9 +9,10 @@ const mocks = vi.hoisted(() => ({
   ensureRoom: vi.fn(),
   getCurrentPlayer: vi.fn(),
   joinRoom: vi.fn(),
+  identity: { user: { name: 'Guest' } },
 }))
 
-vi.mock('../context/UserContext.jsx', () => ({ useUser: () => ({ user: { name: 'Guest' } }) }))
+vi.mock('../context/UserContext.jsx', () => ({ useUser: () => mocks.identity }))
 vi.mock('../context/LanguageContext.jsx', () => ({ useLanguage: () => ({ t: (key) => key }) }))
 vi.mock('../services/roomServiceInstance', () => ({ roomService: mocks }))
 
@@ -29,6 +30,7 @@ describe('room invite join flow', () => {
     mocks.ensureRoom.mockReset().mockResolvedValue(null)
     mocks.getCurrentPlayer.mockReset().mockReturnValue(null)
     mocks.joinRoom.mockReset()
+    mocks.identity = { user: { name: 'Guest' } }
     container = document.createElement('div')
     document.body.append(container)
     root = createRoot(container)
@@ -78,6 +80,32 @@ describe('room invite join flow', () => {
 
     expect(container.querySelector('[data-location]')?.textContent).toBe('/room/ABC123')
     expect(mocks.joinRoom).not.toHaveBeenCalled()
+  })
+
+  it('fills the display name once first-time identity setup finishes behind the form', async () => {
+    mocks.identity = { user: null }
+    await renderInvite()
+    expect(container.querySelector('#displayName')?.value).toBe('')
+
+    mocks.identity = { user: { name: 'Ada' } }
+    await renderInvite()
+
+    expect(container.querySelector('#displayName')?.value).toBe('Ada')
+  })
+
+  it('keeps a name typed into the join form instead of overwriting it with the saved identity', async () => {
+    mocks.identity = { user: null }
+    await renderInvite()
+    const input = container.querySelector('#displayName')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, 'Mert')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    mocks.identity = { user: { name: 'Ada' } }
+    await renderInvite()
+
+    expect(container.querySelector('#displayName')?.value).toBe('Mert')
   })
 
   it('preserves the existing room-not-found error on an invalid invite target', async () => {
