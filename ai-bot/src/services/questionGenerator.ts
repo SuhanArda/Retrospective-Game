@@ -225,6 +225,7 @@ export async function generateQuestions(
         );
         throw error;
       }
+      options.logger?.log(`[AI] validation accepted receivedCount=${receivedCount ?? "unknown"} validCount=${questions.length} rejectedCount=0`);
       return {
         gameId: "room-retrospective",
         provider: "gemini",

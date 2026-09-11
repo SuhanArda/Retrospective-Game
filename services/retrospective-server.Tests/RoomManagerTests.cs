@@ -8,6 +8,56 @@ public sealed class RoomManagerTests
 {
     private static readonly string[] Games = ["retro-rush", "spin-the-bottle"];
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyAiInputIsRejectedWithoutRecordingASource(string? input)
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        Assert.False(manager.HasAiQuestionSource(host.RoomCode));
+        var error = Assert.Throws<RoomException>(() => manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(input, input, "tr", "dengeli")));
+        Assert.Equal("AI_INPUT_REQUIRED", error.Code);
+        Assert.False(manager.HasAiQuestionSource(host.RoomCode));
+        Assert.NotNull(manager.Get(host.RoomCode));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReportOnlyInputEnablesAiAndCanBeRestored(bool upload)
+    {
+        var manager = CreateManager();
+        var host = manager.Create(CreateRequest("Host"));
+        var file = upload ? new ReportFilePayload("retro.txt", "text/plain", "cmV0cm8=") : null;
+        var request = new GenerateRoomQuestionsRequest("   ", upload ? null : "  Sprint report  ", "tr", "dengeli", 20, file);
+        var normalized = manager.RememberOrRestoreAiQuestionSource(host.RoomCode, request);
+        Assert.True(manager.HasAiQuestionSource(host.RoomCode));
+        Assert.Null(normalized.Topic);
+        Assert.Equal(upload ? null : "Sprint report", normalized.ReportText);
+        Assert.Equal(file, normalized.ReportFile);
+        Assert.Equal(normalized, manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest(null, null, "tr", "dengeli")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoomExpiryOnlyRequestsAiCleanupWhenASourceWasProvided(bool hasSource)
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-08-11T00:00:00Z"));
+        var manager = CreateManager(clock);
+        var host = manager.Create(CreateRequest("Host"));
+        if (hasSource) manager.RememberOrRestoreAiQuestionSource(host.RoomCode,
+            new GenerateRoomQuestionsRequest("Sprint", null, "tr", "dengeli"));
+        clock.Advance(TimeSpan.FromSeconds(25));
+        var change = Assert.Single(manager.SweepDisconnected());
+        Assert.Null(change.Snapshot);
+        Assert.Equal(hasSource, change.HadAiSource);
+    }
+
     [Fact]
     public void AiAccessUsesRoomIdentityWithoutRequiringAnActiveGame()
     {

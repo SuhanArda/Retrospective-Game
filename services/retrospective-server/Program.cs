@@ -48,14 +48,25 @@ builder.Services.AddSingleton<RoomManager>();
 builder.Services.AddSingleton(_ => HideSeekMap.LoadClassic());
 builder.Services.AddSingleton<HideSeekManager>();
 builder.Services.AddHostedService<HideSeekGameLoopService>();
+var aiConfiguration = AiQuestionConfiguration.Resolve(
+    builder.Configuration["AiQuestions:BaseUrl"], builder.Environment.IsDevelopment());
+builder.Services.AddSingleton(aiConfiguration);
+builder.Services.AddOptions<AiQuestionOptions>()
+    .Bind(builder.Configuration.GetSection("AiQuestions"))
+    .Validate(options => options.ColdStartTimeoutSeconds is >= 1 and <= 300,
+        "AiQuestions:ColdStartTimeoutSeconds must be between 1 and 300.")
+    .ValidateOnStart();
+builder.Services.AddHttpClient(AiBotReadiness.ClientName, (services, client) =>
+{
+    client.BaseAddress = services.GetRequiredService<AiQuestionConfiguration>().BaseUrl;
+    client.Timeout = Timeout.InfiniteTimeSpan; // Each probe and the entire wake have their own deadlines.
+    client.MaxResponseContentBufferSize = 64 * 1024;
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<AiBotReadiness>();
 builder.Services.AddHttpClient<AiQuestionGateway>((services, client) =>
 {
-    var configuration = services.GetRequiredService<IConfiguration>();
-    client.BaseAddress = new Uri(configuration["AiQuestions:BaseUrl"] ?? "http://localhost:3002/");
-    // The AI service can run on a free tier instance that sleeps when idle.
-    // Waking one takes about a minute and generation itself retries, so a short
-    // timeout here cancels the call before the bot has even received it.
-    client.Timeout = TimeSpan.FromSeconds(120);
+    client.BaseAddress = services.GetRequiredService<AiQuestionConfiguration>().BaseUrl;
+    client.Timeout = TimeSpan.FromSeconds(AiQuestionOptions.GenerationTimeoutSeconds);
 });
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<RoomMaintenanceService>();
@@ -63,8 +74,35 @@ builder.Services.AddCors(options => options.AddPolicy("BrowserClients", policy =
     policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
 var app = builder.Build();
+var aiLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AI.API");
+aiLogger.LogInformation(
+    "[AI Config] baseUrl={BaseUrl} internalServiceKeyConfigured={InternalServiceKeyConfigured}",
+    aiConfiguration.BaseUrl?.GetLeftPart(UriPartial.Authority) ?? "unconfigured",
+    !string.IsNullOrWhiteSpace(builder.Configuration["AiQuestions:InternalServiceKey"]));
+if (aiConfiguration.Error is { } configurationError)
+    aiLogger.LogError("[AI Config] AI requests unavailable reason={Reason}; set AiQuestions__BaseUrl", configurationError);
+if (!app.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Configuration["AiQuestions:InternalServiceKey"]))
+    aiLogger.LogError("[AI Config] AI requests unavailable reason=internal_service_key_missing; set AiQuestions__InternalServiceKey");
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.UseCors("BrowserClients");
+app.Use(async (context, next) =>
+{
+    if (!HttpMethods.IsPost(context.Request.Method) ||
+        !context.Request.Path.StartsWithSegments("/api/rooms") ||
+        context.Request.Path.Value?.EndsWith("/ai/questions", StringComparison.Ordinal) != true)
+    {
+        await next(context);
+        return;
+    }
+    // Runs before DTO binding, so malformed JSON and oversized bodies are visible too.
+    aiLogger.LogInformation("[AI API] HTTP request received route=/api/rooms/:code/ai/questions");
+    context.Response.OnCompleted(() =>
+    {
+        aiLogger.LogInformation("[AI API] HTTP response status={StatusCode}", context.Response.StatusCode);
+        return Task.CompletedTask;
+    });
+    await next(context);
+});
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/rooms/{code}", (string code, RoomManager rooms) =>
     rooms.Get(code) is { } room ? Results.Ok(room) : Results.NotFound(new { code = "ROOM_NOT_FOUND" }));
@@ -76,18 +114,20 @@ app.MapPost("/api/rooms", (CreateRoomRequest request, RoomManager rooms) => Exec
 app.MapPost("/api/rooms/{code}/join", (string code, JoinRoomRequest request, RoomManager rooms) => Execute(() => Results.Ok(rooms.Join(code, request))));
 app.MapPost("/api/ai/warmup", async (AiQuestionGateway ai) =>
 {
-    // The browser fires this while the moderator is still filling in the room
-    // form, so the wake overlaps with typing instead of the generation call.
+    aiLogger.LogInformation("[AI Warmup] requested");
+    // The browser fires this only after submitting a room with AI source input.
     // It must survive that browser navigating away, hence no request token.
     await ai.WarmUp(CancellationToken.None);
     return Results.Ok(new { warming = true });
 });
 app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQuestionsRequest body, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
+    aiLogger.LogInformation("[AI API] request received roomCode={RoomCode} topicProvided={TopicProvided}", code, !string.IsNullOrWhiteSpace(body.Topic));
     try
     {
         var access = AuthorizeAiRequest(request, rooms, code, hostRequired: true);
         var roomRequest = rooms.RememberOrRestoreAiQuestionSource(access.RoomCode, body);
+        aiLogger.LogInformation("[AI API] invoking AiQuestionGateway roomCode={RoomCode}", access.RoomCode);
         // The browser immediately navigates to the selected game. Once the
         // request body has arrived, finish generation even if that navigation
         // closes the original HTTP connection.
@@ -96,20 +136,27 @@ app.MapPost("/api/rooms/{code}/ai/questions", async (string code, GenerateRoomQu
             access.RoomInstanceId,
             roomRequest,
             CancellationToken.None,
-            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients));
+            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients, aiLogger));
     }
-    catch (RoomException error) { return RoomError(error); }
+    catch (RoomException error)
+    {
+        aiLogger.LogWarning("[AI API] request rejected roomCode={RoomCode} reason={Reason}", code, error.Code);
+        return RoomError(error);
+    }
 });
 app.MapGet("/api/rooms/{code}/ai/questions", async (string code, HttpRequest request, RoomManager rooms, AiQuestionGateway ai, IHubContext<RoomHub, IRoomClient> clients, CancellationToken cancellationToken) =>
 {
     try
     {
         var access = AuthorizeAiRequest(request, rooms, code, hostRequired: false);
+        // Guests and games may check for questions even when preparation was skipped.
+        // Keep that check local so it cannot wake a sleeping AI service.
+        if (!rooms.HasAiQuestionSource(access.RoomCode)) return Results.NoContent();
         return await ai.Get(
             access.RoomCode,
             access.RoomInstanceId,
             cancellationToken,
-            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients));
+            set => RememberAiQuestionSet(access.RoomCode, access.RoomInstanceId, set, rooms, clients, aiLogger));
     }
     catch (RoomException error) { return RoomError(error); }
 });
@@ -135,9 +182,15 @@ static async Task RememberAiQuestionSet(
     string roomInstanceId,
     AiRoomQuestionSet questionSet,
     RoomManager rooms,
-    IHubContext<RoomHub, IRoomClient> clients)
+    IHubContext<RoomHub, IRoomClient> clients,
+    ILogger logger)
 {
-    if (!rooms.TryRememberAiQuestionSet(roomCode, roomInstanceId, questionSet)) return;
+    if (!rooms.TryRememberAiQuestionSet(roomCode, roomInstanceId, questionSet))
+    {
+        logger.LogInformation("[AI API] question set not cached roomCode={RoomCode} reason=fallback_or_stale_room", roomCode);
+        return;
+    }
+    logger.LogInformation("[AI API] question generation ready roomCode={RoomCode} count={Count}", roomCode, questionSet.Questions.Count);
     if (rooms.RefreshWaitingImposterQuestionPack(roomCode, roomInstanceId) is not { } mutation) return;
     await clients.Clients.Group(RoomHub.GroupName(mutation.RoomCode)).ImposterStateChanged(mutation.Event);
 }

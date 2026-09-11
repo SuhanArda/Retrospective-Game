@@ -142,9 +142,13 @@ AllowedOrigins__1=https://<RETRO_RUSH_CLOUDFLARE_HOST>
 AllowedOrigins__2=https://<SPIN_WORKER_HOST>
 ```
 
-Do not set `PORT`; Render owns it. This deployment phase intentionally does not deploy the AI-bot and therefore cannot generate new Gemini questions. The backend's AI gateway defaults to `http://localhost:3002/`, which is not another Render service and can be unreachable without preventing room creation, SignalR, or game launch.
+Do not set `PORT`; Render owns it. This deployment phase intentionally does not deploy the AI-bot and therefore cannot generate new Gemini questions. Without production AI configuration, AI requests return HTTP 503 and log the missing configuration; room creation, SignalR, and game launch remain available. The localhost AI default is restricted to Development.
 
 To enable AI later, deploy `ai-bot` as its own service, set its `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, `INTERNAL_SERVICE_KEY`, `ALLOWED_ORIGINS`, and optional question-bank settings, then set backend `AiQuestions__BaseUrl=https://<AI_BOT_RENDER_HOST>/` and `AiQuestions__InternalServiceKey` to the same service key. Do not expose either secret through a `VITE_*` variable.
+
+For the sleeping Free AI-bot, the backend performs on-demand readiness before generation. `AiQuestions__ColdStartTimeoutSeconds` defaults to 90; the platform's optional build setting `VITE_AI_PREPARATION_TIMEOUT_SECONDS` defaults to 135. If increasing the backend budget, increase the browser setting to at least that budget + 40 seconds for generation + 5 seconds margin. Room creation still proceeds to the lobby after at most a two-second preparation wait. See [cold-start handling](AI_COLD_START.md) for the simulation and exact configuration.
+
+Set `NODE_ENV=production` on the AI-bot so required secret and origin checks run. Build from the repository root with `npm ci --include=dev && npm run build:ai-bot`, and start with `npm --workspace ai-bot start`. Use Node >=22.13.0 and `/health` as the health path. See [production AI diagnostics](AI_PRODUCTION_DIAGNOSIS.md) for exact request payloads and commands.
 
 `GET /health` remains anonymous and returns a successful JSON response. SignalR remains at `/hubs/room`; browsers connect to the HTTPS Render base URL and the official client negotiates WSS. Render terminates public TLS and supports WebSocket upgrades. Do not add Redis, Azure SignalR, a database, or another realtime provider for this first single-instance deployment.
 

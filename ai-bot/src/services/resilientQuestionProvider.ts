@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GenerateQuestionsRequest, GenerateQuestionsResponse, GeneratedQuestion } from "../types/questions.js";
 import type { AiQuestionGenerationService } from "./questionProvider.js";
+import { describeGeminiFailure } from "./questionGenerator.js";
 import {
   normalizeQuestionText,
   type QuestionBank,
@@ -18,13 +19,19 @@ export class PersistingQuestionGenerator implements AiQuestionGenerationService 
   ) {}
 
   async generate(request: GenerateQuestionsRequest, signal?: AbortSignal): Promise<GenerateQuestionsResponse> {
-    const generated = await this.generator.generate(request, signal);
+    let generated: GenerateQuestionsResponse;
+    try {
+      generated = await this.generator.generate(request, signal);
+    } catch (error: unknown) {
+      const failure = describeGeminiFailure(error);
+      this.logger.warn(`[AI] primary generation failed status=${failure.status ?? "none"} reason=${failure.reason}; fallback eligible unless cancelled or replacing existing questions`);
+      throw error;
+    }
     if (generated.provider === "gemini") {
       try {
         await this.questionBank.saveGeneratedQuestions(request, generated.questions);
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "unknown storage error";
-        this.logger.warn(`[QuestionBank] generated questions returned but could not be stored: ${message}`);
+        this.logger.warn("[QuestionBank] generated questions returned but could not be stored reason=storage_error");
       }
     }
     const source = generated.provider === "gemini" ? "gemini" : "local-fallback";
@@ -46,8 +53,7 @@ export class QuestionBankFallbackGenerator implements AiQuestionGenerationServic
     try {
       saved = await this.questionBank.getFallbackQuestions(request, request.count);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "unknown storage error";
-      this.logger.warn(`[QuestionBank] saved fallback unavailable: ${message}`);
+      this.logger.warn("[QuestionBank] saved fallback unavailable reason=storage_error");
     }
 
     const fromBank: GeneratedQuestion[] = saved.map((question) => ({

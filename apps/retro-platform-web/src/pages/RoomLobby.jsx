@@ -1,32 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import { isMockMode, roomService } from '../services/roomServiceInstance'
 import { findGame, gameRegistry } from '../games/gameRegistry'
 import { useRoom } from '../hooks/useRoom'
 import { deleteRoomQuestionDraft } from '../services/RoomQuestionDraftStore'
-import { readRoomQuestionStatus } from '../services/QuestionBotService'
+import { readRoomQuestionStatus, QUESTION_PREPARATION_WINDOW_MS } from '../services/QuestionBotService'
+import { getQuestionPreparationState, subscribeQuestionPreparation } from '../services/QuestionPreparationState'
 import { loadPlatformSession } from '../session/platformSession'
 import { buildRoomInviteUrl, roomJoinPath } from '../utils/roomInvite'
 import Avatar from '../components/Avatar.jsx'
 import HighlightTitle from '../components/HighlightTitle.jsx'
 import RoomReactions from '../components/RoomReactions.jsx'
+import QuestionPreparationNotice from '../components/QuestionPreparationNotice.jsx'
 import '../App.css'
 
 const CANDIDATE_IDS = gameRegistry.filter((game) => game.status === 'available').map((game) => game.id)
 const QUESTION_STATUS_POLL_MS = 3000
-// One failed poll is a hiccup; a service that keeps refusing is exactly what
-// this badge exists to surface, so say so instead of staying blank.
-const QUESTION_STATUS_FAILURES = 2
 const QUESTION_STATUS_LABELS = {
   preparing: 'lobby.questionsPreparing',
   ai: 'lobby.questionsReady',
   fallback: 'lobby.questionsFallback',
   unavailable: 'lobby.questionsUnavailable',
 }
-// Enough to cover a sleeping question service waking up and generating; after
-// that the badge simply stays hidden instead of polling a dead endpoint.
-const QUESTION_STATUS_ATTEMPTS = 40
 
 function RoomLobby() {
   const { roomCode = '' } = useParams()
@@ -35,6 +31,8 @@ function RoomLobby() {
   const { room, loading, setRoom } = useRoom(roomCode)
   const [copied, setCopied] = useState(null)
   const [questionStatus, setQuestionStatus] = useState(null)
+  const preparation = useSyncExternalStore(subscribeQuestionPreparation, getQuestionPreparationState)
+  const hasLocalPreparation = preparation.roomCode === roomCode
   const me = roomService.getCurrentPlayer()
   const isHost = me?.isHost ?? false
   const connectionStatus = roomService.getConnectionStatus()
@@ -56,47 +54,62 @@ function RoomLobby() {
     }
   }, [room, navigate])
 
-  // Question generation runs in the background after the room is created, so the
-  // lobby is where everyone finds out whether the room got AI questions from the
-  // moderator's prompt or the built-in set.
   useEffect(() => {
-    if (isMockMode || !roomCode) return undefined
+    if (!hasLocalPreparation) return
+    console.info(`[Platform AI] lobby status roomCode=${roomCode} state=${preparation.status} reason=local_preparation`)
+  }, [roomCode, hasLocalPreparation, preparation.status])
+
+  // The generation POST owns status in its initiating tab. Only other browsers
+  // poll, within a finite window that includes readiness and one safe retry.
+  useEffect(() => {
+    if (isMockMode || !roomCode || hasLocalPreparation) return undefined
     const session = loadPlatformSession(window.sessionStorage)
     if (!session?.reconnectToken) return undefined
 
     let cancelled = false
     let timer = null
-    let attempt = 0
-    let failures = 0
+    let deadlineTimer = null
+    let previousStatus = null
+
+    function display(status, reason) {
+      setQuestionStatus(status)
+      if (status !== previousStatus) {
+        console.info(`[Platform AI] lobby status roomCode=${roomCode} state=${status} reason=${reason}`)
+        previousStatus = status
+      }
+    }
+
+    deadlineTimer = window.setTimeout(() => {
+      if (timer) window.clearTimeout(timer)
+      display('unavailable', 'preparation_deadline')
+      cancelled = true
+    }, QUESTION_PREPARATION_WINDOW_MS)
 
     async function poll() {
       try {
         const status = await readRoomQuestionStatus(roomCode, session.playerId, session.reconnectToken)
         if (cancelled) return
-        failures = 0
-        setQuestionStatus(status)
-        if (status !== 'preparing') return
-      } catch {
+        display(status, 'status_query')
+        if (status !== 'preparing') {
+          window.clearTimeout(deadlineTimer)
+          return
+        }
+      } catch (error) {
         if (cancelled) return
-        failures += 1
-        if (failures >= QUESTION_STATUS_FAILURES) setQuestionStatus('unavailable')
+        display('unavailable', error?.message === 'QUESTION_STATUS_AUTH_FAILED' ? 'authorization' : 'status_query_failed')
+        window.clearTimeout(deadlineTimer)
+        return
       }
-      attempt += 1
-      if (attempt < QUESTION_STATUS_ATTEMPTS) {
-        timer = window.setTimeout(poll, QUESTION_STATUS_POLL_MS)
-      } else {
-        // Still nothing after the whole window: the room is playing with the
-        // built-in questions whether or not the bot ever answers.
-        setQuestionStatus((current) => (current === 'preparing' ? 'unavailable' : current))
-      }
+      timer = window.setTimeout(poll, QUESTION_STATUS_POLL_MS)
     }
 
     poll()
     return () => {
       cancelled = true
       if (timer) window.clearTimeout(timer)
+      window.clearTimeout(deadlineTimer)
     }
-  }, [roomCode])
+  }, [roomCode, hasLocalPreparation])
 
   async function copy(value, kind) {
     try {
@@ -150,6 +163,7 @@ function RoomLobby() {
         <div className="brand">{t('lobby.brand')}</div>
         <HighlightTitle className="title title-sm" prefix={`${room.roomName} `} highlight={`#${canonicalCode}`} animate={false} />
         <p className="subtitle">{t('lobby.waiting')}</p>
+        <QuestionPreparationNotice roomCode={canonicalCode} />
         <div className={`connection-status ${connectionStatus}`} role="status">
           <span className="status-dot" />
           {isMockMode
@@ -160,7 +174,7 @@ function RoomLobby() {
                 ? t('lobby.disconnectedStatus')
                 : t('lobby.reconnectingStatus')}
         </div>
-        {questionStatus && (
+        {!hasLocalPreparation && questionStatus && (
           <div className={`connection-status question-status ${questionStatus}`} role="status">
             <span className="status-dot" />
             {t(QUESTION_STATUS_LABELS[questionStatus])}
