@@ -43,6 +43,17 @@ function JoinRoom() {
     return () => { active = false }
   }, [inviteRoomCode, navigate])
 
+  // Davet linkiyle gelen kişi önce kimlik kartını doldurur, ama bu sayfa o
+  // sırada zaten arkasında açıktır: useState ilk değeri henüz kimlik yokken
+  // yakalar ve isim alanı boş kalır. Kimlik gelince alanı biz dolduruyoruz,
+  // yoksa kullanıcı aynı ismi iki kez yazmak zorunda kalıyor. Alanda bir şey
+  // varsa dokunmuyoruz — bu oda için başka bir isim yazmış olabilir.
+  useEffect(() => {
+    if (!user?.name) return
+    setDisplayName((current) => current || user.name)
+    setErrors((current) => ({ ...current, displayName: undefined }))
+  }, [user])
+
   function handleCodeChange(event) {
     const value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
     setCode(value)

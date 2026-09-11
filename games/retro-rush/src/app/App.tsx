@@ -3,24 +3,28 @@ import { GameCanvas } from '../game/GameCanvas';
 import { GameEventBridge } from '../bridge/GameEventBridge';
 import { MockGameTransport } from '../networking/MockGameTransport';
 import { SignalRGameTransport } from '../networking/SignalRGameTransport';
-import { buildPlatformGameSelectionUrl, runtimeConfig } from './runtimeConfig';
-import type { ConnectionStatus, MatchSnapshot, PresentedRetroQuestion, RetroQuestion } from '../domain/types';
+import { buildPlatformGameSelectionUrl, buildPlatformRoomUrl, runtimeConfig } from './runtimeConfig';
+import type { MatchSnapshot, PresentedRetroQuestion, RetroQuestion } from '../domain/types';
 import { Hud } from '../ui/Hud';
 import { QuestionOverlay } from '../ui/QuestionOverlay';
 import { ResultsScreen } from '../ui/ResultsScreen';
 import { BackToGamesButton } from '../ui/BackToGamesButton';
 import { consumeGameHandoff, resolveGameLaunchContext } from '@retro-platform/contracts';
 import { RoomRealtimeClient } from '@retro-platform/realtime-client';
-import { connectionStatusLabels, localizeUserError } from '../ui/retroRushLabels';
+import { localizeUserError } from '../ui/retroRushLabels';
 import { retroQuestions } from '../data/retroQuestions';
 import { loadRoomQuestions } from '../data/roomQuestions';
-import { shouldShowStandaloneStart } from './startupMode';
+import { roomLaunchMissingCredentials, shouldShowStandaloneStart } from './startupMode';
 import { gameplayConfig } from '../data/gameplayConfig';
 
 const emptySnapshot: MatchSnapshot = { state: 'LOADING', timeRemainingMs: 180_000, countdown: gameplayConfig.roundStart.countdownDisplaySeconds, players: [], checkpointLabel: 'Başlangıç Noktası', danger: false, cooldowns: { speed: 0, rocket: 0, pull: 0 }, abilityInitialLockRemainingMs: 0 };
 
 export function App() {
   const launchContext = useMemo(() => consumeGameHandoff(window, window.sessionStorage) ?? resolveGameLaunchContext(window.location.search, window.sessionStorage), []);
+  // Odaya açılmış bir bağlantı kimliksiz geldiyse tek kişilik moda düşmek,
+  // oyuncuyu takımdan habersiz botlarla oynatıyordu — bkz. roomLaunchMissingCredentials.
+  const strandedRoomCode = useMemo(
+    () => roomLaunchMissingCredentials(Boolean(launchContext), window.location.search), [launchContext]);
   const roomCode = launchContext?.roomCode ?? 'DX-204';
   const playerName = launchContext?.displayName ?? 'Yerel Oyuncu';
   const bridge = useMemo(() => new GameEventBridge(), []);
@@ -33,7 +37,6 @@ export function App() {
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [question, setQuestion] = useState<PresentedRetroQuestion | null>(null);
   const [announcement, setAnnouncement] = useState('');
-  const [connection, setConnection] = useState<ConnectionStatus>('disconnected');
   const [muted, setMuted] = useState(false);
   const [roomIsHost, setRoomIsHost] = useState(false);
   const [authoritativeMapSeed, setAuthoritativeMapSeed] = useState<number | null>(null);
@@ -70,7 +73,7 @@ export function App() {
       bridge.on('snapshot', setSnapshot), bridge.on('questionOpened', setQuestion),
       bridge.on('roundReset', () => setQuestion(null)),
       bridge.on('announcement', (message) => { setAnnouncement(message); window.setTimeout(() => setAnnouncement(''), 2400); }),
-      transport.subscribe((event) => { if (event.type === 'connection') setConnection(event.status); if (event.type === 'error') setAnnouncement(localizeUserError(event.message)); }),
+      transport.subscribe((event) => { if (event.type === 'error') setAnnouncement(localizeUserError(event.message)); }),
     ];
     void transport.connect({ roomCode, playerName });
     return () => { disposers.forEach((dispose) => dispose()); void transport.disconnect(); };
@@ -104,11 +107,19 @@ export function App() {
   };
 
   const toggleMute = () => { const next = !muted; setMuted(next); bridge.emit('audioMuted', { muted: next }); };
+  if (strandedRoomCode) return <main className="app-shell"><section className="start-card" data-testid="room-launch-failed">
+    <p className="eyebrow">ODA {strandedRoomCode}</p>
+    <h1>Odaya Bağlanılamadı</h1>
+    <p>Oyun açılırken oda kimliğin bu sekmeye ulaşmadı. Tek başına oynamaman için oyunu başlatmıyoruz — lobiye dönüp tekrar gir, arkadaşların seni bekliyor.</p>
+    <button className="button primary large" type="button" onClick={() => window.location.assign(buildPlatformRoomUrl(runtimeConfig.platformUrl, strandedRoomCode, window.location.origin))}>LOBİYE DÖN</button>
+  </section></main>;
   return <main className="app-shell" data-map-seed={authoritativeMapSeed ?? undefined}>
     <GameCanvas bridge={bridge} transport={transport} questions={sessionQuestions} />
     <Hud snapshot={snapshot} muted={muted} onMute={toggleMute} onAbility={(abilityId) => bridge.emit('abilityRequested', { abilityId })} />
     {launchContext && <BackToGamesButton roomIsHost={roomIsHost} onReturn={returnToGames} />}
-    {shouldShowStandaloneStart(Boolean(launchContext), snapshot.state) && <section className="start-card"><p className="eyebrow">ODA {roomCode} · {connectionStatusLabels[connection]}</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}
+    {!launchContext && <p className="offline-badge" data-testid="offline-badge" role="status">ÇEVRİMDIŞI MOD · ODAYA BAĞLI DEĞİLSİN</p>}
+    {shouldShowStandaloneStart(Boolean(launchContext), snapshot.state) && <section className="start-card"><p className="eyebrow">ÇEVRİMDIŞI MOD · BOTLARLA ALIŞTIRMA</p><h1>Yosunlu Ormana Gir</h1><p>Sonbahar ağaçlarının altında yarış, sisin önünde kal ve her sapmayı ekipçe düşünme fırsatına dönüştür.</p><div className="controls"><span><kbd>A</kbd><kbd>D</kbd> HAREKET</span><span><kbd>W</kbd><kbd>SPACE</kbd> ZIPLA</span><span><kbd>1</kbd>—<kbd>3</kbd> YETENEKLER</span></div><button className="button primary large" type="button" onClick={() => bridge.emit('startMatch', undefined)}>PATİKAYA BAŞLA</button></section>}
+    {snapshot.state === 'COUNTDOWN' && <div className="phase-note" data-testid="round-start-countdown" role="status" aria-live="polite">PARKUR BAŞLIYOR · {snapshot.countdown}</div>}
     {snapshot.state === 'FINISHED' && <ResultsScreen snapshot={snapshot} />}
     {question && <QuestionOverlay question={question} mode="verbal" onAnswered={() => bridge.emit('questionAnswered', { questionId: question.id })} />}
     {announcement && <div className="toast" role="status" aria-live="polite">{announcement}</div>}
