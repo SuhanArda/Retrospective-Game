@@ -648,7 +648,11 @@ public sealed class RoomManagerTests
 
         Assert.Throws<RoomException>(() => manager.NextDrawAndGuessRound("guest"));
 
-        var next = manager.NextDrawAndGuessRound("host").DrawAndGuessState!;
+        var skip = manager.NextDrawAndGuessRound("host");
+        var next = skip.Snapshot.DrawAndGuessState!;
+        // Turu atlayan çizerin kelimesi de açıklanır — yoksa tahmin edenler
+        // cevabı hiç görmeden tur kapanıyordu.
+        Assert.Equal("kedi", skip.Reveal.Word);
         Assert.Equal(guest.PlayerId, next.DrawerPlayerId);
         Assert.Equal(2, next.RoundNumber);
         Assert.Empty(next.CorrectGuesserIds);
@@ -657,6 +661,55 @@ public sealed class RoomManagerTests
         Assert.Equal(2, next.Scores[host.PlayerId]);
         // Guest's round-1 guess score (10, for guessing first) carries forward untouched.
         Assert.Equal(10, next.Scores[guest.PlayerId]);
+    }
+
+    [Fact]
+    public void DrawAndGuessLetterHintsCostBothTheGuesserAndTheDrawer()
+    {
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        manager.BeginGameSelection("host", ["draw-and-guess"]);
+        manager.CastVote("host", "draw-and-guess");
+        manager.ResolveVote("host");
+
+        manager.RequestDrawAndGuessLetterHint("host");
+        manager.RequestDrawAndGuessLetterHint("host");
+
+        // İki harf açıldı: ilk bilenin 10 puanı 6'ya, çizenin bilen başına
+        // 2 puanlık bonusu da 0'a iner.
+        var correct = manager.SubmitDrawAndGuessGuess("guest", "kedi");
+        Assert.Equal(6, correct.Points);
+
+        var next = manager.NextDrawAndGuessRound("host").Snapshot.DrawAndGuessState!;
+        Assert.Equal(6, next.Scores[guest.PlayerId]);
+        Assert.Equal(0, next.Scores.GetValueOrDefault(host.PlayerId));
+    }
+
+    [Fact]
+    public void DrawAndGuessStrokeAuthorityFollowsTheRoundNotWhoeverStartedDrawing()
+    {
+        var manager = CreateManager(random: new FixedRoomRandom(0));
+        var host = manager.Create(CreateRequest("Arda"));
+        var guest = manager.Join(host.RoomCode, new JoinRoomRequest("Ali", "#123456"));
+        manager.Attach(host.RoomCode, host.PlayerId, host.ReconnectToken, "host");
+        manager.Attach(host.RoomCode, guest.PlayerId, guest.ReconnectToken, "guest");
+        manager.BeginGameSelection("host", ["draw-and-guess"]);
+        manager.CastVote("host", "draw-and-guess");
+        manager.ResolveVote("host");
+
+        Assert.True(manager.IsDrawAndGuessDrawer("host"));
+        Assert.False(manager.IsDrawAndGuessDrawer("guest"));
+
+        manager.SubmitDrawAndGuessGuess("guest", "kedi");
+        manager.NextDrawAndGuessRound("host");
+
+        // Sıra geçtikten sonra eski çizerin faresi hâlâ basılı olabilir;
+        // gönderdiği paketler artık yetkisiz.
+        Assert.False(manager.IsDrawAndGuessDrawer("host"));
+        Assert.True(manager.IsDrawAndGuessDrawer("guest"));
     }
 
     [Fact]
@@ -678,9 +731,9 @@ public sealed class RoomManagerTests
         // (a random-excluding-the-last-drawer pick could coincidentally
         // produce this same sequence once; it couldn't keep doing it).
         Assert.Equal(host.PlayerId, manager.Get(host.RoomCode)!.DrawAndGuessState!.DrawerPlayerId);
-        Assert.Equal(second.PlayerId, manager.NextDrawAndGuessRound("c1").DrawAndGuessState!.DrawerPlayerId);
-        Assert.Equal(third.PlayerId, manager.NextDrawAndGuessRound("c2").DrawAndGuessState!.DrawerPlayerId);
-        Assert.Equal(host.PlayerId, manager.NextDrawAndGuessRound("c3").DrawAndGuessState!.DrawerPlayerId); // wraps back to the top
+        Assert.Equal(second.PlayerId, manager.NextDrawAndGuessRound("c1").Snapshot.DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(third.PlayerId, manager.NextDrawAndGuessRound("c2").Snapshot.DrawAndGuessState!.DrawerPlayerId);
+        Assert.Equal(host.PlayerId, manager.NextDrawAndGuessRound("c3").Snapshot.DrawAndGuessState!.DrawerPlayerId); // wraps back to the top
     }
 
     [Fact]

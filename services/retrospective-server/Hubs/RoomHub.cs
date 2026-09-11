@@ -166,8 +166,10 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
 
     public async Task<RoomSnapshot> NextDrawAndGuessRound()
     {
-        var room = rooms.NextDrawAndGuessRound(Context.ConnectionId);
+        var skip = rooms.NextDrawAndGuessRound(Context.ConnectionId);
+        var room = skip.Snapshot;
         await Broadcast(room);
+        await Clients.Group(GroupName(room.Code)).DrawAndGuessWordRevealed(skip.Reveal);
         await Clients.Group(GroupName(room.Code)).DrawAndGuessStateChanged(room.DrawAndGuessState!);
         return room;
     }
@@ -181,15 +183,18 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     }
 
     /// <summary>
-    /// Pure relay — the server never inspects or stores stroke points, it
-    /// just forwards them to everyone else so the canvas stays live. Capped
-    /// well above what one pointermove batch needs, so a malformed client
-    /// can't flood the room with an unbounded payload.
+    /// Relay — the server never inspects or stores stroke points, it just
+    /// forwards them to everyone else so the canvas stays live. Capped well
+    /// above what one pointermove batch needs, so a malformed client can't
+    /// flood the room with an unbounded payload. Who may send is still
+    /// checked: only the current drawer, see
+    /// <see cref="RoomManager.IsDrawAndGuessDrawer"/>.
     /// </summary>
     public async Task SendDrawAndGuessStroke(IReadOnlyList<double> points, bool newStroke, string color, bool isEraser)
     {
         if (points.Count > 64 || color.Length > 16) return;
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        if (!rooms.IsDrawAndGuessDrawer(Context.ConnectionId)) return;
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessStrokeReceived(
             new DrawAndGuessStrokeEvent(player.PlayerId, points, newStroke, color, isEraser));
     }
@@ -199,6 +204,7 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     {
         if (shapeType.Length > 32 || color.Length > 16) return;
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        if (!rooms.IsDrawAndGuessDrawer(Context.ConnectionId)) return;
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessShapeReceived(
             new DrawAndGuessShapeEvent(player.PlayerId, shapeType, x0, y0, x1, y1, color, filled));
     }
@@ -206,6 +212,7 @@ public sealed class RoomHub(RoomManager rooms, TimeProvider timeProvider, ILogge
     public async Task ClearDrawAndGuessCanvas()
     {
         var player = rooms.AuthenticateConnection(Context.ConnectionId);
+        if (!rooms.IsDrawAndGuessDrawer(Context.ConnectionId)) return;
         await Clients.OthersInGroup(GroupName(player.RoomCode)).DrawAndGuessCanvasCleared();
     }
 

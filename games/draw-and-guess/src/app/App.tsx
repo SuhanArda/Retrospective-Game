@@ -249,8 +249,9 @@ function OnlineGame({ launchContext }: OnlineGameProps) {
                         className="btn-secondary"
                         onClick={handleRequestLetterHint}
                         disabled={Object.keys(bridgeState.revealedLetters).length >= bridgeState.wordLength}
+                        title="Açılan her harf hem bilenin hem senin puanını düşürür"
                       >
-                        Harf Ver
+                        Harf Ver <span className="hint-cost">puan düşürür</span>
                       </button>
                     </>
                   )}
