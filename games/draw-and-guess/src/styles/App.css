@@ -168,6 +168,15 @@
   background: #eeeafa;
 }
 
+/* "Harf Ver"in bedeli butonun üstünde yazsın — kural görünmezse çizen her
+   turda harf açar, puanının neden düştüğünü de anlamaz. */
+.hint-cost {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6f6480;
+}
+
 .drawing-canvas-wrap {
   display: flex;
   flex-direction: column;

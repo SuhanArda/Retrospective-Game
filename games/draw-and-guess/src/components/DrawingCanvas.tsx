@@ -157,6 +157,20 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       },
     }));
 
+    // Süre dolduğunda sıra anında diğer oyuncuya geçiyor ama fare hâlâ basılı
+    // olabilir. `isDrawingRef` pointerdown'da açıldığı için, tur değişse bile
+    // devam eden çizim sürüyor ve yeni çizerin tuvaline karışıyordu. Sıra
+    // elimizden çıktığı anda başlamış çizimi kesiyoruz: yarım kalan şekil
+    // önizlemesi de sürükleme öncesi hâline geri alınıyor.
+    useEffect(() => {
+      if (canDraw || !isDrawingRef.current) return;
+      isDrawingRef.current = false;
+      const context = canvasRef.current?.getContext('2d');
+      if (context && shapeSnapshotRef.current) context.putImageData(shapeSnapshotRef.current, 0, 0);
+      shapeStartRef.current = null;
+      shapeSnapshotRef.current = null;
+    }, [canDraw]);
+
     function getPoint(event: React.PointerEvent<HTMLCanvasElement>) {
       const canvas = canvasRef.current!;
       const rect = canvas.getBoundingClientRect();
@@ -187,7 +201,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }
 
     function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-      if (!isDrawingRef.current) return;
+      if (!isDrawingRef.current || !canDraw) return;
       const context = canvasRef.current?.getContext('2d');
       if (!context) return;
       const { x, y } = getPoint(event);
@@ -221,7 +235,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }
 
     function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
-      if (tool === 'shape' && isDrawingRef.current) {
+      if (tool === 'shape' && isDrawingRef.current && canDraw) {
         const { x, y } = getPoint(event);
         finishShape(x, y);
       }

@@ -147,6 +147,14 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     private static readonly int[] DrawAndGuessRankPoints = [10, 7, 5];
     private const int DrawAndGuessFallbackPoints = 3;
     private const int DrawAndGuessDrawerPointsPerCorrectGuesser = 2;
+    /// <summary>
+    /// Açılan her harf hem bilene hem çizene puana mal olur — ipucu bedava
+    /// olursa çizenin sırayla bütün kelimeyi açmaması için bir sebep kalmıyor.
+    /// Bilen yine de eli boş dönmez (en az <see cref="DrawAndGuessMinimumGuessPoints"/>),
+    /// çizenin bonusu ise sıfıra kadar inebilir.
+    /// </summary>
+    private const int DrawAndGuessLetterHintPenalty = 2;
+    private const int DrawAndGuessMinimumGuessPoints = 1;
     /// <summary>Herkes bildikten sonra sıradaki tura otomatik geçmeden önceki bekleme — son tahmini/kutlamayı görsünler diye.</summary>
     private const int DrawAndGuessRoundCompleteDelayMs = 2500;
     /// <summary>Her turun süresi — kimse (ya da herkes) bilemezse bu süre dolunca kelime açıklanıp tur ilerler.</summary>
@@ -555,7 +563,12 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
             if (!isCorrect) return new DrawAndGuessGuessResult(player.Id, player.DisplayName, false, null, trimmed, null);
 
             var rank = state.CorrectGuesserIds.Count + 1;
-            var points = rank <= DrawAndGuessRankPoints.Length ? DrawAndGuessRankPoints[rank - 1] : DrawAndGuessFallbackPoints;
+            var basePoints = rank <= DrawAndGuessRankPoints.Length ? DrawAndGuessRankPoints[rank - 1] : DrawAndGuessFallbackPoints;
+            // Tahmin anında kaç harf açıksa o kadar kırpılır: erken bilen,
+            // sonradan açılan harflerden etkilenmez.
+            var points = Math.Max(
+                DrawAndGuessMinimumGuessPoints,
+                basePoints - DrawAndGuessLetterHintPenalty * state.RevealedLetterIndices.Count);
             state.CorrectGuesserIds.Add(player.Id);
             state.Scores[player.Id] = state.Scores.GetValueOrDefault(player.Id) + points;
             state.Revision++;
@@ -580,15 +593,33 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
     /// picture is hopeless; everyone guessing correctly instead advances
     /// automatically, via <see cref="AdvanceTimedStates"/>.
     /// </summary>
-    public RoomSnapshot NextDrawAndGuessRound(string connectionId)
+    /// <summary>
+    /// Çizim paketleri sunucudan sadece geçiyor, ama geçmeden önce sıranın
+    /// gerçekten göndericide olduğunu burada doğruluyoruz. Süre dolduğunda
+    /// farenin hâlâ basılı olduğu eski çizer, tur değişse de imleci
+    /// oynattıkça paket göndermeye devam ediyordu; o paketler yeni çizerin
+    /// tuvaline düşüyordu. Hub bunu hata değil sessiz düşüş olarak ele alır:
+    /// tur tam değişirken yolda kalmış bir paket saldırı değil, normal.
+    /// </summary>
+    public bool IsDrawAndGuessDrawer(string connectionId)
+    {
+        var (room, player) = Authorize(connectionId, hostRequired: false);
+        lock (room.Gate) return room.DrawAndGuessState?.DrawerPlayerId == player.Id;
+    }
+
+    public DrawAndGuessRoundSkip NextDrawAndGuessRound(string connectionId)
     {
         var (room, player) = Authorize(connectionId, hostRequired: false);
         lock (room.Gate)
         {
             var state = room.DrawAndGuessState ?? throw new RoomException("NO_ACTIVE_ROUND");
             if (state.DrawerPlayerId != player.Id) throw new RoomException("NOT_DRAWER");
+            // Atlanan kelimeyi de açıklıyoruz: tahmin edenler için tur, cevabı
+            // hiç görmeden kapanıyordu. Süre dolduğunda zaten açıklanıyor —
+            // tek sessiz kalan yol buydu.
+            var reveal = new DrawAndGuessWordReveal(state.Word, state.Revision);
             AdvanceDrawAndGuessRound(room);
-            return Snapshot(room);
+            return new DrawAndGuessRoundSkip(Snapshot(room), reveal);
         }
     }
 
@@ -602,7 +633,10 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
         var state = room.DrawAndGuessState!;
         if (state.CorrectGuesserIds.Count > 0)
         {
-            var bonus = state.CorrectGuesserIds.Count * DrawAndGuessDrawerPointsPerCorrectGuesser;
+            // Çizenin bilen başına aldığı bonus, verdiği her harf için 1 azalır.
+            var perGuesser = Math.Max(
+                0, DrawAndGuessDrawerPointsPerCorrectGuesser - state.RevealedLetterIndices.Count);
+            var bonus = state.CorrectGuesserIds.Count * perGuesser;
             state.Scores[state.DrawerPlayerId] = state.Scores.GetValueOrDefault(state.DrawerPlayerId) + bonus;
         }
         room.DrawAndGuessState = CreateDrawAndGuessState(room, state.Scores);
@@ -1359,6 +1393,7 @@ public sealed partial class RoomManager(TimeProvider timeProvider, IOptions<Room
 public sealed record AuthenticatedPlayer(string RoomCode, string PlayerId, string DisplayName, string Color);
 public sealed record RoomChange(string RoomCode, string RoomInstanceId, RoomSnapshot? Snapshot, bool HadAiSource = false);
 public sealed record VoteResolution(RoomSnapshot Snapshot, bool GameStarted);
+public sealed record DrawAndGuessRoundSkip(RoomSnapshot Snapshot, DrawAndGuessWordReveal Reveal);
 public sealed record TimedRoomChange(
     string RoomCode,
     RoomSnapshot Snapshot,
